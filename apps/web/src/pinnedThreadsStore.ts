@@ -16,7 +16,7 @@ interface PinnedThreadsStoreState {
   prunePinnedThreads: (threadIds: readonly ThreadId[]) => void;
 }
 
-const PINNED_THREADS_STORAGE_KEY = "ctcode:pinned-threads:v1";
+const PINNED_THREADS_STORAGE_KEY = "fcode:pinned-threads:v1";
 
 export const usePinnedThreadsStore = create<PinnedThreadsStoreState>()(
   persist(

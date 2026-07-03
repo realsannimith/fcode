@@ -1,7 +1,7 @@
 // FILE: skillPromptInjection.ts
 // Purpose: Inlines portable skill instructions into the outgoing prompt for providers
 //          that cannot natively load the referenced skill files. This is the fallback
-//          that makes CTCode catalog skills usable on every provider.
+//          that makes FCode catalog skills usable on every provider.
 // Layer: Server provider helper
 // Exports: shouldInlineSkillForProvider, buildInlineSkillInstructions
 
@@ -19,7 +19,7 @@ const INLINE_SKILLS_HEADER =
   '"dir" attribute.';
 
 const CROSS_PROVIDER_SKILL_DIR_NAMES = [
-  ".ctcode",
+  ".fcode",
   ".codex",
   ".cursor",
   ".claude",
@@ -35,14 +35,14 @@ export function shouldInlineSkillForProvider(provider: ProviderKind, skillPath: 
   switch (provider) {
     case "codex":
       // Codex injects structured skill items only from roots it knows: its own
-      // folders plus `~/.ctcode/skills`, which CTCode registers at session start
+      // folders plus `~/.fcode/skills`, which FCode registers at session start
       // via skills/extraRoots/set. Skills resolved from other providers' folders
       // must be inlined.
       return [".claude", ".cursor", ".agents"].some((dir) => segments.has(dir));
     case "cursor":
       // cursor-agent natively scans .cursor/.agents/.claude/.codex skill roots;
-      // only CTCode-owned paths need inlining.
-      return segments.has(".ctcode");
+      // only FCode-owned paths need inlining.
+      return segments.has(".fcode");
     case "claudeAgent":
       // Claude Code only loads skills from .claude/skills folders.
       return !segments.has(".claude");

@@ -174,6 +174,7 @@ export function useHandleNewThread() {
             modelSelection: creationState.modelSelection,
             runtimeMode: creationState.runtimeMode,
             interactionMode: creationState.interactionMode,
+            entryPoint: "terminal",
             envMode: creationState.envMode,
             branch: creationState.branch,
             worktreePath: creationState.worktreePath,

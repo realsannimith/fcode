@@ -4,10 +4,7 @@
 //          secondary chrome reads consistently across the chat shell.
 // Layer: Environment panel design tokens
 
-import {
-  COMPOSER_EDITOR_TYPOGRAPHY_CLASS_NAME,
-  COMPOSER_PLACEHOLDER_TEXT_CLASS_NAME,
-} from "~/components/chat/composerPickerStyles";
+import { COMPOSER_PLACEHOLDER_TEXT_CLASS_NAME } from "~/components/chat/composerPickerStyles";
 import { cn } from "~/lib/utils";
 
 /** Panel title ("Environment") and section labels ("Editor", "Recap"). */
@@ -41,9 +38,13 @@ export const ENVIRONMENT_PANEL_SECTION_LABEL_CLASS_NAME = cn(
   "px-2 py-1",
 );
 
-/** Muted secondary copy such as the recap body. */
+/**
+ * Muted secondary copy such as the recap body. Sized to the panel's own UI scale
+ * (not the larger, user-adjustable chat-message scale) with a tight line-height so
+ * it reads as compact panel chrome instead of a chat bubble.
+ */
 export const ENVIRONMENT_PANEL_MUTED_BODY_CLASS_NAME = cn(
-  COMPOSER_EDITOR_TYPOGRAPHY_CLASS_NAME,
+  "font-system-ui text-[length:var(--app-font-size-ui-sm,11px)] leading-snug",
   COMPOSER_PLACEHOLDER_TEXT_CLASS_NAME,
 );
 

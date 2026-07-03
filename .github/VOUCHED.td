@@ -9,5 +9,4 @@
 #   -github:username reason for denouncement
 #
 # Keep entries sorted alphabetically.
-github:Emanuele-web04
 github:Marve10s

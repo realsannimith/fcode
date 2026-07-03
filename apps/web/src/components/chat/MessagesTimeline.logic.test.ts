@@ -258,7 +258,7 @@ describe("computeStableMessagesTimelineRows", () => {
             tone: "info",
             automation: {
               id: "automation-7",
-              name: "Watch CTCode PR 231",
+              name: "Watch FCode PR 231",
               cadenceLabel: "Every 5m",
             },
           },

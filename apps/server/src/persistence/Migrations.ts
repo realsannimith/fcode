@@ -64,6 +64,7 @@ import Migration0045 from "./Migrations/045_AutomationPolicies.ts";
 import Migration0046 from "./Migrations/046_AutomationCompletionPolicy.ts";
 import Migration0047 from "./Migrations/047_AutomationCompletionPolicyVersion.ts";
 import Migration0048 from "./Migrations/048_AutomationCompletionEvaluationBacklog.ts";
+import Migration0049 from "./Migrations/049_ThreadEntryPoint.ts";
 
 /**
  * Migration loader with all migrations defined inline.
@@ -124,6 +125,7 @@ export const migrationEntries = [
   [46, "AutomationCompletionPolicy", Migration0046],
   [47, "AutomationCompletionPolicyVersion", Migration0047],
   [48, "AutomationCompletionEvaluationBacklog", Migration0048],
+  [49, "ThreadEntryPoint", Migration0049],
 ] as const;
 
 export const makeMigrationLoader = (throughId?: number) =>
@@ -136,8 +138,8 @@ export const makeMigrationLoader = (throughId?: number) =>
   );
 
 /**
- * Highest migration ID whose content is identical across every lineage CTCode
- * can import (T3 Code, DP Code, CTCode). A name mismatch at or below this ID
+ * Highest migration ID whose content is identical across every lineage FCode
+ * can import (T3 Code, DP Code, FCode). A name mismatch at or below this ID
  * means the database does not come from any known lineage, so re-running
  * migrations could destroy data — refuse to start instead.
  */
@@ -150,13 +152,13 @@ const LAST_SHARED_LINEAGE_MIGRATION_ID = 16;
  * Legacy ~/.t3 / ~/.dpcode imports (homeMigration.ts) carry their own
  * `effect_sql_migrations` rows, recorded under that lineage's migration names
  * at the same numeric IDs. The migrator gates purely on max(migration_id), so
- * once the imported tracker's high-water mark reaches CTCode's latest ID,
- * every CTCode migration is skipped silently and startup crashes on missing
+ * once the imported tracker's high-water mark reaches FCode's latest ID,
+ * every FCode migration is skipped silently and startup crashes on missing
  * columns such as `projection_threads.env_mode`. Renumbering self-heal
  * migrations past the legacy IDs (#023, then #032) loses that race whenever
  * the legacy lineage ships more migrations.
  *
- * Instead, compare the recorded (id, name) pairs against CTCode's lineage and
+ * Instead, compare the recorded (id, name) pairs against FCode's lineage and
  * delete every tracker row from the first divergence onward. The migrator
  * then re-runs those migrations in order; every migration past
  * {@link LAST_SHARED_LINEAGE_MIGRATION_ID} is idempotent, so re-running them
@@ -202,7 +204,7 @@ export const reconcileMigrationLineage = Effect.gen(function* () {
   }
 
   yield* Effect.logWarning(
-    "Migration tracker diverges from the CTCode lineage (legacy import); re-running migrations from the divergence point",
+    "Migration tracker diverges from the FCode lineage (legacy import); re-running migrations from the divergence point",
   ).pipe(Effect.annotateLogs({ firstDivergedId, expectedName, recordedName, highWaterMark }));
 
   yield* sql`DELETE FROM effect_sql_migrations WHERE migration_id >= ${firstDivergedId}`;

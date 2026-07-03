@@ -1,7 +1,7 @@
 /**
  * Reconciles schema after a legacy ~/.t3 import where the imported
  * `effect_sql_migrations` tracker already records IDs 17-31 under unrelated
- * T3 Code names. Because the migrator skips by ID, the renumbered CTCode
+ * T3 Code names. Because the migrator skips by ID, the renumbered FCode
  * migrations 17-31 never run on those imports, leaving columns like
  * `env_mode` missing and crashing the server on first query.
  *
@@ -14,7 +14,7 @@
  * is guaranteed to execute on legacy imports regardless of the imported
  * tracker's high-water mark.
  *
- * Idempotent and a no-op for fresh CTCode installs (every column already
+ * Idempotent and a no-op for fresh FCode installs (every column already
  * exists from the in-order runs of 17-31).
  */
 import * as SqlClient from "effect/unstable/sql/SqlClient";

@@ -13,7 +13,7 @@ import { EnvironmentAutomationsSection } from "./EnvironmentAutomationsSection";
 
 const baseAutomation = (overrides: Partial<AutomationDefinition> = {}): AutomationDefinition => ({
   id: AutomationId.makeUnsafe("automation-monitor-pr-220"),
-  projectId: ProjectId.makeUnsafe("project-ctcode"),
+  projectId: ProjectId.makeUnsafe("project-fcode"),
   sourceThreadId: null,
   name: "Monitor PR #220 Codex review",
   prompt: "Monitor the pull request review status.",

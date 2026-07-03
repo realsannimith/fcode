@@ -1,18 +1,24 @@
 // FILE: SkillsSettingsPanel.tsx
 // Purpose: Settings → Skills panel. Lists every skill from the unified cross-provider
-// catalog (~/.ctcode/skills plus each provider's skills folder), shows which provider
+// catalog (~/.fcode/skills plus each provider's skills folder), shows which provider
 // a skill comes from, and lets the user enable/disable each one. Disabled skills are
-// hidden from the composer skill picker on every provider.
+// hidden from the composer skill picker on every provider. Picking a project also
+// scans that project's `.fcode/skills` (and provider `.<name>/skills`) folders so
+// project-scoped skills show up under "From Project".
 
 import type { ProviderKind, ServerSettings } from "@t3tools/contracts";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
+import { joinWorkspaceRelativePath } from "@t3tools/shared/path";
 
 import { ProviderIcon } from "~/components/ProviderIcon";
 import { SettingsRow, SettingsSection } from "~/components/settings/SettingsPanelPrimitives";
+import { SettingsSelectControl } from "~/components/settings/SettingControls";
+import { SelectItem } from "~/components/ui/select";
 import { Switch } from "~/components/ui/switch";
 import { SkillCubeIcon } from "~/lib/icons";
 import { ensureNativeApi } from "~/nativeApi";
+import { useStore } from "~/store";
 import {
   providerDiscoveryQueryKeys,
   skillsCatalogQueryOptions,
@@ -50,9 +56,47 @@ function SkillProviderStack({ providers }: { providers: ReadonlyArray<ProviderKi
   );
 }
 
+interface SkillProjectOption {
+  readonly cwd: string;
+  readonly label: string;
+}
+
 export function SkillsSettingsPanel() {
   const queryClient = useQueryClient();
-  const catalogQuery = useQuery(skillsCatalogQueryOptions());
+  const projects = useStore((state) => state.projects);
+  const projectOptions = useMemo<SkillProjectOption[]>(() => {
+    const seen = new Set<string>();
+    const options: SkillProjectOption[] = [];
+    for (const project of projects) {
+      const cwd = project.cwd.trim();
+      if (!cwd || seen.has(cwd)) {
+        continue;
+      }
+      seen.add(cwd);
+      options.push({
+        cwd,
+        label: project.localName?.trim() || project.folderName || project.name,
+      });
+    }
+    return options;
+  }, [projects]);
+
+  const [selectedCwd, setSelectedCwd] = useState<string | null>(null);
+  // Fall back to the first project when nothing is picked yet (or the picked
+  // project was removed) so project skills are visible without an extra click.
+  const effectiveCwd =
+    (selectedCwd && projectOptions.some((option) => option.cwd === selectedCwd)
+      ? selectedCwd
+      : null) ??
+    projectOptions[0]?.cwd ??
+    null;
+  const projectSkillsDir = effectiveCwd
+    ? joinWorkspaceRelativePath(effectiveCwd, ".fcode/skills")
+    : null;
+  const selectedProjectLabel =
+    projectOptions.find((option) => option.cwd === effectiveCwd)?.label ?? "";
+
+  const catalogQuery = useQuery(skillsCatalogQueryOptions({ cwd: effectiveCwd }));
   const serverSettingsQuery = useQuery(serverSettingsQueryOptions());
 
   const disabledSkillNames = useMemo(
@@ -105,17 +149,17 @@ export function SkillsSettingsPanel() {
 
   const totalSkills = skillGroups.length;
   const enabledSkills = skillGroups.filter((group) => !disabledSkillNames.has(group.key)).length;
-  const ctcodeSkillsDir = catalogQuery.data?.ctcodeSkillsDir;
+  const fcodeSkillsDir = catalogQuery.data?.fcodeSkillsDir;
 
   return (
     <div className="space-y-8">
       <SettingsSection title="Portable skills">
         <SettingsRow
-          title="CTCode skills folder"
-          description="Skills placed here are available on every provider. When a provider already ships its own copy of a skill, that copy is used; otherwise CTCode's copy is the fallback."
+          title="FCode skills folder"
+          description="Skills placed here are available on every provider. When a provider already ships its own copy of a skill, that copy is used; otherwise FCode's copy is the fallback."
           status={
-            ctcodeSkillsDir ? (
-              <code className="break-all text-[11px] text-muted-foreground">{ctcodeSkillsDir}</code>
+            fcodeSkillsDir ? (
+              <code className="break-all text-[11px] text-muted-foreground">{fcodeSkillsDir}</code>
             ) : null
           }
           control={
@@ -128,11 +172,41 @@ export function SkillsSettingsPanel() {
         />
       </SettingsSection>
 
+      {projectOptions.length > 0 ? (
+        <SettingsSection title="Project skills">
+          <SettingsRow
+            title="Project"
+            description="Skills in the selected project's .fcode/skills folder (and each provider's .<name>/skills folder) appear below under “From Project”. Toggles stay global."
+            status={
+              projectSkillsDir ? (
+                <code className="break-all text-[11px] text-muted-foreground">
+                  {projectSkillsDir}
+                </code>
+              ) : null
+            }
+            control={
+              <SettingsSelectControl
+                value={effectiveCwd ?? ""}
+                onValueChange={(next) => setSelectedCwd(next)}
+                ariaLabel="Project to scan for skills"
+                valueContent={selectedProjectLabel}
+              >
+                {projectOptions.map((option) => (
+                  <SelectItem key={option.cwd} value={option.cwd}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SettingsSelectControl>
+            }
+          />
+        </SettingsSection>
+      ) : null}
+
       {catalogQuery.isError ? (
         <SettingsSection title="Skills">
           <SettingsRow
             title="Skill discovery failed"
-            description="CTCode could not scan the skill folders. Retry after checking that the server is running."
+            description="FCode could not scan the skill folders. Retry after checking that the server is running."
           />
         </SettingsSection>
       ) : null}
@@ -141,7 +215,7 @@ export function SkillsSettingsPanel() {
         <SettingsSection title="Skills">
           <SettingsRow
             title="No skills found"
-            description="Add a skill folder containing a SKILL.md to the CTCode skills folder above, or install skills for any supported provider."
+            description="Add a skill folder containing a SKILL.md to the FCode skills folder above, or install skills for any supported provider."
           />
         </SettingsSection>
       ) : null}

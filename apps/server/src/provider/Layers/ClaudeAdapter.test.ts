@@ -313,7 +313,7 @@ describe("ClaudeAdapterLive", () => {
         type: "preset",
         preset: "claude_code",
         append: [
-          "You are running inside CTCode, a coding app that embeds the Claude Agent SDK.",
+          "You are running inside FCode, a coding app that embeds the Claude Agent SDK.",
           "Do not present the host app as Claude Code unless the user is explicitly asking about Claude Code.",
           "Treat the current working directory as the active workspace for the task.",
           "When the user asks about the current project, codebase, or repository, proactively inspect files in the current working directory before asking the user where to look.",
@@ -3625,7 +3625,7 @@ describe("ClaudeAdapterLive", () => {
       const promptText = yield* Effect.promise(() =>
         readFirstPromptText(harness.getLastCreateQueryInput()),
       );
-      assert.include(promptText ?? "", "CTCode plan mode is active.");
+      assert.include(promptText ?? "", "FCode plan mode is active.");
       assert.include(promptText ?? "", "<proposed_plan>");
       assert.include(promptText ?? "", "User request:\nplan this for me");
     }).pipe(

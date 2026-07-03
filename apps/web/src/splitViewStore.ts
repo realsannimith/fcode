@@ -112,11 +112,11 @@ interface SplitViewStore {
   setHasHydrated: (hasHydrated: boolean) => void;
 }
 
-// Keep the v1 suffix stable while using the CTCode namespace; legacy
+// Keep the v1 suffix stable while using the FCode namespace; legacy
 // `t3code:*` and `dpcode:*` keys are copied over by
 // `storageKeyMigration` before this store hydrates, so older payloads still
 // flow through the v1 -> v2 schema migration below.
-const SPLIT_VIEW_STORAGE_KEY = "ctcode:split-view-state:v1";
+const SPLIT_VIEW_STORAGE_KEY = "fcode:split-view-state:v1";
 const SPLIT_VIEW_STORAGE_VERSION = 2;
 const DEFAULT_RATIO = 0.5;
 const MIN_RATIO = 0.25;

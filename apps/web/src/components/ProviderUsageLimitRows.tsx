@@ -60,7 +60,7 @@ function ProviderUsageTrack({
   return (
     <UsageProgressTrack
       {...trackProps}
-      className={surface === "popover" ? "h-1.5 bg-muted/80" : undefined}
+      className={surface === "popover" ? "h-1.5 bg-muted/80" : "h-2.5"}
       markerGapClassName={surface === "popover" ? "bg-popover" : undefined}
     />
   );
@@ -70,20 +70,28 @@ function SettingsUsageLimitRow({ row }: { row: ProviderUsageDisplayRow }) {
   const trackProps = providerUsageProgressTrackProps(row);
 
   return (
-    <div className="space-y-1.5">
-      <div className="flex items-center gap-1.5">
-        <span className="text-xs font-medium text-foreground">{row.label}</span>
+    <div className="space-y-2">
+      <div className="flex items-center justify-between gap-2">
+        <span className="min-w-0 truncate text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+          {row.label}
+        </span>
         <span
           className={cn("size-1.5 shrink-0 rounded-full", trackProps.markerClassName)}
           title={row.pace ? `Usage pace: ${row.pace.status}` : undefined}
           aria-hidden
         />
       </div>
-      <ProviderUsageTrack row={row} surface="settings" />
-      <div className="flex items-center justify-between text-[11px] tabular-nums text-muted-foreground">
-        <span>{row.leftText}</span>
-        {row.resetText ? <span>{row.resetText}</span> : null}
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="text-[15px] font-semibold leading-none tabular-nums text-foreground">
+          {row.leftText}
+        </span>
+        {row.resetText ? (
+          <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
+            {row.resetText}
+          </span>
+        ) : null}
       </div>
+      <ProviderUsageTrack row={row} surface="settings" />
       <ProviderUsagePaceLine row={row} surface="settings" />
     </div>
   );

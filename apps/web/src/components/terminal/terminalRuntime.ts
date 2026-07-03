@@ -5,7 +5,6 @@
 import { ClipboardAddon } from "@xterm/addon-clipboard";
 import { FitAddon } from "@xterm/addon-fit";
 import { ImageAddon } from "@xterm/addon-image";
-import { LigaturesAddon } from "@xterm/addon-ligatures";
 import { SearchAddon } from "@xterm/addon-search";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { WebglAddon } from "@xterm/addon-webgl";
@@ -55,24 +54,34 @@ import { waitForTerminalFontReady } from "./terminalFontSettle";
 import { observeTerminalWriteParsed } from "./terminalPerformance";
 
 const VISUAL_RESIZE_MIN_INTERVAL_MS = 64;
-const BACKEND_RESIZE_DEBOUNCE_MS = 120;
+// Quiet period after the last container size change before snapping the grid.
+// Long enough to bridge per-frame ResizeObserver events (~16ms apart) during a
+// window drag or the dock's 300ms slide, short enough that the post-gesture
+// snap feels immediate.
+const RESIZE_SETTLE_MS = 100;
+// Grid changes reach the PTY almost immediately: the settle/suspend policies
+// above already coalesce gestures to a single fit, so this debounce only needs
+// to merge back-to-back fits (attach does two, one frame apart). Keeping it
+// short makes the TUI repaint (SIGWINCH) land together with the visual snap
+// instead of reading as a second, delayed refresh.
+const BACKEND_RESIZE_DEBOUNCE_MS = 40;
 const WRITE_BATCH_SIZE_LIMIT = 262_144;
 const WRITE_BATCH_MAX_LATENCY_MS = 50;
 const LINK_MATCH_CACHE_LIMIT = 512;
 const OPEN_SNAPSHOT_RECONCILE_DELAY_MS = 250;
 const OPEN_API_RETRY_DELAY_MS = 200;
 const TERMINAL_TEXT_ENCODER = new TextEncoder();
-const TERMINAL_PARKING_CONTAINER_ID = "ctcode-terminal-parking";
+const TERMINAL_PARKING_CONTAINER_ID = "fcode-terminal-parking";
 
-type CTCodeTerminalOptions = NonNullable<ConstructorParameters<typeof Terminal>[0]> & {
+type FCodeTerminalOptions = NonNullable<ConstructorParameters<typeof Terminal>[0]> & {
   fontWeight?: string | number;
   fontWeightBold?: string | number;
   scrollbar?: { showScrollbar?: boolean };
   vtExtensions?: { kittyKeyboard?: boolean };
 };
 
-const TERMINAL_CURSOR_STYLE: NonNullable<CTCodeTerminalOptions["cursorStyle"]> = "bar";
-const TERMINAL_INACTIVE_CURSOR_STYLE: NonNullable<CTCodeTerminalOptions["cursorInactiveStyle"]> =
+const TERMINAL_CURSOR_STYLE: NonNullable<FCodeTerminalOptions["cursorStyle"]> = "bar";
+const TERMINAL_INACTIVE_CURSOR_STYLE: NonNullable<FCodeTerminalOptions["cursorInactiveStyle"]> =
   "bar";
 const TERMINAL_CURSOR_WIDTH = 1;
 
@@ -528,7 +537,7 @@ function syncTheme(entry: TerminalRuntimeEntry): void {
   const fontChanged = nextFontKey !== (entry.wrapper.dataset.fontKey ?? "");
   entry.wrapper.dataset.themeKey = nextAppearanceKey;
   entry.wrapper.dataset.fontKey = nextFontKey;
-  const terminalOptions = entry.terminal.options as CTCodeTerminalOptions;
+  const terminalOptions = entry.terminal.options as FCodeTerminalOptions;
   terminalOptions.theme = nextTheme;
   terminalOptions.fontFamily = nextFontFamily;
   terminalOptions.fontSize = nextFontSize;
@@ -579,19 +588,26 @@ function ensureResizeObserver(entry: TerminalRuntimeEntry): void {
     return;
   }
 
-  let frame = 0;
+  let settleTimer: number | null = null;
   // Last integer content-box size we acted on. xterm only re-derives cols/rows from whole
   // pixels, so sub-pixel container jitter (flexbox rounding, scrollbar show/hide) must NOT
   // re-trigger a fit — otherwise the 64ms-throttled resize loop repaints ~15×/sec forever,
   // which reads as constant flicker and reflow.
   let lastWidth = -1;
   let lastHeight = -1;
+  const clearSettleTimer = () => {
+    if (settleTimer !== null) {
+      window.clearTimeout(settleTimer);
+      settleTimer = null;
+    }
+  };
   const observer = new ResizeObserver((entries) => {
     const last = entries[entries.length - 1];
     if (!last) return;
     const width = Math.round(last.contentRect.width);
     const height = Math.round(last.contentRect.height);
     if (width <= 0 || height <= 0) {
+      clearSettleTimer();
       cancelScheduledVisualResize(entry);
       return;
     }
@@ -605,13 +621,18 @@ function ensureResizeObserver(entry: TerminalRuntimeEntry): void {
       suspendedResizeEntries.add(entry);
       return;
     }
-    if (frame !== 0) {
-      window.cancelAnimationFrame(frame);
-    }
-    frame = window.requestAnimationFrame(() => {
-      frame = 0;
+    // Trailing settle: never reflow while the container size is still moving.
+    // Window-edge drags, divider drags, and the dock/sidebar open slide (a
+    // 300ms CSS width transition) all stream size changes; re-fitting the grid
+    // mid-stream repaints the whole canvas and resizes the PTY (SIGWINCH →
+    // full TUI redraw) on every step, which reads as flicker. The container
+    // clips/reveals the existing canvas while in motion, and we snap to the
+    // final grid exactly once, when the size holds still.
+    clearSettleTimer();
+    settleTimer = window.setTimeout(() => {
+      settleTimer = null;
       scheduleVisualResize(entry);
-    });
+    }, RESIZE_SETTLE_MS);
   });
 
   observer.observe(entry.container);
@@ -619,9 +640,7 @@ function ensureResizeObserver(entry: TerminalRuntimeEntry): void {
   entry.attachDisposables.push(() => {
     observer.disconnect();
     suspendedResizeEntries.delete(entry);
-    if (frame !== 0) {
-      window.cancelAnimationFrame(frame);
-    }
+    clearSettleTimer();
     if (entry.resizeObserver === observer) {
       entry.resizeObserver = null;
     }
@@ -726,7 +745,7 @@ export function createRuntimeEntry(config: TerminalRuntimeConfig): TerminalRunti
   const imageAddon = new ImageAddon();
   const searchAddon = new SearchAddon();
   const unicode11Addon = new Unicode11Addon();
-  const terminalOptions: CTCodeTerminalOptions = {
+  const terminalOptions: FCodeTerminalOptions = {
     cursorBlink: true,
     fontSize: getTerminalFontSizePx(),
     fontWeight: getTerminalFontWeight(),
@@ -752,11 +771,10 @@ export function createRuntimeEntry(config: TerminalRuntimeConfig): TerminalRunti
   terminal.loadAddon(searchAddon);
   terminal.loadAddon(unicode11Addon);
   terminal.unicode.activeVersion = "11";
-  try {
-    terminal.loadAddon(new LigaturesAddon());
-  } catch {
-    // Keep terminal startup resilient when the active font doesn't support ligatures.
-  }
+  // No ligatures addon: it drives a character joiner meant for the canvas renderer.
+  // With the WebGL renderer below, joined runs render at the font's natural advances,
+  // collapsing inter-word spaces (e.g. TUI banners) and knocking box-drawing out of
+  // alignment. Ligatures are cosmetic; correct grid rendering is not.
   terminal.open(wrapper);
 
   // GPU renderer. The default DOM renderer rebuilds row elements on every reflow,

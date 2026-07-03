@@ -110,7 +110,13 @@ async function requestTranscription(input: {
   readonly transcriptionUrl?: string;
 }): Promise<Response> {
   const formData = new FormData();
-  formData.append("file", new Blob([input.audioBuffer], { type: input.mimeType }), "voice.wav");
+  // Copy into a fresh Uint8Array so the Blob part is backed by a plain ArrayBuffer
+  // (a Node Buffer's backing store is typed as ArrayBufferLike, which is not a valid BlobPart).
+  formData.append(
+    "file",
+    new Blob([new Uint8Array(input.audioBuffer)], { type: input.mimeType }),
+    "voice.wav",
+  );
 
   return input.fetchImpl(input.transcriptionUrl ?? CHATGPT_TRANSCRIPTIONS_URL, {
     method: "POST",

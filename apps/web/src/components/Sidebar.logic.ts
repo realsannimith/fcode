@@ -26,7 +26,6 @@ import {
 } from "../sidebarRowStyles";
 import { isDuplicateProjectCreateError } from "../lib/projectCreateRecovery";
 import { isWorkspaceRootWithin, workspaceRootsEqual } from "@t3tools/shared/threadWorkspace";
-import { resolveThreadEnvironmentMode } from "@t3tools/shared/threadEnvironment";
 import {
   canSessionAnswerPendingRequests,
   findLatestProposedPlan,
@@ -34,7 +33,6 @@ import {
   isLatestTurnSettled,
   isSessionRunningTurn,
 } from "../session-logic";
-import { formatWorktreePathForDisplay } from "../worktreeCleanup";
 
 export {
   extractDuplicateProjectCreateProjectId,
@@ -43,7 +41,7 @@ export {
 
 export const THREAD_SELECTION_SAFE_SELECTOR = "[data-thread-item], [data-thread-selection-safe]";
 export const SIDEBAR_THREAD_PREWARM_LIMIT = 10;
-export const DEBUG_FEATURE_FLAGS_MENU_STORAGE_KEY = "ctcode:show-debug-feature-flags-menu";
+export const DEBUG_FEATURE_FLAGS_MENU_STORAGE_KEY = "fcode:show-debug-feature-flags-menu";
 export type SidebarNewThreadEnvMode = "local" | "worktree";
 type SidebarProject = {
   id: string;
@@ -57,61 +55,6 @@ type SidebarThreadSortInput = {
   latestUserMessageAt?: string | null | undefined;
   messages?: ReadonlyArray<Pick<ChatMessage, "role" | "createdAt">> | undefined;
 };
-
-function nonEmptyDisplayValue(value: string | null | undefined): string | null {
-  const trimmed = value?.trim();
-  return trimmed && trimmed.length > 0 ? trimmed : null;
-}
-
-function differentDisplayValue(
-  value: string | null | undefined,
-  existing: string | null,
-): string | null {
-  const normalized = nonEmptyDisplayValue(value);
-  if (!normalized) {
-    return null;
-  }
-  return existing !== null && normalized === existing ? null : normalized;
-}
-
-export type SidebarThreadHoverMetadata = {
-  projectName: string | null;
-  projectCwd: string | null;
-  sourceProjectName: string | null;
-  branch: string | null;
-  worktreeName: string | null;
-};
-
-export function resolveThreadHoverCardMetadata(input: {
-  thread: Pick<
-    SidebarThreadSummary,
-    "envMode" | "branch" | "worktreePath" | "associatedWorktreePath" | "associatedWorktreeBranch"
-  >;
-  project: Pick<Project, "name" | "folderName" | "cwd"> | null;
-}): SidebarThreadHoverMetadata {
-  const projectName =
-    nonEmptyDisplayValue(input.project?.name) ?? nonEmptyDisplayValue(input.project?.folderName);
-  const activeWorktreePath = nonEmptyDisplayValue(input.thread.worktreePath);
-  const isWorktree =
-    resolveThreadEnvironmentMode({
-      envMode: input.thread.envMode,
-      worktreePath: activeWorktreePath,
-    }) === "worktree";
-  const associatedWorktreePath = nonEmptyDisplayValue(input.thread.associatedWorktreePath);
-  const worktreePath = isWorktree ? (associatedWorktreePath ?? activeWorktreePath) : null;
-
-  return {
-    projectName,
-    projectCwd: input.project?.cwd ?? null,
-    sourceProjectName: isWorktree
-      ? differentDisplayValue(input.project?.folderName, projectName)
-      : null,
-    branch:
-      nonEmptyDisplayValue(input.thread.associatedWorktreeBranch) ??
-      nonEmptyDisplayValue(input.thread.branch),
-    worktreeName: worktreePath ? formatWorktreePathForDisplay(worktreePath) : null,
-  };
-}
 
 export function isLoopbackHostname(hostname: string): boolean {
   const normalizedHostname = hostname.trim().toLowerCase().replace(/\.$/, "");
@@ -141,15 +84,6 @@ export type SidebarProjectEntry = {
   childCount: number;
   isExpanded: boolean;
 };
-
-export type SidebarThreadHoverAnchorScope = "pinned" | "chat" | "project";
-
-export function createSidebarThreadHoverAnchorId(input: {
-  scope: SidebarThreadHoverAnchorScope;
-  threadId: ThreadId;
-}): string {
-  return `${input.scope}:${input.threadId}`;
-}
 
 export type SidebarDerivedProjectData = {
   allProjectThreadCount: number;

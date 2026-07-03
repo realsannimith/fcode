@@ -11,9 +11,8 @@ import {
 import ShortcutsDialog from "../components/ShortcutsDialog";
 import { RecentViewSwitcher } from "../components/RecentViewSwitcher";
 import { shouldRenderTerminalWorkspace } from "../components/ChatView.logic";
-import { SessionSidebar } from "../components/SessionSidebar";
+import { DiffWorkerPoolWarmup } from "../components/DiffWorkerPoolProvider";
 import ThreadSidebar from "../components/Sidebar";
-import { useAppSettings } from "../appSettings";
 import { isElectron } from "../env";
 import { useHandleNewChat } from "../hooks/useHandleNewChat";
 import { useDisposableThreadLifecycle } from "../hooks/useDisposableThreadLifecycle";
@@ -504,7 +503,6 @@ function ChatRouteLayout() {
   const isEditorView = useLocation({
     select: (location) => (location.search as { view?: unknown }).view === "editor",
   });
-  const { settings } = useAppSettings();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const resolvedSidebarOpen = isEditorView ? false : sidebarOpen;
 
@@ -521,7 +519,7 @@ function ChatRouteLayout() {
       transparentSurface
       resizable={THREAD_SIDEBAR_RESIZABLE}
     >
-      {settings.interfaceMode === "gui" ? <ThreadSidebar /> : <SessionSidebar />}
+      <ThreadSidebar />
     </Sidebar>
   );
 
@@ -551,6 +549,7 @@ function ChatRouteLayout() {
       data-sidebar-side="left"
     >
       <ThreadRetentionMaintenanceToast />
+      <DiffWorkerPoolWarmup />
       <ChatRouteGlobalShortcuts />
       {sidebarElement}
       {mainContentShell}

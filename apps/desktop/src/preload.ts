@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from "electron";
+import { contextBridge, ipcRenderer, webUtils } from "electron";
 import type { DesktopBridge } from "@t3tools/contracts";
 import { BROWSER_IPC_CHANNELS } from "./browserIpc";
 import {
@@ -42,6 +42,7 @@ function getDesktopWsUrl(): string | null {
 
 contextBridge.exposeInMainWorld("desktopBridge", {
   getWsUrl: getDesktopWsUrl,
+  getPathForFile: (file: File) => webUtils.getPathForFile(file),
   pickFolder: () => ipcRenderer.invoke(PICK_FOLDER_CHANNEL),
   saveFile: (input) => ipcRenderer.invoke(SAVE_FILE_CHANNEL, input),
   confirm: (message) => ipcRenderer.invoke(CONFIRM_CHANNEL, message),

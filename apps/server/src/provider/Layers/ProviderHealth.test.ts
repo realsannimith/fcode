@@ -6,7 +6,10 @@ import { Effect, Fiber, FileSystem, Layer, Path, Sink, Stream } from "effect";
 import * as PlatformError from "effect/PlatformError";
 import { ChildProcessSpawner } from "effect/unstable/process";
 
-import { DPCODE_CODEX_HOME_OVERLAY_DIR } from "../../codexHomePaths";
+import {
+  DPCODE_CODEX_HOME_OVERLAY_DIR,
+  resolveDpCodeCodexHomeOverlayPath,
+} from "../../codexHomePaths";
 import { ServerConfig } from "../../config";
 import { ServerSettingsService } from "../../serverSettings";
 import { ProviderHealth } from "../Services/ProviderHealth";
@@ -27,6 +30,7 @@ import {
   makeCheckClaudeProviderStatus,
   makeCheckCodexProviderStatus,
   makeCheckCursorProviderStatus,
+  makeCheckGeminiProviderStatus,
   makeCheckGrokProviderStatus,
   makeCheckKiloProviderStatus,
   makeCheckOpenCodeProviderStatus,
@@ -154,12 +158,12 @@ function withTempCodexHome(configContent?: string) {
 
     yield* Effect.acquireRelease(
       Effect.sync(() => {
-        // Override every runtime-home var the overlay resolver consults (CTCODE_HOME wins over
-        // DPCODE_HOME/T3CODE_HOME) plus CODEX_HOME, so an ambient CTCODE_HOME can't shadow the
+        // Override every runtime-home var the overlay resolver consults (FCODE_HOME wins over
+        // DPCODE_HOME/T3CODE_HOME) plus CODEX_HOME, so an ambient FCODE_HOME can't shadow the
         // temp dir and skew the resolved CODEX_HOME during this test.
         const overrides: Record<string, string> = {
           CODEX_HOME: tmpDir,
-          CTCODE_HOME: runtimeDir,
+          FCODE_HOME: runtimeDir,
           DPCODE_HOME: runtimeDir,
           T3CODE_HOME: runtimeDir,
         };
@@ -206,7 +210,7 @@ it.layer(NodeServices.layer)("ProviderHealth", (it) => {
         available: false,
         authStatus: "unknown",
         checkedAt: "2026-06-16T12:00:00.000Z",
-        message: "Provider is disabled in CTCode settings.",
+        message: "Provider is disabled in FCode settings.",
       });
     });
 
@@ -220,7 +224,7 @@ it.layer(NodeServices.layer)("ProviderHealth", (it) => {
 
       assert.strictEqual(statuses.length, 8);
       assert.strictEqual(codex?.available, false);
-      assert.strictEqual(codex?.message, "Provider is disabled in CTCode settings.");
+      assert.strictEqual(codex?.message, "Provider is disabled in FCode settings.");
     });
 
     it.effect("does not expose cached ready statuses for disabled providers", () =>
@@ -251,7 +255,7 @@ it.layer(NodeServices.layer)("ProviderHealth", (it) => {
         const cachedCodex = yield* readProviderStatusCache(cachePath);
 
         assert.strictEqual(codex?.available, false);
-        assert.strictEqual(codex?.message, "Provider is disabled in CTCode settings.");
+        assert.strictEqual(codex?.message, "Provider is disabled in FCode settings.");
         assert.deepStrictEqual(cachedCodex, cachedReadyCodexStatus);
       }),
     );
@@ -296,7 +300,7 @@ it.layer(NodeServices.layer)("ProviderHealth", (it) => {
           const disabledCodex = disabledStatuses.find((status) => status.provider === "codex");
 
           assert.strictEqual(disabledCodex?.available, false);
-          assert.strictEqual(disabledCodex?.message, "Provider is disabled in CTCode settings.");
+          assert.strictEqual(disabledCodex?.message, "Provider is disabled in FCode settings.");
 
           const enabledCodexFiber = yield* providerHealth.streamChanges.pipe(
             Stream.map((statuses) => statuses.find((status) => status.provider === "codex")),
@@ -330,14 +334,14 @@ it.layer(NodeServices.layer)("ProviderHealth", (it) => {
           }
           assert.notStrictEqual(
             streamedCodex.value.value.message,
-            "Provider is disabled in CTCode settings.",
+            "Provider is disabled in FCode settings.",
           );
 
           const currentStatuses = yield* providerHealth.getStatuses;
           const currentCodex = currentStatuses.find((status) => status.provider === "codex");
           assert.strictEqual(currentCodex?.available, true);
           assert.strictEqual(currentCodex?.authStatus, "authenticated");
-          assert.notStrictEqual(currentCodex?.message, "Provider is disabled in CTCode settings.");
+          assert.notStrictEqual(currentCodex?.message, "Provider is disabled in FCode settings.");
         }).pipe(Effect.provide(layer));
       }),
     );
@@ -350,7 +354,7 @@ it.layer(NodeServices.layer)("ProviderHealth", (it) => {
         assert.strictEqual(statuses.length, 8);
         for (const status of statuses) {
           assert.strictEqual(status.available, false);
-          assert.strictEqual(status.message, "Provider is disabled in CTCode settings.");
+          assert.strictEqual(status.message, "Provider is disabled in FCode settings.");
           assert.strictEqual(status.versionAdvisory?.status, "unknown");
           assert.strictEqual(status.versionAdvisory?.canUpdate, false);
           assert.strictEqual(status.versionAdvisory?.updateCommand, null);
@@ -365,7 +369,7 @@ it.layer(NodeServices.layer)("ProviderHealth", (it) => {
 
         assert.ok(error instanceof ServerProviderUpdateError);
         assert.strictEqual(error.provider, "kilo");
-        assert.strictEqual(error.reason, "Provider is disabled in CTCode settings.");
+        assert.strictEqual(error.reason, "Provider is disabled in FCode settings.");
       }).pipe(Effect.provide(disabledProviderHealthLayer)),
     );
   });
@@ -454,6 +458,41 @@ it.layer(NodeServices.layer)("ProviderHealth", (it) => {
       assert.deepStrictEqual(result, [
         {
           ...previousReadyClaude,
+          checkedAt: "2026-06-04T17:01:00.000Z",
+        },
+      ]);
+    });
+
+    it("keeps Gemini ready after a slow Antigravity models probe times out", () => {
+      const previousReadyGemini = {
+        provider: "gemini",
+        status: "ready",
+        available: true,
+        authStatus: "authenticated",
+        version: "1.0.15",
+        checkedAt: "2026-06-04T17:00:00.000Z",
+        message: "Antigravity CLI (`agy`) is installed and authenticated.",
+      } satisfies ServerProviderStatus;
+
+      const result = stabilizeProviderStatusesAgainstTransientTimeouts(
+        [previousReadyGemini],
+        [
+          {
+            provider: "gemini",
+            status: "warning",
+            available: true,
+            authStatus: "unknown",
+            version: "1.0.15",
+            checkedAt: "2026-06-04T17:01:00.000Z",
+            message:
+              "FCode couldn't verify Antigravity sign-in — the `agy` CLI didn't respond in time. Timed out while running command. If `agy` works in your terminal, this is just the background status check; try Refresh, and keep the Antigravity desktop app open + signed in.",
+          },
+        ],
+      );
+
+      assert.deepStrictEqual(result, [
+        {
+          ...previousReadyGemini,
           checkedAt: "2026-06-04T17:01:00.000Z",
         },
       ]);
@@ -614,7 +653,13 @@ it.layer(NodeServices.layer)("ProviderHealth", (it) => {
           path.join(configuredHome, "config.toml"),
           'model_provider = "openai"\n',
         );
-        expectedCodexHome = path.join(runtimeDir, DPCODE_CODEX_HOME_OVERLAY_DIR);
+        // Non-default source homes get a per-home overlay directory suffix so
+        // multiple Codex accounts never share (and clobber) one overlay.
+        expectedCodexHome = resolveDpCodeCodexHomeOverlayPath(process.env, configuredHome);
+        assert.notStrictEqual(
+          expectedCodexHome,
+          path.join(runtimeDir, DPCODE_CODEX_HOME_OVERLAY_DIR),
+        );
 
         const status = yield* makeCheckCodexProviderStatus("codex", configuredHome);
         assert.strictEqual(status.status, "ready");
@@ -630,6 +675,52 @@ it.layer(NodeServices.layer)("ProviderHealth", (it) => {
             if (joined === "login status") {
               sawLoginStatusProbe = true;
               return { stdout: "Logged in\n", stderr: "", code: 0 };
+            }
+            throw new Error(`Unexpected args: ${joined}`);
+          }),
+        ),
+      );
+    });
+
+    it.effect("probes each configured account against its own shadow home", () => {
+      let primaryProbeHome: string | undefined;
+      let accountProbeHome: string | undefined;
+      return Effect.gen(function* () {
+        const fileSystem = yield* FileSystem.FileSystem;
+        yield* withTempCodexHome();
+        const shadowHome = yield* fileSystem.makeTempDirectoryScoped({
+          prefix: "t3-test-codex-account-",
+        });
+        primaryProbeHome = resolveDpCodeCodexHomeOverlayPath(
+          process.env,
+          process.env.CODEX_HOME ?? "",
+        );
+        accountProbeHome = resolveDpCodeCodexHomeOverlayPath(process.env, shadowHome);
+        assert.notStrictEqual(accountProbeHome, primaryProbeHome);
+
+        const status = yield* makeCheckCodexProviderStatus("codex", undefined, [
+          { id: "work", label: "Work", shadowHomePath: shadowHome },
+        ]);
+        assert.strictEqual(status.authStatus, "authenticated");
+        assert.deepStrictEqual(status.accounts, [
+          {
+            id: "work",
+            label: "Work",
+            authStatus: "unauthenticated",
+            message: "Codex CLI is not authenticated. Run `codex login` and try again.",
+          },
+        ]);
+      }).pipe(
+        Effect.provide(
+          mockSpawnerLayer((args, _command, env) => {
+            const joined = args.join(" ");
+            if (joined === "--version") return { stdout: "codex 1.0.0\n", stderr: "", code: 0 };
+            if (joined === "login status") {
+              // The account's login-status probe must run against the shadow
+              // home's overlay, not the primary home.
+              return env?.CODEX_HOME === accountProbeHome
+                ? { stdout: "Not logged in\n", stderr: "", code: 1 }
+                : { stdout: "Logged in\n", stderr: "", code: 0 };
             }
             throw new Error(`Unexpected args: ${joined}`);
           }),
@@ -659,7 +750,7 @@ it.layer(NodeServices.layer)("ProviderHealth", (it) => {
         assert.strictEqual(status.authStatus, "unknown");
         assert.strictEqual(
           status.message,
-          "Codex CLI v0.36.0 is too old for CTCode. Upgrade to v0.37.0 or newer and restart CTCode.",
+          "Codex CLI v0.36.0 is too old for FCode. Upgrade to v0.37.0 or newer and restart FCode.",
         );
       }).pipe(
         Effect.provide(
@@ -819,6 +910,222 @@ it.layer(NodeServices.layer)("ProviderHealth", (it) => {
             if (joined === "--version") return { stdout: "codex 1.0.0\n", stderr: "", code: 0 };
             if (joined === "login status")
               return { stdout: "Not logged in\n", stderr: "", code: 1 };
+            throw new Error(`Unexpected args: ${joined}`);
+          }),
+        ),
+      ),
+    );
+  });
+
+  describe("checkGeminiProviderStatus", () => {
+    const geminiMissingSpawner = (
+      agyHandler: (args: ReadonlyArray<string>) => { stdout: string; stderr: string; code: number },
+    ) =>
+      Layer.succeed(
+        ChildProcessSpawner.ChildProcessSpawner,
+        ChildProcessSpawner.make((command) => {
+          const cmd = command as unknown as { command: string; args: ReadonlyArray<string> };
+          if (cmd.command === "gemini") {
+            return Effect.fail(
+              PlatformError.systemError({
+                _tag: "NotFound",
+                module: "ChildProcess",
+                method: "spawn",
+                description: "spawn gemini ENOENT",
+              }),
+            );
+          }
+          return Effect.succeed(mockHandle(agyHandler(cmd.args)));
+        }),
+      );
+
+    it.effect("falls back to the Antigravity CLI (agy) when gemini is missing", () =>
+      Effect.gen(function* () {
+        const status = yield* makeCheckGeminiProviderStatus(undefined, {
+          fetchAntigravityUsage: async () => null,
+        });
+        assert.strictEqual(status.provider, "gemini");
+        assert.strictEqual(status.status, "ready");
+        assert.strictEqual(status.available, true);
+        assert.strictEqual(status.authStatus, "authenticated");
+        assert.strictEqual(status.version, "1.0.15");
+        assert.ok(status.message?.includes("`agy`"));
+      }).pipe(
+        Effect.provide(
+          geminiMissingSpawner((args) => {
+            const joined = args.join(" ");
+            if (joined === "--version") return { stdout: "1.0.15\n", stderr: "", code: 0 };
+            if (joined === "models")
+              return {
+                stdout: "Gemini 3.5 Flash (Medium)\nGemini 3.1 Pro (Low)\n",
+                stderr: "",
+                code: 0,
+              };
+            throw new Error(`Unexpected args: ${joined}`);
+          }),
+        ),
+      ),
+    );
+
+    const antigravitySnapshot = (status: "ok" | "needs-auth") => ({
+      provider: "gemini" as const,
+      updatedAt: "2026-07-03T00:00:00.000Z",
+      limits: status === "ok" ? [{ window: "5h", usedPercent: 7 }] : [],
+      usageLines: [],
+      source: "antigravity-cloud-code",
+      status,
+    });
+
+    it.effect(
+      "reports Antigravity signed-in from the Keychain quota check (no agy models call)",
+      () =>
+        Effect.gen(function* () {
+          const status = yield* makeCheckGeminiProviderStatus(undefined, {
+            fetchAntigravityUsage: async () => antigravitySnapshot("ok"),
+          });
+          assert.strictEqual(status.status, "ready");
+          assert.strictEqual(status.authStatus, "authenticated");
+          assert.strictEqual(status.available, true);
+        }).pipe(
+          Effect.provide(
+            geminiMissingSpawner((args) => {
+              const joined = args.join(" ");
+              if (joined === "--version") return { stdout: "1.0.15\n", stderr: "", code: 0 };
+              throw new Error(
+                `agy models must not run when the quota check succeeds; got: ${joined}`,
+              );
+            }),
+          ),
+        ),
+    );
+
+    it.effect("reports needs-sign-in when the Keychain quota check is unauthenticated", () =>
+      Effect.gen(function* () {
+        const status = yield* makeCheckGeminiProviderStatus(undefined, {
+          fetchAntigravityUsage: async () => antigravitySnapshot("needs-auth"),
+        });
+        assert.strictEqual(status.authStatus, "unauthenticated");
+        assert.ok(status.message?.includes("`agy`"));
+      }).pipe(
+        Effect.provide(
+          geminiMissingSpawner((args) => {
+            const joined = args.join(" ");
+            if (joined === "--version") return { stdout: "1.0.15\n", stderr: "", code: 0 };
+            throw new Error(`unexpected agy call: ${joined}`);
+          }),
+        ),
+      ),
+    );
+
+    it.effect("reports unauthenticated when agy models requires sign-in", () =>
+      Effect.gen(function* () {
+        const status = yield* makeCheckGeminiProviderStatus(undefined, {
+          fetchAntigravityUsage: async () => null,
+        });
+        assert.strictEqual(status.available, true);
+        assert.strictEqual(status.status, "error");
+        assert.strictEqual(status.authStatus, "unauthenticated");
+      }).pipe(
+        Effect.provide(
+          geminiMissingSpawner((args) => {
+            const joined = args.join(" ");
+            if (joined === "--version") return { stdout: "1.0.15\n", stderr: "", code: 0 };
+            if (joined === "models")
+              return { stdout: "", stderr: "Error: not logged in\n", code: 1 };
+            throw new Error(`Unexpected args: ${joined}`);
+          }),
+        ),
+      ),
+    );
+
+    // The agy binary resolves (its --version succeeds) but the `models` probe
+    // spawn itself fails — the first-run situation where the CLI can't run yet.
+    const geminiAgyModelsSpawnFailure = (modelsFailureDescription: string) =>
+      Layer.succeed(
+        ChildProcessSpawner.ChildProcessSpawner,
+        ChildProcessSpawner.make((command) => {
+          const cmd = command as unknown as { command: string; args: ReadonlyArray<string> };
+          if (cmd.command === "gemini") {
+            return Effect.fail(
+              PlatformError.systemError({
+                _tag: "NotFound",
+                module: "ChildProcess",
+                method: "spawn",
+                description: "spawn gemini ENOENT",
+              }),
+            );
+          }
+          const joined = cmd.args.join(" ");
+          if (joined === "models") {
+            return Effect.fail(
+              PlatformError.systemError({
+                _tag: "NotFound",
+                module: "ChildProcess",
+                method: "spawn",
+                description: modelsFailureDescription,
+              }),
+            );
+          }
+          return Effect.succeed(
+            mockHandle({ stdout: joined === "--version" ? "1.0.15\n" : "", stderr: "", code: 0 }),
+          );
+        }),
+      );
+
+    it.effect("guides sign-in when the agy models probe fails with an auth signal", () =>
+      Effect.gen(function* () {
+        const status = yield* makeCheckGeminiProviderStatus(undefined, {
+          fetchAntigravityUsage: async () => null,
+        });
+        assert.strictEqual(status.provider, "gemini");
+        assert.strictEqual(status.available, true);
+        assert.strictEqual(status.authStatus, "unauthenticated");
+        assert.ok(status.message?.toLowerCase().includes("not signed in"));
+        assert.ok(status.message?.includes("`agy`"));
+      }).pipe(Effect.provide(geminiAgyModelsSpawnFailure("You are not logged into Antigravity."))),
+    );
+
+    it.effect("reports a run error when the agy models probe fails without an auth signal", () =>
+      Effect.gen(function* () {
+        const status = yield* makeCheckGeminiProviderStatus(undefined, {
+          fetchAntigravityUsage: async () => null,
+        });
+        assert.strictEqual(status.available, true);
+        assert.strictEqual(status.status, "warning");
+        assert.strictEqual(status.authStatus, "unknown");
+        assert.ok(status.message?.includes("could not run it"));
+        assert.ok(status.message?.includes("`agy`"));
+      }).pipe(Effect.provide(geminiAgyModelsSpawnFailure("spawn agy EACCES"))),
+    );
+
+    it.effect("returns unavailable with migration guidance when both CLIs are missing", () =>
+      Effect.gen(function* () {
+        const status = yield* makeCheckGeminiProviderStatus(undefined, {
+          fetchAntigravityUsage: async () => null,
+        });
+        assert.strictEqual(status.provider, "gemini");
+        assert.strictEqual(status.status, "error");
+        assert.strictEqual(status.available, false);
+        assert.ok(status.message?.includes("`gemini`"));
+        assert.ok(status.message?.includes("`agy`"));
+      }).pipe(Effect.provide(failingSpawnerLayer("spawn ENOENT"))),
+    );
+
+    it.effect("uses a configured Antigravity binary directly", () =>
+      Effect.gen(function* () {
+        const status = yield* makeCheckGeminiProviderStatus("/custom/bin/agy", {
+          fetchAntigravityUsage: async () => null,
+        });
+        assert.strictEqual(status.status, "ready");
+        assert.strictEqual(status.authStatus, "authenticated");
+      }).pipe(
+        Effect.provide(
+          mockSpawnerLayer((args, command) => {
+            assert.strictEqual(command, "/custom/bin/agy");
+            const joined = args.join(" ");
+            if (joined === "--version") return { stdout: "1.0.15\n", stderr: "", code: 0 };
+            if (joined === "models")
+              return { stdout: "Gemini 3.1 Pro (Low)\n", stderr: "", code: 0 };
             throw new Error(`Unexpected args: ${joined}`);
           }),
         ),
@@ -1231,7 +1538,7 @@ it.layer(NodeServices.layer)("ProviderHealth", (it) => {
         assert.strictEqual(status.status, "ready");
         assert.strictEqual(
           status.message,
-          "Pi CLI is installed. CTCode will use Pi agent dir /tmp/pi-agent.",
+          "Pi CLI is installed. FCode will use Pi agent dir /tmp/pi-agent.",
         );
       }).pipe(
         Effect.provide(
@@ -1254,7 +1561,7 @@ it.layer(NodeServices.layer)("ProviderHealth", (it) => {
         assert.strictEqual(status.authStatus, "unknown");
         assert.strictEqual(
           status.message,
-          "Pi SDK is bundled, but the Pi CLI (`pi`) is not on PATH, so CTCode could not verify the installed CLI version.",
+          "Pi SDK is bundled, but the Pi CLI (`pi`) is not on PATH, so FCode could not verify the installed CLI version.",
         );
       }).pipe(Effect.provide(failingSpawnerLayer("spawn pi ENOENT"))),
     );

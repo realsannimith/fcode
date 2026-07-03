@@ -259,7 +259,7 @@ describe("EditorWorkspaceView", () => {
         <EditorWorkspaceView
           workspaceRoot={null}
           projectName="project"
-          selectedFilePath="/tmp/ctcode-codex-workspaces/thread-1/report.pdf"
+          selectedFilePath="/tmp/fcode-codex-workspaces/thread-1/report.pdf"
           expandedDirectories={new Set()}
           centerMode="file"
           diffFiles={[]}
@@ -286,7 +286,7 @@ describe("EditorWorkspaceView", () => {
         <EditorWorkspaceView
           workspaceRoot={null}
           projectName="project"
-          selectedFilePath="/tmp/ctcode-codex-workspaces/thread-1/shot.png"
+          selectedFilePath="/tmp/fcode-codex-workspaces/thread-1/shot.png"
           expandedDirectories={new Set()}
           centerMode="file"
           diffFiles={[]}
@@ -304,7 +304,7 @@ describe("EditorWorkspaceView", () => {
 
     expect(markup).toContain("local-image-preview");
     expect(markup).toContain(
-      "/api/local-image?path=%2Ftmp%2Fctcode-codex-workspaces%2Fthread-1%2Fshot.png",
+      "/api/local-image?path=%2Ftmp%2Ffcode-codex-workspaces%2Fthread-1%2Fshot.png",
     );
     expect(markup).not.toContain("No workspace is attached");
     expect(markup).not.toContain("cwd=");

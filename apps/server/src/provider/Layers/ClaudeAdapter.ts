@@ -80,6 +80,10 @@ import {
 } from "effect";
 
 import { resolveAttachmentPath } from "../../attachmentStore.ts";
+import {
+  FCODE_BROWSER_MCP_SERVER_NAME,
+  maybeCreateClaudeBrowserMcpServer,
+} from "../../browserUse/claudeBrowserMcpServer.ts";
 import { ServerConfig } from "../../config.ts";
 import { buildFileAttachmentsPromptBlock } from "../attachmentProjection.ts";
 import { positiveFiniteNumber } from "../tokenUsage.ts";
@@ -777,11 +781,24 @@ const CLAUDE_SETTING_SOURCES = [
   "local",
 ] as const satisfies ReadonlyArray<SettingSource>;
 const EMBEDDED_CLAUDE_SYSTEM_PROMPT_APPEND = [
-  "You are running inside CTCode, a coding app that embeds the Claude Agent SDK.",
+  "You are running inside FCode, a coding app that embeds the Claude Agent SDK.",
   "Do not present the host app as Claude Code unless the user is explicitly asking about Claude Code.",
   "Treat the current working directory as the active workspace for the task.",
   "When the user asks about the current project, codebase, or repository, proactively inspect files in the current working directory before asking the user where to look.",
 ].join("\n");
+
+const EMBEDDED_CLAUDE_BROWSER_PROMPT_APPEND = [
+  "FCode has a built-in in-app browser panel the user can see live.",
+  `Use the mcp__${FCODE_BROWSER_MCP_SERVER_NAME}__browser_* tools (navigate, screenshot, click, type, read_page, ...) whenever a task calls for browsing, previewing a local dev server, or interacting with a web page.`,
+  "Prefer the in-app browser over external browsers or headless fetches for interactive web tasks so the user can follow along.",
+].join("\n");
+
+function buildClaudeSystemPromptAppend(browserToolsEnabled: boolean): string {
+  if (!browserToolsEnabled) {
+    return EMBEDDED_CLAUDE_SYSTEM_PROMPT_APPEND;
+  }
+  return `${EMBEDDED_CLAUDE_SYSTEM_PROMPT_APPEND}\n\n${EMBEDDED_CLAUDE_BROWSER_PROMPT_APPEND}`;
+}
 
 function buildClaudeSdkSubagents(): Record<string, AgentDefinition> {
   const agents: Record<string, AgentDefinition> = {};
@@ -3298,6 +3315,11 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
           ...(ultracode ? { ultracode: true } : {}),
         };
         const claudeSubagents = buildClaudeSdkSubagents();
+        // Browser-use rides the same desktop pipe Codex uses; when the desktop
+        // app isn't running (web-only server), the tools are omitted entirely.
+        const browserMcpServer = maybeCreateClaudeBrowserMcpServer({
+          sessionId: `claude-${threadId}`,
+        });
 
         const queryOptions: ClaudeQueryOptions = {
           ...(input.cwd ? { cwd: input.cwd } : {}),
@@ -3309,8 +3331,11 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
           systemPrompt: {
             type: "preset",
             preset: "claude_code",
-            append: EMBEDDED_CLAUDE_SYSTEM_PROMPT_APPEND,
+            append: buildClaudeSystemPromptAppend(browserMcpServer !== null),
           },
+          ...(browserMcpServer
+            ? { mcpServers: { [FCODE_BROWSER_MCP_SERVER_NAME]: browserMcpServer } }
+            : {}),
           ...(Object.keys(claudeSubagents).length > 0 ? { agents: claudeSubagents } : {}),
           // Keep the runtime value explicit so Opus 4.7 can pass xhigh through to the SDK.
           ...(effectiveEffort

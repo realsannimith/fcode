@@ -1,6 +1,6 @@
 // FILE: storageKeyMigration.test.ts
-// Purpose: Verify legacy t3code/dpcode localStorage keys copy into CTCode without overwriting
-// existing CTCode values, so app boot never silently loses persisted state.
+// Purpose: Verify legacy ctcode/t3code/dpcode localStorage keys copy into FCode without overwriting
+// existing FCode values, so app boot never silently loses persisted state.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -41,7 +41,7 @@ describe("storageKeyMigration", () => {
     vi.resetModules();
   });
 
-  it("copies a legacy t3code value to the CTCode key when missing", async () => {
+  it("copies a legacy t3code value to the FCode key when missing", async () => {
     globalThis.localStorage.setItem(
       "t3code:split-view-state:v1",
       JSON.stringify({ state: {}, version: 2 }),
@@ -49,7 +49,7 @@ describe("storageKeyMigration", () => {
 
     await importMigrationFresh();
 
-    expect(globalThis.localStorage.getItem("ctcode:split-view-state:v1")).toBe(
+    expect(globalThis.localStorage.getItem("fcode:split-view-state:v1")).toBe(
       JSON.stringify({ state: {}, version: 2 }),
     );
     // Legacy key is intentionally left in place so a downgrade still has its data.
@@ -58,25 +58,44 @@ describe("storageKeyMigration", () => {
     );
   });
 
-  it("copies a legacy dpcode value to the CTCode key when missing", async () => {
+  it("copies a legacy dpcode value to the FCode key when missing", async () => {
     globalThis.localStorage.setItem("dpcode:theme", "dark");
 
     await importMigrationFresh();
 
-    expect(globalThis.localStorage.getItem("ctcode:theme")).toBe("dark");
+    expect(globalThis.localStorage.getItem("fcode:theme")).toBe("dark");
     expect(globalThis.localStorage.getItem("dpcode:theme")).toBe("dark");
   });
 
-  it("does not overwrite an existing CTCode value when legacy keys still hold data", async () => {
+  it("does not overwrite an existing FCode value when legacy keys still hold data", async () => {
     globalThis.localStorage.setItem("t3code:theme", "dark");
     globalThis.localStorage.setItem("dpcode:theme", "light");
-    globalThis.localStorage.setItem("ctcode:theme", "current");
+    globalThis.localStorage.setItem("fcode:theme", "current");
 
     await importMigrationFresh();
 
-    expect(globalThis.localStorage.getItem("ctcode:theme")).toBe("current");
+    expect(globalThis.localStorage.getItem("fcode:theme")).toBe("current");
     expect(globalThis.localStorage.getItem("dpcode:theme")).toBe("light");
     expect(globalThis.localStorage.getItem("t3code:theme")).toBe("dark");
+  });
+
+  it("copies a legacy ctcode value to the FCode key when missing", async () => {
+    globalThis.localStorage.setItem("ctcode:theme", "dark");
+
+    await importMigrationFresh();
+
+    expect(globalThis.localStorage.getItem("fcode:theme")).toBe("dark");
+    expect(globalThis.localStorage.getItem("ctcode:theme")).toBe("dark");
+  });
+
+  it("prefers the newer ctcode value over older namespaces when several exist", async () => {
+    globalThis.localStorage.setItem("t3code:theme", "oldest");
+    globalThis.localStorage.setItem("dpcode:theme", "older");
+    globalThis.localStorage.setItem("ctcode:theme", "newest");
+
+    await importMigrationFresh();
+
+    expect(globalThis.localStorage.getItem("fcode:theme")).toBe("newest");
   });
 
   it("prefers dpcode values over older t3code values when both exist", async () => {
@@ -85,15 +104,15 @@ describe("storageKeyMigration", () => {
 
     await importMigrationFresh();
 
-    expect(globalThis.localStorage.getItem("ctcode:theme")).toBe("newer");
+    expect(globalThis.localStorage.getItem("fcode:theme")).toBe("newer");
   });
 
   it("is a no-op when the legacy key is absent", async () => {
-    globalThis.localStorage.setItem("ctcode:renderer-state:v8", '{"projectNamesByCwd":{}}');
+    globalThis.localStorage.setItem("fcode:renderer-state:v8", '{"projectNamesByCwd":{}}');
 
     await importMigrationFresh();
 
-    expect(globalThis.localStorage.getItem("ctcode:renderer-state:v8")).toBe(
+    expect(globalThis.localStorage.getItem("fcode:renderer-state:v8")).toBe(
       '{"projectNamesByCwd":{}}',
     );
     expect(globalThis.localStorage.getItem("t3code:renderer-state:v8")).toBeNull();
@@ -106,9 +125,9 @@ describe("storageKeyMigration", () => {
 
     await importMigrationFresh();
 
-    expect(globalThis.localStorage.getItem("ctcode:composer-drafts:v1")).toBe("drafts");
-    expect(globalThis.localStorage.getItem("ctcode:pinned-threads:v1")).toBe("pinned");
-    expect(globalThis.localStorage.getItem("ctcode:last-editor")).toBe("vscode");
+    expect(globalThis.localStorage.getItem("fcode:composer-drafts:v1")).toBe("drafts");
+    expect(globalThis.localStorage.getItem("fcode:pinned-threads:v1")).toBe("pinned");
+    expect(globalThis.localStorage.getItem("fcode:last-editor")).toBe("vscode");
   });
 
   it("swallows storage errors so the app can still boot", async () => {

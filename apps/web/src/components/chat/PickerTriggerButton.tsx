@@ -17,15 +17,18 @@ export function PickerTriggerButton(
     // Icon-only mode for narrow composers; the label stays available to
     // assistive tech and as a hover title.
     hideLabel?: boolean;
+    // Defaults to the borderless `chrome` look; pass `chrome-outline` for a
+    // bordered floating chip (used by the composer model/effort pickers).
+    variant?: ComponentProps<typeof Button>["variant"];
   } & Omit<ComponentProps<typeof Button>, "children" | "size" | "variant">,
 ) {
-  const { icon, label, compact, hideLabel, className, ...buttonProps } = props;
+  const { icon, label, compact, hideLabel, variant = "chrome", className, ...buttonProps } = props;
 
   return (
     <Button
       {...buttonProps}
       size="sm"
-      variant="chrome"
+      variant={variant}
       {...(hideLabel && typeof label === "string" ? { title: label } : {})}
       className={cn(
         "min-w-0 justify-start overflow-hidden whitespace-nowrap px-1.5 text-[var(--color-text-foreground)] [&_svg]:mx-0",

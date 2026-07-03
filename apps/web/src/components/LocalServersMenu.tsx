@@ -11,12 +11,12 @@ import { type ReactNode, useState } from "react";
 
 import type { ServerLocalServerProcess } from "@t3tools/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { localServerPrimaryLabel } from "@t3tools/shared/localServers";
+import { localServerPrimaryLabel, localServerUrl } from "@t3tools/shared/localServers";
 
 import { LocalServerIdentity } from "./LocalServerIdentity";
 import { ComposerPickerMenuPopup } from "./chat/ComposerPickerMenuPopup";
 import { Menu, MenuItem, MenuTrigger } from "./ui/menu";
-import { GlobeIcon, RefreshCwIcon, StopFilledIcon } from "~/lib/icons";
+import { GlobeIcon, RefreshCwIcon, XIcon } from "~/lib/icons";
 import {
   serverLocalServersQueryOptions,
   serverStopLocalServerMutationOptions,
@@ -52,26 +52,49 @@ function LocalServersRefreshButton({
 
 /**
  * A single running server: status dot, name, and its `localhost:<port>` address,
- * plus a compact stop control. Only the stop button is interactive (and the only
- * red accent), so the row itself stays clean — no row-wide highlight.
+ * plus a compact stop control. When `onOpen` is supplied, clicking anywhere on
+ * the row besides the stop button opens the server in the in-app browser.
  */
 function LocalServerRow({
   server,
   stopping,
   onStop,
+  onOpen,
 }: {
   server: ServerLocalServerProcess;
   stopping: boolean;
   onStop: (server: ServerLocalServerProcess) => void;
+  onOpen?: ((server: ServerLocalServerProcess) => void) | undefined;
 }) {
   const stoppable = server.isStoppable && !stopping;
   const primaryLabel = localServerPrimaryLabel(server);
   const stopHint = server.isStoppable
     ? `Stop ${primaryLabel}`
     : (server.stopDisabledReason ?? server.args ?? server.displayName);
+  const openHint = `Open ${primaryLabel} in the browser`;
 
   return (
-    <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2.5 rounded-[0.5rem] py-1 pl-2 pr-3">
+    <div
+      role={onOpen ? "button" : undefined}
+      tabIndex={onOpen ? 0 : undefined}
+      aria-label={onOpen ? openHint : undefined}
+      title={onOpen ? openHint : undefined}
+      onClick={onOpen ? () => onOpen(server) : undefined}
+      onKeyDown={
+        onOpen
+          ? (event) => {
+              if (event.key !== "Enter" && event.key !== " ") return;
+              event.preventDefault();
+              onOpen(server);
+            }
+          : undefined
+      }
+      className={cn(
+        "grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2.5 rounded-[0.5rem] py-1 pl-2 pr-3",
+        onOpen &&
+          "cursor-pointer transition-colors hover:bg-[var(--color-background-button-secondary-hover)]",
+      )}
+    >
       {/* Running indicator: a soft-haloed dot so an active server reads at a glance. */}
       <span className="relative flex size-2 shrink-0 items-center justify-center" aria-hidden>
         <span className="absolute size-2 rounded-full bg-success/25" />
@@ -83,15 +106,18 @@ function LocalServerRow({
       <MenuItem
         closeOnClick={false}
         disabled={!stoppable}
-        onClick={() => onStop(server)}
+        onClick={(event) => {
+          event.stopPropagation();
+          onStop(server);
+        }}
         aria-label={stopHint}
         title={stopHint}
-        className="inline-flex size-6 shrink-0 items-center justify-center rounded-md border border-border bg-[var(--color-background-elevated-secondary)] p-0 text-muted-foreground transition-colors hover:border-destructive/40 hover:bg-[color-mix(in_srgb,var(--destructive)_14%,transparent)] hover:text-destructive data-highlighted:border-destructive/40 data-highlighted:bg-[color-mix(in_srgb,var(--destructive)_14%,transparent)] data-highlighted:text-destructive data-disabled:border-border/40 data-disabled:bg-transparent data-disabled:text-muted-foreground/30 data-disabled:hover:bg-transparent data-disabled:hover:text-muted-foreground/30"
+        className="inline-flex size-6 shrink-0 items-center justify-center rounded-md border border-transparent p-0 text-muted-foreground/55 transition-colors hover:border-destructive/40 hover:bg-[color-mix(in_srgb,var(--destructive)_14%,transparent)] hover:text-destructive data-highlighted:border-destructive/40 data-highlighted:bg-[color-mix(in_srgb,var(--destructive)_14%,transparent)] data-highlighted:text-destructive data-disabled:text-muted-foreground/25 data-disabled:hover:border-transparent data-disabled:hover:bg-transparent data-disabled:hover:text-muted-foreground/25"
       >
         {stopping ? (
           <RefreshCwIcon className="size-3.5 animate-spin" />
         ) : (
-          <StopFilledIcon className="size-3.5" />
+          <XIcon className="size-3.5" />
         )}
       </MenuItem>
     </div>
@@ -140,12 +166,15 @@ export function LocalServersMenu({
   side = "bottom",
   popupClassName,
   renderTrigger,
+  onOpenServer,
 }: {
   enabled?: boolean;
   align?: "start" | "end";
   side?: "top" | "bottom" | "left" | "right";
   popupClassName?: string;
   renderTrigger: (state: LocalServersTriggerState) => ReactNode;
+  /** When supplied, clicking a server row opens its URL in the in-app browser. */
+  onOpenServer?: ((server: ServerLocalServerProcess, url: string) => void) | undefined;
 }) {
   const [open, setOpen] = useState(false);
   const queryClient = useQueryClient();
@@ -159,6 +188,15 @@ export function LocalServersMenu({
   const isBusy = localServersQuery.isFetching || stopLocalServerMutation.isPending;
   const activeStoppingPid = stopLocalServerMutation.variables?.pid ?? null;
 
+  const handleOpenServer = onOpenServer
+    ? (server: ServerLocalServerProcess) => {
+        const url = localServerUrl(server);
+        if (!url) return;
+        onOpenServer(server, url);
+        setOpen(false);
+      }
+    : undefined;
+
   return (
     <Menu onOpenChange={setOpen}>
       {renderTrigger({ serverCount, isBusy })}
@@ -167,8 +205,8 @@ export function LocalServersMenu({
         side={side}
         className={cn("w-72 min-w-72", popupClassName)}
       >
-        <div className="flex items-center justify-between gap-2 pb-0.5 pl-2 pr-3 pt-px">
-          <span className="truncate text-[length:var(--app-font-size-ui-xs,10px)] font-normal text-muted-foreground/50">
+        <div className="mb-0.5 flex items-center justify-between gap-2 border-b border-border/60 pb-1 pl-2 pr-3 pt-px">
+          <span className="truncate text-[length:var(--app-font-size-ui-xs,10px)] font-normal text-muted-foreground/75">
             {localServersQuery.isLoading ? "Scanning ports…" : describeServerCount(serverCount)}
           </span>
           <LocalServersRefreshButton
@@ -211,6 +249,7 @@ export function LocalServersMenu({
                     port: selectedServer.ports[0] ?? 1,
                   })
                 }
+                onOpen={handleOpenServer}
               />
             ))}
           </div>

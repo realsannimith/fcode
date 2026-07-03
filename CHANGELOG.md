@@ -11,7 +11,7 @@
 
 ### Changed
 
-- Bumped Synara release package versions to `0.3.1` across the server, desktop, web, and contracts packages.
+- Bumped FCode release package versions to `0.3.1` across the server, desktop, web, and contracts packages.
 - Refined session orchestration and transcript handling so assistant messages, tool/work rows, collapsed turns, runtime activity, and sidechat state stay separated more predictably.
 - Improved chat header, recent-view, sidebar, split-chat, and hover-card navigation for multi-pane workflows.
 - Tightened keyboard shortcut defaults and persisted keybinding migrations for chat creation, terminal creation, navigation, and duplicate/stale binding rows.
@@ -45,7 +45,7 @@
 
 ### Added
 
-- Added first-class Automations as a real Synara workspace surface, including contracts, persistence, scheduler leases, run tracking, RPC methods, sidebar navigation, list/detail routes, Current/Paused views, inline detail editing, previous-run history, and triage actions.
+- Added first-class Automations as a real FCode workspace surface, including contracts, persistence, scheduler leases, run tracking, RPC methods, sidebar navigation, list/detail routes, Current/Paused views, inline detail editing, previous-run history, and triage actions.
 - Added automation scheduler and composer flows so saved prompts can run manually, once, on intervals, daily, on weekdays, weekly, or from cron-like schedules.
 - Added heartbeat automations that continue an existing target thread on each scheduled wake while preserving the normal provider/session/approval/worktree pipeline.
 - Added AI-evaluated heartbeat stop clauses through completion policies, natural-language stop conditions, completion-evaluation results, and visible stop reasons in run history.
@@ -55,13 +55,13 @@
 - Added DST and long-downtime scheduler coverage for spring-forward gaps, fall-back duplicate hours, and coalesced missed interval runs.
 - Added generic chat file attachments alongside image attachments, with shared contracts, upload storage, composer paste/drop support, provider prompt projection, optimistic timeline rendering, Kanban dispatch, recap/bootstrap support, and reusable file attachment cards/chips.
 - Added automation cards in the chat transcript after automation creation, and added thread automation summaries in the Environment panel.
-- Added blob-based browser download handling for local image/generated markdown image downloads so failed local-image responses stay inside Synara instead of navigating the app window to an API error page.
+- Added blob-based browser download handling for local image/generated markdown image downloads so failed local-image responses stay inside FCode instead of navigating the app window to an API error page.
 - Added OpenCode CLI-only model discovery fallback so the model picker can still discover available models when the managed server or inventory path fails.
 - Added profile skill usage counting coverage for retention-hidden threads and repeated slash/dollar skill invocations.
 
 ### Changed
 
-- Bumped Synara release package versions to `0.3.0` across the server, desktop, web, and contracts packages.
+- Bumped FCode release package versions to `0.3.0` across the server, desktop, web, and contracts packages.
 - Reworked automation UI toward a Codex-style surface, including the sidebar badge, Current/Paused list, centered detail layout, inline rail editing, schedule editing, target-thread display, max-iteration controls, stop-on-error handling, and previous-run actions.
 - Expanded automation composer parsing and review so explicit/generated prompts, schedule phrases, stop clauses, bounded fast loops, restored plan source metadata, queued plan follow-ups, and inline composer editing are handled consistently.
 - Made generated automation intents require confirmation before creation, while preserving deterministic local auto-submit behavior for explicitly parsed bounded fast loops.
@@ -113,7 +113,7 @@
 
 ### Changed
 
-- Bumped Synara release package versions to `0.2.41` across the server, desktop, web, and contracts packages.
+- Bumped FCode release package versions to `0.2.41` across the server, desktop, web, and contracts packages.
 - Kept the shared project-action dialog path mounted while hiding the visible inline project script runner from the chat header.
 - Improved header handoff failure handling by checking provider send availability before creating a handoff and showing a toast when the target is unavailable.
 
@@ -145,7 +145,7 @@
 
 ### Changed
 
-- Bumped Synara release package versions to `0.2.4` across the server, desktop, web, and contracts packages.
+- Bumped FCode release package versions to `0.2.4` across the server, desktop, web, and contracts packages.
 - Improved remembered chat route restore so stale empty startup snapshots do not immediately send users to the empty chat route.
 - Removed the old handoff shortcut from the chat header to keep primary conversation controls quieter.
 
@@ -176,7 +176,7 @@
 
 ### Changed
 
-- Bumped Synara release package versions to `0.2.3` across the server, desktop, web, and contracts packages.
+- Bumped FCode release package versions to `0.2.3` across the server, desktop, web, and contracts packages.
 - Improved profile skill usage counting by combining structured skill references, mentions, agent references, and legacy text-token backfill while filtering obvious non-skill slash/dollar tokens.
 - Kept large pasted prompt content out of the visible composer body by storing it as structured prompt context, making long prompts easier to scan and refine.
 
@@ -235,7 +235,7 @@
 ### Added
 
 - Added inline file comments from composer and preview surfaces, including line comment boxes, comment summary chips, draft persistence, reference attachment support, chat timeline rendering, and file-comment parsing helpers.
-- Added startup turn reconciliation for provider restarts so Synara can recover unfinished turns from persisted runtime state instead of leaving stale active work behind.
+- Added startup turn reconciliation for provider restarts so FCode can recover unfinished turns from persisted runtime state instead of leaving stale active work behind.
 - Added an ACP idle watchdog used by ACP-backed providers so quiet turns can complete or fail more predictably when runtime events stop flowing.
 - Added partial workspace reference lookup helpers and tests so shortened file references can resolve to the intended workspace entry.
 
@@ -375,7 +375,7 @@
 
 - Refined the chat header, chat view, composer controls, model/trait/open-in pickers, inline chips, transcript selection actions, and code-selection flows so references and controls stay easier to scan during active work.
 - Reworked the diff panel toolbar, file list, and patch viewport behavior to make large diffs easier to navigate from both repository and turn contexts.
-- Reworked provider skill discovery so provider-native skill lists can merge with Synara's catalog and fall back cleanly when a provider cannot answer.
+- Reworked provider skill discovery so provider-native skill lists can merge with FCode's catalog and fall back cleanly when a provider cannot answer.
 - Reconciled legacy migration trackers before running migrations and tightened older sidechat/pinned-thread migration paths.
 - Updated desktop stage dependency overrides to keep `@pierre/diffs` pinned to `1.2.8`.
 - Tightened terminal environment propagation, terminal manager behavior, workspace path containment, and provider command/runtime plumbing around recent server contracts.
@@ -501,7 +501,7 @@
 
 ### Changed
 
-- Refreshed README/release messaging and Synara desktop update flow documentation around the current app positioning.
+- Refreshed README/release messaging and FCode desktop update flow documentation around the current app positioning.
 - Reworked the diff panel around explicit repo-vs-turn state, searchable file filtering, and smaller view components.
 - Unified composer stacked panels above the input so plan activity, queued follow-ups, and live file-change rows share width, border, radius, and dark-mode opacity.
 - Refined chat markdown spacing, composer command menu selection, provider/plugin discovery normalization, and file/plugin icon rendering in sent messages.

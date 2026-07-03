@@ -532,6 +532,7 @@ export function createWsNativeApi(): NativeApi {
       githubRepository: (input) => transport.request(WS_METHODS.gitGithubRepository, input),
       pull: (input) => transport.request(WS_METHODS.gitPull, input),
       status: (input) => transport.request(WS_METHODS.gitStatus, input),
+      discoverRepositories: (input) => transport.request(WS_METHODS.gitDiscoverRepositories, input),
       readWorkingTreeDiff: (input) => transport.request(WS_METHODS.gitReadWorkingTreeDiff, input),
       summarizeDiff: (input) =>
         transport.request(WS_METHODS.gitSummarizeDiff, input, {
@@ -619,6 +620,10 @@ export function createWsNativeApi(): NativeApi {
         }),
       refreshProviders: () => transport.request(WS_METHODS.serverRefreshProviders),
       updateProvider: (input) => transport.request(WS_METHODS.serverUpdateProvider, input),
+      codexAccountLogin: (input) => transport.request(WS_METHODS.serverCodexAccountLogin, input),
+      codexAccountLoginCancel: (input) =>
+        transport.request(WS_METHODS.serverCodexAccountLoginCancel, input),
+      codexAccountLogout: (input) => transport.request(WS_METHODS.serverCodexAccountLogout, input),
       listWorktrees: () => transport.request(WS_METHODS.serverListWorktrees),
       listLocalServers: () => transport.request(WS_METHODS.serverListLocalServers),
       stopLocalServer: (input) => transport.request(WS_METHODS.serverStopLocalServer, input),

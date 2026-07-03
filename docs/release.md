@@ -33,7 +33,7 @@ This document covers how to run desktop releases from one tag, first without sig
   - platform installers (`.exe`, `.dmg`, `.AppImage`, plus macOS `.zip` for Squirrel.Mac update payloads)
   - `latest*.yml` metadata
   - `*.blockmap` files, except the macOS update `.zip.blockmap` removed after zip repack
-- Production desktop builds omit web/server/desktop source maps by default to keep update payloads small. Set `SYNARA_WEB_SOURCEMAP=1`, `SYNARA_SERVER_SOURCEMAP=1`, or `SYNARA_DESKTOP_SOURCEMAP=1` only for a diagnostic release that needs them.
+- Production desktop builds omit web/server/desktop source maps by default to keep update payloads small. Set `FCODE_WEB_SOURCEMAP=1`, `FCODE_SERVER_SOURCEMAP=1`, or `FCODE_DESKTOP_SOURCEMAP=1` only for a diagnostic release that needs them.
 - macOS metadata note:
   - `electron-updater` reads `latest-mac.yml` for both Intel and Apple Silicon.
   - The workflow merges the per-arch mac manifests into one `latest-mac.yml` before publishing the GitHub Release.
@@ -63,11 +63,11 @@ Checklist:
    - build web + server
    - run `bun publish --access public`
 
-## Synara notes
+## FCode notes
 
-- `Synara` keeps the same release architecture as upstream `T3Code`, but publishes desktop artifacts under the Synara branding.
+- `FCode` keeps the same release architecture as upstream `T3Code`, but publishes desktop artifacts under the FCode branding.
 - The desktop updater expects the GitHub Release in this repository to include the generated updater metadata files, not just the installers.
-- The published release title should read `Synara vX.Y.Z`.
+- The published release title should read `FCode vX.Y.Z`.
 - By default, the first-party desktop release path does not require CLI publish or post-release version-bump automation.
 - Optional jobs stay disabled unless repository variables enable them:
   - `DPCODE_PUBLISH_CLI=1`

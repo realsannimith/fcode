@@ -15,8 +15,21 @@ import {
 import { type ThreadId } from "@t3tools/contracts";
 import { type TerminalActivityState, type TerminalCliKind } from "@t3tools/shared/terminalThreads";
 import { Terminal } from "@xterm/xterm";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type DragEvent as ReactDragEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { COMPOSER_DROP_IGNORE_ATTRIBUTE } from "~/hooks/useComposerDropzone";
 import { type TerminalContextSelection } from "~/lib/terminalContext";
+import {
+  canResolveDroppedFilePaths,
+  resolveDroppedFilePaths,
+  terminalPasteTextForPaths,
+} from "~/lib/terminalFileDrop";
 import { readNativeApi } from "~/nativeApi";
 import {
   MAX_TERMINALS_PER_GROUP,
@@ -153,6 +166,7 @@ function TerminalViewport({
   const selectionActionOpenRef = useRef(false);
   const selectionActionTimerRef = useRef<number | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [isFileDragOver, setIsFileDragOver] = useState(false);
   const [terminalInstance, setTerminalInstance] = useState<Terminal | null>(null);
   const [searchAddonInstance, setSearchAddonInstance] = useState<SearchAddon | null>(null);
   const [runtimeStatus, setRuntimeStatus] = useState<TerminalRuntimeStatus>("connecting");
@@ -379,6 +393,58 @@ function TerminalViewport({
     }
   }, [clearSelectionAction, readSelectionAction, runtimeKey]);
 
+  // Dropping files onto the terminal pastes their OS paths into the PTY (like a
+  // native terminal), so agent CLIs running inside — Claude Code, Codex — receive
+  // the dropped screenshot as a path they can read. Only available when the
+  // desktop bridge can resolve paths; otherwise drags fall through to the chat
+  // composer dropzone, which attaches images instead.
+  const supportsFilePathDrop = canResolveDroppedFilePaths();
+
+  const isFileDrag = (event: ReactDragEvent<HTMLDivElement>): boolean =>
+    event.dataTransfer.types.includes("Files");
+
+  const handleFileDragOver = useCallback(
+    (event: ReactDragEvent<HTMLDivElement>) => {
+      if (!supportsFilePathDrop || !isFileDrag(event)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      event.dataTransfer.dropEffect = "copy";
+      setIsFileDragOver(true);
+    },
+    [supportsFilePathDrop],
+  );
+
+  const handleFileDragLeave = useCallback(
+    (event: ReactDragEvent<HTMLDivElement>) => {
+      if (!supportsFilePathDrop || !isFileDrag(event)) return;
+      event.stopPropagation();
+      if (
+        event.relatedTarget instanceof Node &&
+        event.currentTarget.contains(event.relatedTarget)
+      ) {
+        return;
+      }
+      setIsFileDragOver(false);
+    },
+    [supportsFilePathDrop],
+  );
+
+  const handleFileDrop = useCallback(
+    (event: ReactDragEvent<HTMLDivElement>) => {
+      if (!supportsFilePathDrop || !isFileDrag(event)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      setIsFileDragOver(false);
+      const pasteText = terminalPasteTextForPaths(
+        resolveDroppedFilePaths(event.dataTransfer.files),
+      );
+      if (pasteText.length === 0) return;
+      terminalRuntimeRegistry.paste(runtimeKey, pasteText);
+      terminalRuntimeRegistry.focus(runtimeKey);
+    },
+    [runtimeKey, supportsFilePathDrop],
+  );
+
   useEffect(() => {
     const terminal = terminalInstance;
     const mount = containerRef.current;
@@ -427,7 +493,14 @@ function TerminalViewport({
   }, [clearSelectionAction, showSelectionAction, terminalInstance]);
 
   return (
-    <div className="h-full min-h-0 w-full bg-[var(--color-background-surface)] p-3">
+    <div
+      className="h-full min-h-0 w-full bg-[var(--color-background-surface)] p-3"
+      {...(supportsFilePathDrop ? { [COMPOSER_DROP_IGNORE_ATTRIBUTE]: "" } : {})}
+      onDragEnter={handleFileDragOver}
+      onDragOver={handleFileDragOver}
+      onDragLeave={handleFileDragLeave}
+      onDrop={handleFileDrop}
+    >
       <div className="relative h-full min-h-0 w-full overflow-hidden">
         <TerminalSearch
           searchAddon={searchAddonInstance}
@@ -440,6 +513,16 @@ function TerminalViewport({
         <TerminalRuntimeStatusOverlay status={runtimeStatus} />
         <TerminalScrollToBottom terminal={terminalInstance} />
         <div ref={containerRef} className="h-full w-full" />
+        {/* Accent tint while a file is dragged over the pane, signalling that
+            dropping it will paste the file's path into this terminal. */}
+        <div
+          aria-hidden
+          className={cn(
+            "pointer-events-none absolute inset-0 z-20 transition-opacity duration-150",
+            "bg-info/8 ring-1 ring-inset ring-info/30",
+            isFileDragOver ? "opacity-100" : "opacity-0",
+          )}
+        />
       </div>
     </div>
   );

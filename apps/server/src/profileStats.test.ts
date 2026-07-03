@@ -20,7 +20,7 @@ const testLayer = ProfileStatsQueryLive.pipe(
   Layer.provideMerge(SqlitePersistenceMemory),
   Layer.provide(
     ServerConfig.layerTest(process.cwd(), {
-      prefix: "ctcode-profile-stats-test-",
+      prefix: "fcode-profile-stats-test-",
     }),
   ),
   Layer.provide(NodeServices.layer),

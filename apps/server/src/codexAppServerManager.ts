@@ -314,16 +314,18 @@ const CODEX_BROWSER_TOOL_ROUTING_INSTRUCTIONS = `
 
 ## Browser tool routing
 
-Prefer the built-in in-app browser for browser work whenever possible.
+This app (FCode) has its own in-app browser panel, controlled through the \`fcode-browser\` agent skill. Use that skill for ALL in-app browser work: opening or navigating a page, reading what is visible, taking a browser screenshot, clicking, typing, or inspecting a local dev server. Read its SKILL.md for the exact commands (navigate, page-state, click-element, input-text, read, screenshot, console, ...) and run its \`browser.mjs\` CLI.
 
-When the user asks to inspect a page, navigate a site, read what is visible in the browser, take a browser screenshot, or interact with content already open in chat, use the in-app browser path first.
+When the user asks to inspect a page, navigate a site, read what is visible in the browser, take a browser screenshot, or interact with content already open in chat, use the \`fcode-browser\` skill first.
+
+The bundled OpenAI "Browser Use" / in-app browser (\`iab\`) plugin does NOT work inside FCode: it reports no available targets ("Browser is not available: iab"). Do not use it, and do not treat its failure as the in-app browser being unavailable — the working in-app browser is the \`fcode-browser\` skill. Never substitute Playwright, \`web.run\`, or macOS \`open\` for an in-app browser task the \`fcode-browser\` skill can perform.
 
 Use \`Computer Use\` only when at least one of these is true:
 - the user explicitly asks to use \`Computer Use\`
 - the task is outside the in-app browser (desktop apps, OS settings, system UI, other app windows)
-- the in-app browser cannot complete the task and a broader desktop fallback is required
+- the \`fcode-browser\` skill cannot complete the task and a broader desktop fallback is required
 
-Do not choose \`Computer Use\` first for ordinary browser inspection, browser screenshots, or browser navigation when the in-app browser can handle the request.`;
+Do not choose \`Computer Use\` first for ordinary browser inspection, browser screenshots, or browser navigation when the \`fcode-browser\` skill can handle the request.`;
 
 export const CODEX_PLAN_MODE_DEVELOPER_INSTRUCTIONS = `<collaboration_mode># Plan Mode (Conversational)
 
@@ -460,7 +462,7 @@ The \`request_user_input\` tool is unavailable in Default mode. If you call it w
 In Default mode, strongly prefer making reasonable assumptions and executing the user's request rather than stopping to ask questions. If you absolutely must ask a question because the answer cannot be discovered from local context and a reasonable assumption would be risky, ask the user directly with a concise plain-text question. Never write a multiple choice question as a textual assistant message.
 </collaboration_mode>${CODEX_BROWSER_TOOL_ROUTING_INSTRUCTIONS}`;
 
-// Maps CTCode's simple runtime toggle to Codex thread-level permission overrides.
+// Maps FCode's simple runtime toggle to Codex thread-level permission overrides.
 function mapCodexRuntimeMode(runtimeMode: RuntimeMode): {
   readonly approvalPolicy: CodexApprovalPolicy;
   readonly sandbox: CodexSandboxMode;
@@ -505,7 +507,7 @@ const CODEX_ALWAYS_ALLOW_SESSION_TURN_OVERRIDES: CodexSessionApprovalOverride = 
   sandboxPolicy: { type: "dangerFullAccess" },
 };
 
-// CTCode re-sends turn-level Codex permission overrides, so keep "always allow"
+// FCode re-sends turn-level Codex permission overrides, so keep "always allow"
 // as live session state instead of relying on one native approval reply.
 function resolveCodexTurnOverrides(context: CodexSessionContext): {
   readonly approvalPolicy: CodexApprovalPolicy;
@@ -581,8 +583,8 @@ export function normalizeCodexModelSlug(
 export function buildCodexInitializeParams() {
   return {
     clientInfo: {
-      name: "ctcode_desktop",
-      title: "CTCode Desktop",
+      name: "fcode_desktop",
+      title: "FCode Desktop",
       version: "0.1.0",
     },
     capabilities: {
@@ -728,30 +730,30 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
   private readonly modelCache = new Map<string, ProviderListModelsResult>();
 
   private runPromise: (effect: Effect.Effect<unknown, never>) => Promise<unknown>;
-  private readonly ctcodeSkillsDir: string | undefined;
+  private readonly fcodeSkillsDir: string | undefined;
   constructor(
     services?: ServiceMap.ServiceMap<never>,
-    options?: { readonly ctcodeSkillsDir?: string },
+    options?: { readonly fcodeSkillsDir?: string },
   ) {
     super();
     this.runPromise = services ? Effect.runPromiseWith(services) : Effect.runPromise;
-    this.ctcodeSkillsDir = options?.ctcodeSkillsDir;
+    this.fcodeSkillsDir = options?.fcodeSkillsDir;
   }
 
-  // Registers `~/.ctcode/skills` as a codex skill root so portable skills are
+  // Registers `~/.fcode/skills` as a codex skill root so portable skills are
   // first-class: skills/list returns them and turn/start `skill` items inject
   // their instructions. Verified live: skill items with paths outside known
   // roots are silently ignored by codex app-server, so this call is required.
-  private async registerCTCodeSkillsRoot(context: CodexSessionContext): Promise<void> {
-    if (!this.ctcodeSkillsDir) {
+  private async registerFCodeSkillsRoot(context: CodexSessionContext): Promise<void> {
+    if (!this.fcodeSkillsDir) {
       return;
     }
     try {
       await this.sendRequest(context, "skills/extraRoots/set", {
-        extraRoots: [this.ctcodeSkillsDir],
+        extraRoots: [this.fcodeSkillsDir],
       });
     } catch (error) {
-      // Older codex builds (< extra-roots support) keep working; CTCode-only
+      // Older codex builds (< extra-roots support) keep working; FCode-only
       // skills simply stay invisible to codex on those versions.
       log.warn("skills/extraRoots/set unavailable", { error });
     }
@@ -825,7 +827,7 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
       await this.sendRequest(context, "initialize", buildCodexInitializeParams());
 
       this.writeMessage(context, { method: "initialized" });
-      await this.registerCTCodeSkillsRoot(context);
+      await this.registerFCodeSkillsRoot(context);
       try {
         const modelListResponse = await this.sendRequest(context, "model/list", {});
         log.info("model/list response", { modelListResponse });
@@ -1441,7 +1443,7 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
 
       await this.sendRequest(context, "initialize", buildCodexInitializeParams());
       this.writeMessage(context, { method: "initialized" });
-      await this.registerCTCodeSkillsRoot(context);
+      await this.registerFCodeSkillsRoot(context);
       try {
         const accountReadResponse = await this.sendRequest(context, "account/read", {});
         context.account = readCodexAccountSnapshot(accountReadResponse);
@@ -2031,7 +2033,7 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
     try {
       await this.sendRequest(context, "initialize", buildCodexInitializeParams());
       this.writeMessage(context, { method: "initialized" });
-      await this.registerCTCodeSkillsRoot(context);
+      await this.registerFCodeSkillsRoot(context);
       try {
         const accountReadResponse = await this.sendRequest(context, "account/read", {});
         context.account = readCodexAccountSnapshot(accountReadResponse);
@@ -3245,7 +3247,7 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
         return [];
       }
 
-      // Accept both CTCode's legacy string array and Remodex-style reasoning objects.
+      // Accept both FCode's legacy string array and Remodex-style reasoning objects.
       const supportedReasoningEfforts = Array.from(
         new Map(
           (

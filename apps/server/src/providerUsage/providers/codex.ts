@@ -180,7 +180,7 @@ export const codexUsageFetcher: ProviderUsageFetcher = {
         headers: {
           Authorization: `Bearer ${auth.accessToken}`,
           Accept: "application/json",
-          "User-Agent": "CTCode",
+          "User-Agent": "FCode",
           ...(auth.accountId ? { "ChatGPT-Account-Id": auth.accountId } : {}),
         },
       });
@@ -195,9 +195,13 @@ export const codexUsageFetcher: ProviderUsageFetcher = {
           `Codex usage request failed (${result.status}).`,
         );
       }
+      const headers: Record<string, string> = {};
+      result.headers.forEach((value, key) => {
+        headers[key] = value;
+      });
       return parseCodexUsage({
         json: result.json,
-        headers: Object.fromEntries(result.headers),
+        headers,
         nowMs: ctx.nowMs,
       });
     } catch {

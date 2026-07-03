@@ -23,7 +23,7 @@ interface SingleChatPanelStore {
   clearThreadPanelState: (threadId: ThreadId) => void;
 }
 
-const SINGLE_CHAT_PANEL_STORAGE_KEY = "ctcode:single-chat-panel-state:v1";
+const SINGLE_CHAT_PANEL_STORAGE_KEY = "fcode:single-chat-panel-state:v1";
 
 export function createDefaultSingleChatPanelState(): SingleChatPanelState {
   return {

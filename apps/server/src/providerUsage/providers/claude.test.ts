@@ -22,7 +22,7 @@ function jsonResponse(body: unknown, status = 200): Response {
 }
 
 function makeClaudeHome(creds: Record<string, unknown>) {
-  const homeDir = mkdtempSync(nodePath.join(os.tmpdir(), "ctcode-claude-usage-"));
+  const homeDir = mkdtempSync(nodePath.join(os.tmpdir(), "fcode-claude-usage-"));
   tempDirs.push(homeDir);
   const claudeDir = nodePath.join(homeDir, ".claude");
   mkdirSync(claudeDir, { recursive: true });
@@ -32,7 +32,7 @@ function makeClaudeHome(creds: Record<string, unknown>) {
 }
 
 function makeClaudeConfigDir(creds: Record<string, unknown>) {
-  const configDir = mkdtempSync(nodePath.join(os.tmpdir(), "ctcode-claude-config-"));
+  const configDir = mkdtempSync(nodePath.join(os.tmpdir(), "fcode-claude-config-"));
   tempDirs.push(configDir);
   const credentialsPath = nodePath.join(configDir, ".credentials.json");
   writeFileSync(credentialsPath, JSON.stringify({ claudeAiOauth: creds }), "utf8");

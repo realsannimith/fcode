@@ -1146,7 +1146,10 @@ function ComposerPromptEditorInner({
             terminalContexts.length > 0 ? null : (
               <div
                 className={cn(
-                  "pointer-events-none absolute inset-0",
+                  // The composer rests at a single row, so keep the placeholder on
+                  // one line with an ellipsis. Without `truncate` a long placeholder
+                  // wraps to a second line that overflows the one-row box and clips.
+                  "pointer-events-none absolute inset-0 truncate",
                   COMPOSER_PLACEHOLDER_TEXT_CLASS_NAME,
                   COMPOSER_EDITOR_TYPOGRAPHY_CLASS_NAME,
                 )}

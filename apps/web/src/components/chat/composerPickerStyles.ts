@@ -230,17 +230,23 @@ export const COMPOSER_INPUT_SURFACE_BANNER_CLASS_NAME = `chat-composer-surface-b
 export const RUNTIME_FULL_ACCESS_ACCENT_CLASS_NAME =
   "text-[var(--runtime-full-access-accent)] hover:opacity-85";
 
-/** Minimum composer editor height — two lines at the element's line-height.
- *  `leading-relaxed` (1.625) keeps the input in step with the transcript/bubble leading. */
+/** Editor line-height. `leading-relaxed` (1.625) keeps the input in step with the
+ *  transcript/bubble leading. */
 export const COMPOSER_EDITOR_LINE_HEIGHT_CLASS_NAME = "leading-relaxed";
 export const COMPOSER_EDITOR_TEXT_CLASS_NAME = "text-[length:var(--app-font-size-chat,12px)]";
 /** Font, size, and leading shared by the composer editor and its placeholder so the
  *  placeholder always aligns with typed text. Keep both surfaces on this one token. */
 export const COMPOSER_EDITOR_TYPOGRAPHY_CLASS_NAME = `font-system-ui ${COMPOSER_EDITOR_TEXT_CLASS_NAME} ${COMPOSER_EDITOR_LINE_HEIGHT_CLASS_NAME}`;
-/** Muted empty-state copy for the composer prompt editor. */
-export const COMPOSER_PLACEHOLDER_TEXT_CLASS_NAME = "text-muted-foreground/40";
+/** Muted empty-state copy for the composer prompt editor.
+ *  /55 reads as a clearly-visible placeholder like the target's "Send follow-up". */
+export const COMPOSER_PLACEHOLDER_TEXT_CLASS_NAME = "text-muted-foreground/55";
+/** Single-row resting height (one line-height): keeps the placeholder top-aligned
+ *  with the controls floating along the bottom toolbar (the target's "floating
+ *  button" layout — + / access on the left, model / effort / mic / circular send
+ *  on the right). Grows as typed text wraps; the placeholder itself is truncated
+ *  to one line so it can't overflow this single row. */
 export const COMPOSER_EDITOR_MIN_HEIGHT_CLASS_NAME =
-  "min-h-[var(--app-density-composer-editor-min-height,2lh)]";
+  "min-h-[var(--app-density-composer-editor-min-height,1lh)]";
 /** Lexical wraps lines in `<p>` nodes; reset default margins so text sits flush above the footer. */
 export const COMPOSER_EDITOR_CONTENT_RESET_CLASS_NAME = "[&_p]:m-0";
 /** Shared padding around the composer prompt editor. */
@@ -248,7 +254,7 @@ export const COMPOSER_EDITOR_PADDING_CLASS_NAME = [
   "relative",
   "pl-[var(--app-density-composer-editor-padding-x,0.75rem)]",
   "pr-[var(--app-density-composer-editor-padding-x-end,0.875rem)]",
-  "pt-[var(--app-density-composer-editor-padding-top,0.75rem)]",
+  "pt-[var(--app-density-composer-editor-padding-top,0.5rem)]",
   "pb-[var(--app-density-composer-editor-padding-bottom,0.5rem)]",
 ].join(" ");
 /** Bottom bar row — flush to the composer shell edges. */

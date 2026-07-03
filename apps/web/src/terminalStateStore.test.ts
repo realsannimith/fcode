@@ -1,12 +1,28 @@
 import { ThreadId } from "@t3tools/contracts";
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { collectTerminalIdsFromLayout } from "./terminalPaneLayout";
-import {
+// The store persists through window.localStorage, which the node test runtime
+// does not provide; back it with an in-memory Map before the store module loads.
+if (globalThis.localStorage === undefined) {
+  const backing = new Map<string, string>();
+  globalThis.localStorage = {
+    getItem: (name: string) => backing.get(name) ?? null,
+    setItem: (name: string, value: string) => void backing.set(name, value),
+    removeItem: (name: string) => void backing.delete(name),
+    clear: () => backing.clear(),
+    key: (index: number) => [...backing.keys()][index] ?? null,
+    get length() {
+      return backing.size;
+    },
+  } as Storage;
+}
+
+const { collectTerminalIdsFromLayout } = await import("./terminalPaneLayout");
+const {
   sanitizePersistedTerminalStateByThreadId,
   selectThreadTerminalState,
   useTerminalStateStore,
-} from "./terminalStateStore";
+} = await import("./terminalStateStore");
 
 const THREAD_ID = ThreadId.makeUnsafe("thread-1");
 
@@ -53,6 +69,43 @@ describe("terminalStateStore actions", () => {
         terminalIds: ["default"],
       },
     ]);
+  });
+
+  it("seeds server-declared terminal threads that have no local state", () => {
+    const store = useTerminalStateStore.getState();
+    store.seedTerminalEntryPoints([THREAD_ID]);
+
+    const terminalState = selectThreadTerminalState(
+      useTerminalStateStore.getState().terminalStateByThreadId,
+      THREAD_ID,
+    );
+    expect(terminalState.entryPoint).toBe("terminal");
+    // Seeding restores identity only; the terminal UI opens on activation.
+    expect(terminalState.terminalOpen).toBe(false);
+  });
+
+  it("keeps seeded entry points across persistence sanitization", () => {
+    useTerminalStateStore.getState().seedTerminalEntryPoints([THREAD_ID]);
+
+    const sanitized = sanitizePersistedTerminalStateByThreadId(
+      useTerminalStateStore.getState().terminalStateByThreadId,
+    );
+
+    expect(sanitized[THREAD_ID]?.entryPoint).toBe("terminal");
+  });
+
+  it("does not overwrite a thread the user explicitly switched to the chat surface", () => {
+    const store = useTerminalStateStore.getState();
+    store.openTerminalThreadPage(THREAD_ID, { terminalOnly: true });
+    store.openChatThreadPage(THREAD_ID);
+
+    store.seedTerminalEntryPoints([THREAD_ID]);
+
+    const terminalState = selectThreadTerminalState(
+      useTerminalStateStore.getState().terminalStateByThreadId,
+      THREAD_ID,
+    );
+    expect(terminalState.entryPoint).toBe("chat");
   });
 
   it("marks chat-first threads without forcing open terminal UI", () => {

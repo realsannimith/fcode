@@ -230,7 +230,7 @@ function buildGeneratedWorktreeBranchName(raw: string): string {
     .replace(/^refs\/heads\//, "")
     .replace(/['"`]/g, "");
 
-  const withoutPrefix = normalized.replace(/^(ctcode|dpcode|t3code)\//, "");
+  const withoutPrefix = normalized.replace(/^(fcode|dpcode|t3code)\//, "");
 
   const branchFragment = withoutPrefix
     .replace(/[^a-z0-9/_-]+/g, "-")
@@ -1022,7 +1022,7 @@ const make = Effect.gen(function* () {
             }
 
             // Claude cannot continue from a missing native session; clear the
-            // dead cursor and replay once with CTCode transcript context.
+            // dead cursor and replay once with FCode transcript context.
             yield* clearStaleProviderResumeState({
               threadId: input.threadId,
               cause: error,

@@ -9,9 +9,9 @@ import { readNativeApi } from "~/nativeApi";
 
 export { downloadBlob } from "~/lib/browserDownload";
 
-const SHARE_BRAND_HANDLE = "@tryCTCode";
+const SHARE_BRAND_HANDLE = "@tryFCode";
 export const SHARE_TWEET_TEXT = `Just checking my ${SHARE_BRAND_HANDLE} dev stats. Absolute masterpiece of an IDE.`;
-const SHARE_URL = "https://tryctcode.com";
+const SHARE_URL = "https://tryfcode.com";
 
 export type ShareTarget = "x" | "linkedin" | "reddit";
 
@@ -65,6 +65,6 @@ export function shareIntentUrl(target: ShareTarget): string {
     case "reddit":
       return `https://www.reddit.com/submit?url=${encodeURIComponent(
         SHARE_URL,
-      )}&title=${encodeURIComponent("My CTCode dev stats")}`;
+      )}&title=${encodeURIComponent("My FCode dev stats")}`;
   }
 }

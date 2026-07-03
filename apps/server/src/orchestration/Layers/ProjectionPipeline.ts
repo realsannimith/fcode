@@ -615,6 +615,7 @@ const makeOrchestrationProjectionPipeline = Effect.gen(function* () {
             runtimeMode: event.payload.runtimeMode,
             interactionMode: event.payload.interactionMode,
             envMode: event.payload.envMode ?? "local",
+            entryPoint: event.payload.entryPoint ?? "chat",
             branch: event.payload.branch,
             worktreePath: event.payload.worktreePath,
             associatedWorktreePath: event.payload.associatedWorktreePath ?? null,

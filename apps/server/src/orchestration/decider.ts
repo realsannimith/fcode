@@ -392,6 +392,7 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
           runtimeMode: command.runtimeMode,
           interactionMode: command.interactionMode,
           envMode: command.envMode,
+          entryPoint: command.entryPoint,
           branch: command.branch,
           worktreePath: command.worktreePath,
           ...deriveCommandAssociatedWorktreeMetadata({

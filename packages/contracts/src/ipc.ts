@@ -42,6 +42,8 @@ import type {
   GitPullRequestRefInput,
   GitCreateWorktreeInput,
   GitCreateWorktreeResult,
+  GitDiscoverRepositoriesInput,
+  GitDiscoverRepositoriesResult,
   GitInitInput,
   GitListBranchesInput,
   GitListBranchesResult,
@@ -89,6 +91,10 @@ import type {
 } from "./project";
 import type { FilesystemBrowseInput, FilesystemBrowseResult } from "./filesystem";
 import type {
+  ServerCodexAccountAuthInput,
+  ServerCodexAccountLoginCancelResult,
+  ServerCodexAccountLoginResult,
+  ServerCodexAccountLogoutResult,
   ServerConfig,
   ServerDiagnosticsResult,
   ServerGenerateAutomationIntentInput,
@@ -282,6 +288,12 @@ export interface BrowserSetPanelBoundsInput {
   threadId: ThreadId;
   bounds: BrowserPanelBounds | null;
   surface?: "native" | "renderer";
+  /**
+   * Whether the panel itself is on screen for the user. Distinct from
+   * `bounds`, which go null whenever the native view must not paint (local
+   * servers home, obscuring overlays) even though the panel stays visible.
+   */
+  presented?: boolean;
 }
 
 export interface BrowserAttachWebviewInput extends BrowserTabInput {
@@ -325,6 +337,12 @@ export interface DesktopWindowState {
 
 export interface DesktopBridge {
   getWsUrl: () => string | null;
+  /**
+   * Absolute filesystem path for a `File` dragged into the window (Electron
+   * `webUtils.getPathForFile`). Empty string when the file has no on-disk path
+   * (e.g. an image dragged out of a web page).
+   */
+  getPathForFile?: (file: File) => string;
   pickFolder: () => Promise<string | null>;
   saveFile?: (input: {
     defaultFilename: string;
@@ -461,6 +479,9 @@ export interface NativeApi {
     // Stacked action API
     pull: (input: GitPullInput) => Promise<GitPullResult>;
     status: (input: GitStatusInput) => Promise<GitStatusResult>;
+    discoverRepositories: (
+      input: GitDiscoverRepositoriesInput,
+    ) => Promise<GitDiscoverRepositoriesResult>;
     readWorkingTreeDiff: (
       input: GitReadWorkingTreeDiffInput,
     ) => Promise<GitReadWorkingTreeDiffResult>;
@@ -493,6 +514,15 @@ export interface NativeApi {
     revokeOtherAuthClients: () => Promise<{ revokedCount: number }>;
     refreshProviders: () => Promise<ServerRefreshProvidersResult>;
     updateProvider: (input: ServerProviderUpdateInput) => Promise<ServerProviderUpdateResult>;
+    codexAccountLogin: (
+      input: ServerCodexAccountAuthInput,
+    ) => Promise<ServerCodexAccountLoginResult>;
+    codexAccountLoginCancel: (
+      input: ServerCodexAccountAuthInput,
+    ) => Promise<ServerCodexAccountLoginCancelResult>;
+    codexAccountLogout: (
+      input: ServerCodexAccountAuthInput,
+    ) => Promise<ServerCodexAccountLogoutResult>;
     listWorktrees: () => Promise<ServerListWorktreesResult>;
     listLocalServers: () => Promise<ServerListLocalServersResult>;
     stopLocalServer: (input: ServerStopLocalServerInput) => Promise<ServerStopLocalServerResult>;

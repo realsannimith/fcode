@@ -55,7 +55,7 @@ import { isNonFatalCodexErrorMessage } from "../../codexErrorClassification.ts";
 import { ServerConfig } from "../../config.ts";
 import { extractProposedPlanMarkdown } from "../planMode.ts";
 import { appendFileAttachmentsPromptBlock } from "../attachmentProjection.ts";
-import { ctcodeSkillsDir } from "../skillsCatalog.ts";
+import { fcodeSkillsDir } from "../skillsCatalog.ts";
 import { type EventNdjsonLogger, makeEventNdjsonLogger } from "./EventNdjsonLogger.ts";
 
 const PROVIDER = "codex" as const;
@@ -1575,7 +1575,7 @@ const makeCodexAdapter = (options?: CodexAdapterLiveOptions) =>
         return (
           options?.makeManager?.(services) ??
           new CodexAppServerManager(services, {
-            ctcodeSkillsDir: ctcodeSkillsDir(serverConfig.baseDir),
+            fcodeSkillsDir: fcodeSkillsDir(serverConfig.baseDir),
           })
         );
       }),

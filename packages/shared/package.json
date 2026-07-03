@@ -60,6 +60,10 @@
       "types": "./src/browserSession.ts",
       "import": "./src/browserSession.ts"
     },
+    "./browserUsePipe": {
+      "types": "./src/browserUsePipe.ts",
+      "import": "./src/browserUsePipe.ts"
+    },
     "./conversationEdit": {
       "types": "./src/conversationEdit.ts",
       "import": "./src/conversationEdit.ts"

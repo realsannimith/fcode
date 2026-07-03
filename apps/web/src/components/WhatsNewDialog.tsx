@@ -9,7 +9,7 @@
 import { useEffect, useState } from "react";
 
 import { ArrowLeftIcon, ArrowRightIcon } from "~/lib/icons";
-import { CTCodeLogo } from "~/components/CTCodeLogo";
+import { FCodeLogo } from "~/components/FCodeLogo";
 
 import { ChangelogAccordion } from "../whatsNew/ChangelogAccordion";
 import { FeatureSection } from "../whatsNew/FeatureSection";
@@ -127,7 +127,7 @@ function CurrentHeader({
 }) {
   return (
     <div className="flex items-center gap-3">
-      <CTCodeLogo aria-hidden className="size-8 shrink-0 text-foreground" />
+      <FCodeLogo aria-hidden className="size-8 shrink-0 text-foreground" />
       <div className="flex min-w-0 flex-col">
         <DialogTitle className="text-base">What&rsquo;s new?</DialogTitle>
         <DialogDescription className="text-xs">

@@ -148,7 +148,7 @@ function normalizePiThinkingLevel(value: string | null | undefined): ThinkingLev
 }
 
 // Loads the Pi SDK only when the Pi provider is actually used. The SDK brings in
-// a native clipboard module, so importing it during CTCode startup can bloat the
+// a native clipboard module, so importing it during FCode startup can bloat the
 // desktop backend before any Pi session exists.
 async function loadPiCodingAgentModule(): Promise<PiCodingAgentModule> {
   piCodingAgentModulePromise ??= import("@earendil-works/pi-coding-agent");
@@ -1014,7 +1014,7 @@ const makePiAdapter = (options?: PiAdapterLiveOptions) =>
       });
     };
 
-    // Bridges the common Pi extension UI primitives onto CTCode's existing
+    // Bridges the common Pi extension UI primitives onto FCode's existing
     // pending user-input flow; terminal/TUI-only APIs remain no-op by design.
     const makePiExtensionUIContext = (context: PiSessionContext): ExtensionUIContext => {
       const unsupportedWarnings = new Set<string>();
@@ -1027,7 +1027,7 @@ const makePiAdapter = (options?: PiAdapterLiveOptions) =>
           ...makeEventBase(context, { includeTurnId: false }),
           type: "runtime.warning",
           payload: {
-            message: `Pi extension UI API '${method}' is not supported in CTCode yet.`,
+            message: `Pi extension UI API '${method}' is not supported in FCode yet.`,
             detail: { method },
           },
           raw: {
@@ -1189,7 +1189,7 @@ const makePiAdapter = (options?: PiAdapterLiveOptions) =>
           return undefined;
         },
         setTheme() {
-          return { success: false, error: "CTCode does not expose Pi themes." };
+          return { success: false, error: "FCode does not expose Pi themes." };
         },
         getToolsExpanded() {
           return false;
@@ -1720,7 +1720,7 @@ const makePiAdapter = (options?: PiAdapterLiveOptions) =>
             type: "runtime.warning",
             payload: {
               message:
-                "Pi extensions are loaded with CTCode's limited UI bridge. select/confirm/input/notify/status are supported; TUI-only widgets and editor hooks are ignored.",
+                "Pi extensions are loaded with FCode's limited UI bridge. select/confirm/input/notify/status are supported; TUI-only widgets and editor hooks are ignored.",
               detail: {
                 extensionCount: loadedExtensions.length,
                 extensions: extensionNames,
@@ -1981,7 +1981,7 @@ const makePiAdapter = (options?: PiAdapterLiveOptions) =>
         new ProviderAdapterRequestError({
           provider: PROVIDER,
           method,
-          detail: `Pi does not expose CTCode approval/user-input requests for thread ${threadId}.`,
+          detail: `Pi does not expose FCode approval/user-input requests for thread ${threadId}.`,
         }),
       );
 

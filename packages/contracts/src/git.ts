@@ -83,6 +83,15 @@ export const GitStatusInput = Schema.Struct({
 });
 export type GitStatusInput = typeof GitStatusInput.Type;
 
+// Discovers git repositories at or beneath a workspace root. Supports "container"
+// project folders (e.g. `pk/`) that are not themselves repos but hold several
+// independent sibling repos (`pk/frontend`, `pk/backend`).
+export const GitDiscoverRepositoriesInput = Schema.Struct({
+  cwd: TrimmedNonEmptyStringSchema,
+  maxDepth: Schema.optional(PositiveInt.check(Schema.isLessThanOrEqualTo(4))),
+});
+export type GitDiscoverRepositoriesInput = typeof GitDiscoverRepositoriesInput.Type;
+
 export const GitHubRepositoryInput = Schema.Struct({
   cwd: TrimmedNonEmptyStringSchema,
 });
@@ -267,6 +276,20 @@ export const GitStatusResult = Schema.Struct({
   pr: Schema.NullOr(GitStatusPr),
 });
 export type GitStatusResult = typeof GitStatusResult.Type;
+
+export const GitDiscoveredRepository = Schema.Struct({
+  path: TrimmedNonEmptyStringSchema,
+  name: TrimmedNonEmptyStringSchema,
+  // Empty string when the repository is the scanned root itself.
+  relativePath: Schema.String,
+});
+export type GitDiscoveredRepository = typeof GitDiscoveredRepository.Type;
+
+export const GitDiscoverRepositoriesResult = Schema.Struct({
+  rootIsRepo: Schema.Boolean,
+  repositories: Schema.Array(GitDiscoveredRepository),
+});
+export type GitDiscoverRepositoriesResult = typeof GitDiscoverRepositoriesResult.Type;
 
 export const GitStatusLocalResult = Schema.Struct({
   branch: TrimmedNonEmptyStringSchema.pipe(Schema.NullOr),

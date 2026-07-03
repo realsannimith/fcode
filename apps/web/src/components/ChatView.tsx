@@ -114,7 +114,6 @@ import {
   maybeResolveBrowserPromptAttachment,
   type BrowserPromptAttachmentResolution,
 } from "../lib/browserPromptContext";
-import { deriveComposerSuggestions, type ComposerSuggestion } from "../lib/composerSuggestions";
 import {
   buildComposerFileAttachmentsFromFiles,
   IMAGE_SIZE_LIMIT_LABEL,
@@ -155,7 +154,6 @@ import {
   resolveProjectScriptTerminalTarget,
   shouldEnableComposerPastedTextCollapse,
   shouldConsumePendingCustomBinaryConfirmation,
-  shouldShowComposerModelBootstrapSkeleton,
 } from "./ChatView.logic";
 import {
   createRelevantWorkLogThreadsSelector,
@@ -174,11 +172,7 @@ import {
   ensureLeadingSpaceForReplacement,
   extendReplacementRangeForTrailingSpace,
 } from "../composerTriggerInsertion";
-import {
-  createAllThreadsSelector,
-  createProjectSelector,
-  createThreadSelector,
-} from "../storeSelectors";
+import { createProjectSelector, createThreadSelector } from "../storeSelectors";
 import {
   canOfferForkSlashCommand,
   canOfferSideSlashCommand,
@@ -239,13 +233,8 @@ import { useComposerCommandMenuItems } from "../hooks/useComposerCommandMenuItem
 import { useThreadHandoff } from "../hooks/useThreadHandoff";
 import { useTurnDiffSummaries } from "../hooks/useTurnDiffSummaries";
 import BranchToolbar, { RuntimeUsageControls } from "./BranchToolbar";
-import { CTCodeLogo } from "./CTCodeLogo";
 import { ThreadWorktreeHandoffDialog } from "./ThreadWorktreeHandoffDialog";
-import {
-  formatShortcutLabel,
-  resolveShortcutCommand,
-  shortcutLabelForCommand,
-} from "../keybindings";
+import { resolveShortcutCommand, shortcutLabelForCommand } from "../keybindings";
 import PlanSidebar from "./PlanSidebar";
 import TerminalWorkspaceTabs from "./TerminalWorkspaceTabs";
 import ThreadTerminalDrawer from "./ThreadTerminalDrawer";
@@ -255,13 +244,11 @@ import {
   ChevronRightIcon,
   ComposerSendArrowIcon,
   LayoutSidebarIcon,
-  RefreshCwIcon,
   XIcon,
 } from "~/lib/icons";
 import { ComposerQueuedHeader } from "./chat/ComposerQueuedHeader";
 import { ComposerLiveChangesHeader } from "./chat/ComposerLiveChangesHeader";
 import { Button } from "./ui/button";
-import { Skeleton } from "./ui/skeleton";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "./ui/menu";
 import { disposeAndCloseTerminalSession, randomTerminalId } from "./terminal/terminalSession";
 import { cn, isMacPlatform, randomUUID } from "~/lib/utils";
@@ -277,6 +264,7 @@ import {
 } from "~/projectScripts";
 import { runProjectCommandInTerminal } from "~/projectTerminalRunner";
 import { newCommandId, newMessageId, newProjectId, newThreadId } from "~/lib/utils";
+import { isScrollContainerNearBottom } from "../chat-scroll";
 import { readNativeApi } from "~/nativeApi";
 import {
   confirmTerminalTabClose,
@@ -417,7 +405,6 @@ import {
   ProviderModelPicker,
   resolveProviderModelLabel,
 } from "./chat/ProviderModelPicker";
-import { ComposerModelEffortPicker } from "./chat/ComposerModelEffortPicker";
 import { resolveTraitsTriggerSummary, TraitsPicker } from "./chat/TraitsPicker";
 import { ComposerCommandItem, ComposerCommandMenu } from "./chat/ComposerCommandMenu";
 import {
@@ -431,8 +418,6 @@ import { ComposerInputBanners } from "./chat/ComposerInputBanners";
 import { ComposerVoiceButton } from "./chat/ComposerVoiceButton";
 import { ComposerVoiceRecorderBar } from "./chat/ComposerVoiceRecorderBar";
 import { ComposerReferenceAttachments } from "./chat/ComposerReferenceAttachments";
-import { ComposerSuggestions } from "./chat/ComposerSuggestions";
-import { DisclosureRegion } from "./ui/DisclosureRegion";
 import { TranscriptSelectionActionLayer } from "./chat/TranscriptSelectionActionLayer";
 import { ComposerActiveTaskListCard } from "./chat/ComposerActiveTaskListCard";
 import { ComposerColumnFrame } from "./chat/ComposerColumnFrame";
@@ -532,10 +517,6 @@ const EMPTY_KEYBINDINGS: ResolvedKeybindingsConfig = [];
 const EMPTY_PROJECT_ENTRIES: ProjectEntry[] = [];
 const EMPTY_PROVIDER_NATIVE_COMMANDS: ProviderNativeCommandDescriptor[] = [];
 const EMPTY_PROVIDER_SKILLS: ProviderSkillDescriptor[] = [];
-const EMPTY_COMPOSER_SUGGESTIONS: ComposerSuggestion[] = [];
-const EMPTY_SUGGESTION_SOURCE_THREADS: Thread[] = [];
-const selectEmptyComposerSuggestionThreads: ReturnType<typeof createAllThreadsSelector> = () =>
-  EMPTY_SUGGESTION_SOURCE_THREADS;
 
 function automationScheduleActivityPayload(schedule: AutomationSchedule) {
   switch (schedule.type) {
@@ -773,35 +754,6 @@ const terminalContextIdListsEqual = (
 ): boolean =>
   contexts.length === ids.length && contexts.every((context, index) => context.id === ids[index]);
 
-function ComposerControlSkeleton(props: { widthClassName: string }) {
-  return (
-    <div
-      aria-hidden="true"
-      className={cn(
-        "flex h-8 shrink-0 items-center rounded-md border border-border/50 px-2",
-        props.widthClassName,
-      )}
-    >
-      <Skeleton className="h-3.5 w-full rounded-full" />
-    </div>
-  );
-}
-
-function ComposerModelLoadingControl(props: { widthClassName: string }) {
-  return (
-    <div
-      aria-label="Loading models"
-      className={cn(
-        "flex h-8 shrink-0 items-center gap-2 rounded-md border border-border/50 px-2 text-muted-foreground",
-        props.widthClassName,
-      )}
-    >
-      <RefreshCwIcon aria-hidden="true" className="size-3.5 animate-spin" />
-      <span className="truncate text-[length:var(--app-font-size-ui-xs,11px)]">Loading models</span>
-    </div>
-  );
-}
-
 interface ChatViewProps {
   threadId: ThreadId;
   paneScopeId?: string;
@@ -852,7 +804,7 @@ function composerPromptStillMatchesRestoredQueuedDraft(
 
 // Builds an ephemeral transcript bubble for the conversational automation-setup
 // exchange. These never reach a provider and are not persisted; they render the
-// back-and-forth (user request, CTCode's clarifying questions) inline like Codex.
+// back-and-forth (user request, FCode's clarifying questions) inline like Codex.
 function makeAutomationSetupBubble(role: "user" | "assistant", text: string): ChatMessage {
   return {
     id: newMessageId(),
@@ -1138,10 +1090,16 @@ export default function ChatView({
     null,
   );
   const [isModelPickerOpen, setIsModelPickerOpen] = useState(false);
-  const [isTraitsPickerOpen, setIsTraitsPickerOpen] = useState(false);
+  // ponytail: traits picker UI was removed; only the setter is kept so the
+  // (now vestigial) shortcut/reset paths still compile.
+  const [, setIsTraitsPickerOpen] = useState(false);
   const legendListRef = useRef<LegendListRef | null>(null);
   const timelineControllerRef = useRef<MessagesTimelineController | null>(null);
   const isAtEndRef = useRef(true);
+  // True while a just-sent user message is pinned to the top of the transcript (see
+  // `armTranscriptPinToTop`). The list owns the anchor in this mode, so the follow-to-bottom
+  // machinery below stands down until the pin is released.
+  const pinnedToTopRef = useRef(false);
   const autoFollowThreadIdRef = useRef<ThreadId | null>(null);
   const pendingInteractionAnchorRef = useRef<{
     element: HTMLElement;
@@ -1437,7 +1395,7 @@ export default function ChatView({
   const [automationDraftOpen, setAutomationDraftOpen] = useState(false);
   const [isAutomationDraftSubmitting, setIsAutomationDraftSubmitting] = useState(false);
   const automationDraftSubmittingRef = useRef(false);
-  // While set, CTCode is mid-conversation gathering an automation's missing details.
+  // While set, FCode is mid-conversation gathering an automation's missing details.
   // `accumulatedMessage` carries everything said so far so the next reply re-resolves
   // against the full request (not the bare answer); `bubbles` is the ephemeral
   // in-thread exchange rendered in the transcript until the automation resolves or
@@ -1819,39 +1777,6 @@ export default function ChatView({
         : mergeCursorModelVariantsWithBaseControls(cursorDynamicModelsQuery.data?.models ?? []),
     [cursorDynamicModelsQuery.data?.models, showExpandedCursorModelVariants],
   );
-  const cursorModelDiscoveryEnabled =
-    selectedProvider === "cursor" || lockedProvider === "cursor" || isModelPickerOpen;
-  const hasResolvedCursorModelDiscovery =
-    (cursorDynamicModelsQuery.data?.source === "cursor.cli" ||
-      cursorDynamicModelsQuery.data?.source === "cursor.acp") &&
-    (cursorDynamicModelsQuery.data.models.length ?? 0) > 0;
-  const cursorModelDiscoveryPending =
-    cursorModelDiscoveryEnabled &&
-    !hasResolvedCursorModelDiscovery &&
-    (cursorDynamicModelsQuery.isLoading || cursorDynamicModelsQuery.isFetching);
-  const hasResolvedKiloModelDiscovery =
-    (kiloDynamicModelsQuery.data?.source === "kilo-cli" ||
-      kiloDynamicModelsQuery.data?.source === "kilo") &&
-    (kiloDynamicModelsQuery.data.models.length ?? 0) > 0;
-  const kiloModelDiscoveryPending =
-    kiloModelDiscoveryEnabled &&
-    !hasResolvedKiloModelDiscovery &&
-    (kiloDynamicModelsQuery.isLoading || kiloDynamicModelsQuery.isFetching);
-  const hasResolvedOpenCodeModelDiscovery =
-    (openCodeDynamicModelsQuery.data?.source === "opencode-cli" ||
-      openCodeDynamicModelsQuery.data?.source === "opencode") &&
-    (openCodeDynamicModelsQuery.data.models.length ?? 0) > 0;
-  const openCodeModelDiscoveryPending =
-    openCodeModelDiscoveryEnabled &&
-    !hasResolvedOpenCodeModelDiscovery &&
-    (openCodeDynamicModelsQuery.isLoading || openCodeDynamicModelsQuery.isFetching);
-  const hasResolvedPiModelDiscovery =
-    piDynamicModelsQuery.data?.source?.startsWith("pi.sdk") === true &&
-    (piDynamicModelsQuery.data.models.length ?? 0) > 0;
-  const piModelDiscoveryPending =
-    piModelDiscoveryEnabled &&
-    !hasResolvedPiModelDiscovery &&
-    (piDynamicModelsQuery.isLoading || piDynamicModelsQuery.isFetching);
   const modelOptionsByProvider = useMemo(() => {
     const staticOptions: Record<ProviderKind, ReturnType<typeof getAppModelOptions>> = {
       codex: getAppModelOptions(
@@ -1974,16 +1899,6 @@ export default function ChatView({
       piDynamicModelsQuery.data?.models,
     ],
   );
-  const providerModelsQueryByProvider = {
-    claudeAgent: claudeDynamicModelsQuery,
-    codex: codexDynamicModelsQuery,
-    cursor: cursorDynamicModelsQuery,
-    gemini: geminiModelsQuery,
-    grok: grokDynamicModelsQuery,
-    kilo: kiloDynamicModelsQuery,
-    opencode: openCodeDynamicModelsQuery,
-    pi: piDynamicModelsQuery,
-  } as const;
   const selectedRuntimeModel = useMemo(
     () =>
       resolveRuntimeModelDescriptor({
@@ -2034,49 +1949,6 @@ export default function ChatView({
       ? selectedModelForPicker
       : (normalizeModelSlug(selectedModelForPicker, selectedProvider) ?? selectedModelForPicker);
   }, [modelOptionsByProvider, selectedModelForPicker, selectedProvider]);
-  const persistedComposerModelSelection =
-    sessionProvider && activeThread?.modelSelection.provider !== sessionProvider
-      ? activeProject?.defaultModelSelection?.provider === selectedProvider
-        ? activeProject.defaultModelSelection
-        : null
-      : (activeThread?.modelSelection ?? activeProject?.defaultModelSelection ?? null);
-  const selectedProviderModelsQuery = providerModelsQueryByProvider[selectedProvider];
-  const providerModelsLoading =
-    selectedProvider === "cursor"
-      ? cursorModelDiscoveryPending
-      : selectedProvider === "kilo"
-        ? kiloModelDiscoveryPending
-        : selectedProvider === "opencode"
-          ? openCodeModelDiscoveryPending
-          : selectedProvider === "pi"
-            ? piModelDiscoveryPending
-            : selectedProviderModelsQuery !== undefined &&
-              (selectedProviderModelsQuery.isLoading ||
-                (selectedProviderModelsQuery.isFetching &&
-                  selectedProviderModelsQuery.data === undefined));
-  const selectedProviderRequiresRuntimeModels =
-    selectedProvider === "cursor" ||
-    selectedProvider === "kilo" ||
-    selectedProvider === "opencode" ||
-    selectedProvider === "pi";
-  const selectedProviderRuntimeModelDiscoveryPending =
-    selectedProvider === "cursor"
-      ? cursorModelDiscoveryPending
-      : selectedProvider === "kilo"
-        ? kiloModelDiscoveryPending
-        : selectedProvider === "opencode"
-          ? openCodeModelDiscoveryPending
-          : selectedProvider === "pi"
-            ? piModelDiscoveryPending
-            : false;
-  const showComposerModelBootstrapSkeleton = shouldShowComposerModelBootstrapSkeleton({
-    selectedProvider,
-    selectedModel,
-    persistedModelSelection: persistedComposerModelSelection,
-    draftModelSelection: draftModelSelectionForSelectedProvider,
-    providerModelsLoading,
-    requiresDiscoveredModels: selectedProviderRequiresRuntimeModels,
-  });
   const hiddenProviderSet = useMemo(
     () => new Set<ProviderKind>(settings.hiddenProviders),
     [settings.hiddenProviders],
@@ -3326,23 +3198,6 @@ export default function ChatView({
     () => shortcutLabelForCommand(keybindings, "chat.split"),
     [keybindings],
   );
-  const modelPickerShortcutLabel = useMemo(
-    () =>
-      shortcutLabelForCommand(keybindings, "modelPicker.toggle") ??
-      formatShortcutLabel({
-        key: "m",
-        metaKey: false,
-        ctrlKey: false,
-        shiftKey: true,
-        altKey: false,
-        modKey: true,
-      }),
-    [keybindings],
-  );
-  const traitsPickerShortcutLabel = useMemo(
-    () => shortcutLabelForCommand(keybindings, "traitsPicker.toggle"),
-    [keybindings],
-  );
   const onToggleDiff = useCallback(() => {
     if (diffEnvironmentPending && !diffOpen) {
       return;
@@ -3556,68 +3411,6 @@ export default function ChatView({
       scheduleComposerFocus();
     }
   }, [composerFocusRequestNonce, scheduleComposerFocus]);
-  // Context gate is intentionally prompt-independent so the suggestion list stays
-  // mounted while the user types — that lets us animate it closed instead of an
-  // abrupt unmount (which jolted the centered composer).
-  const shouldPrepareComposerSuggestions =
-    settings.enableComposerSuggestions &&
-    isLocalDraftThread &&
-    isCenteredEmptyLanding &&
-    draftThread?.entryPoint !== "terminal" &&
-    composerImages.length === 0 &&
-    composerAssistantSelections.length === 0 &&
-    composerTerminalContexts.length === 0 &&
-    queuedComposerTurns.length === 0 &&
-    !composerMenuOpen &&
-    !isComposerApprovalState &&
-    pendingUserInputs.length === 0 &&
-    !showPlanFollowUpPrompt;
-
-  const selectComposerSuggestionThreads = useMemo(() => {
-    if (!shouldPrepareComposerSuggestions) {
-      return selectEmptyComposerSuggestionThreads;
-    }
-    return createAllThreadsSelector();
-  }, [shouldPrepareComposerSuggestions]);
-  const projectSuggestionSourceThreads = useStore(selectComposerSuggestionThreads);
-  const composerSuggestions = useMemo(() => {
-    // Suggestions belong only to brand-new empty chats; existing threads should not scan history.
-    if (!shouldPrepareComposerSuggestions) {
-      return EMPTY_COMPOSER_SUGGESTIONS;
-    }
-    return deriveComposerSuggestions({
-      activeThreadId,
-      project: activeProject,
-      threads: projectSuggestionSourceThreads,
-    });
-  }, [
-    activeProject,
-    activeThreadId,
-    projectSuggestionSourceThreads,
-    shouldPrepareComposerSuggestions,
-  ]);
-  // Suggestions stay open for the whole eligible empty-landing context, even
-  // while the user types, so they remain a persistent pick list rather than a
-  // transient empty-prompt hint.
-  const showComposerSuggestions =
-    shouldPrepareComposerSuggestions && composerSuggestions.length > 0;
-  const composerSuggestionsOpen = showComposerSuggestions;
-  const onSelectComposerSuggestion = useCallback(
-    (suggestion: ComposerSuggestion) => {
-      // Append the picked prompt as a quoted block instead of replacing the
-      // composer, so clicking accumulates onto whatever is already typed.
-      const quotedPrompt = `"${suggestion.prompt}"`;
-      const current = promptRef.current;
-      const separator = current.length === 0 ? "" : /\s$/.test(current) ? "" : " ";
-      const nextPrompt = `${current}${separator}${quotedPrompt}`;
-      promptRef.current = nextPrompt;
-      setPrompt(nextPrompt);
-      setComposerCursor(collapseExpandedComposerCursor(nextPrompt, nextPrompt.length));
-      setComposerTrigger(detectComposerTrigger(nextPrompt, nextPrompt.length));
-      scheduleComposerFocus();
-    },
-    [scheduleComposerFocus, setPrompt],
-  );
   useEffect(() => {
     if (!secondaryChromeReady || !pendingComposerFocusRef.current) return;
     const frame = window.requestAnimationFrame(() => {
@@ -4569,10 +4362,48 @@ export default function ChatView({
     legendListRef.current?.scrollToEnd?.({ animated });
   }, []);
   const armTranscriptAutoFollow = useCallback((targetThreadId: ThreadId) => {
+    // Any follow-to-bottom flow supersedes a top pin.
+    pinnedToTopRef.current = false;
+    timelineControllerRef.current?.clearPinnedUserMessage();
     autoFollowThreadIdRef.current = targetThreadId;
     isAtEndRef.current = true;
     showScrollDebouncer.current.cancel();
     setShowScrollToBottom(false);
+  }, []);
+  // Sending a message pins it to the top of the viewport and streams the reply beneath it. The
+  // list holds the anchor, so we disarm the bottom-follow refs and surface the jump-to-bottom
+  // affordance (the reader is no longer at the tail).
+  const armTranscriptPinToTop = useCallback((messageId: MessageId) => {
+    pinnedToTopRef.current = true;
+    autoFollowThreadIdRef.current = null;
+    isAtEndRef.current = false;
+    // Hold a clean pinned view: no bottom-follow, no jump-to-bottom chrome until the reader scrolls.
+    showScrollDebouncer.current.cancel();
+    setShowScrollToBottom(false);
+    timelineControllerRef.current?.pinUserMessageToTop(messageId);
+  }, []);
+  const onPinnedToTopChange = useCallback((pinned: boolean) => {
+    if (pinnedToTopRef.current === pinned) return;
+    pinnedToTopRef.current = pinned;
+    if (pinned) return;
+    // The list released the pin (reader scrolled, or the message left the transcript). Reconcile
+    // the follow state from the real scroll position so the jump-to-bottom control is accurate.
+    const scrollNode = legendListRef.current?.getScrollableNode?.();
+    const atEnd =
+      scrollNode instanceof HTMLElement
+        ? isScrollContainerNearBottom({
+            scrollTop: scrollNode.scrollTop,
+            clientHeight: scrollNode.clientHeight,
+            scrollHeight: scrollNode.scrollHeight,
+          })
+        : true;
+    isAtEndRef.current = atEnd;
+    if (atEnd) {
+      showScrollDebouncer.current.cancel();
+      setShowScrollToBottom(false);
+    } else {
+      showScrollDebouncer.current.maybeExecute();
+    }
   }, []);
   const clearTranscriptAutoFollow = useCallback(() => {
     autoFollowThreadIdRef.current = null;
@@ -4624,6 +4455,9 @@ export default function ChatView({
       ].join(":")
     : "empty";
   const onIsAtEndChange = useCallback((isAtEnd: boolean) => {
+    // While pinned to the top, the list owns the anchor; a short reply can momentarily read as
+    // "at end", which must not re-arm bottom-follow or hide the jump-to-bottom control.
+    if (pinnedToTopRef.current) return;
     if (isAtEndRef.current === isAtEnd) return;
     if (!isAtEnd && performance.now() < programmaticScrollUntilRef.current) return;
     isAtEndRef.current = isAtEnd;
@@ -4780,7 +4614,7 @@ export default function ChatView({
         toastManager.add({
           type: "warning",
           title: "Select a unique phrase to mark it.",
-          description: "Try including a few more words so CTCode can find the exact place.",
+          description: "Try including a few more words so FCode can find the exact place.",
         });
         return;
       }
@@ -4923,6 +4757,9 @@ export default function ChatView({
   useEffect(() => {
     setPullRequestDialogState(null);
     setRenameDialogOpen(false);
+    // Switching threads snaps to the bottom of the new transcript, so drop any top pin.
+    pinnedToTopRef.current = false;
+    timelineControllerRef.current?.clearPinnedUserMessage();
     isAtEndRef.current = true;
     showScrollDebouncer.current.cancel();
     setShowScrollToBottom(false);
@@ -6106,7 +5943,7 @@ export default function ChatView({
                 type: "warning",
                 title: "Thread note not added",
                 description:
-                  "The automation was created, but CTCode could not add the activity note.",
+                  "The automation was created, but FCode could not add the activity note.",
               });
             }
           })();
@@ -6125,7 +5962,7 @@ export default function ChatView({
           type: "error",
           title: "Could not create automation",
           description:
-            error instanceof Error ? error.message : "CTCode could not save the automation.",
+            error instanceof Error ? error.message : "FCode could not save the automation.",
         });
         return false;
       } finally {
@@ -6193,7 +6030,7 @@ export default function ChatView({
           toastManager.add({
             type: "error",
             title: "Could not create chat",
-            description: "CTCode could not promote this draft before saving the automation.",
+            description: "FCode could not promote this draft before saving the automation.",
           });
           return null;
         }
@@ -6216,7 +6053,7 @@ export default function ChatView({
           description:
             error instanceof Error
               ? error.message
-              : "CTCode could not promote this draft before saving the automation.",
+              : "FCode could not promote this draft before saving the automation.",
         });
         return null;
       }
@@ -7125,9 +6962,9 @@ export default function ChatView({
         source: "native",
       },
     ]);
-    // Mark the transcript as anchored before the optimistic row lands so the
-    // re-snap effect on row count change pulls us to the new tail.
-    armTranscriptAutoFollow(threadIdForSend);
+    // Pin the just-sent message to the top of the viewport and stream the reply beneath it,
+    // instead of snapping the transcript to the bottom.
+    armTranscriptPinToTop(messageIdForSend);
 
     setThreadError(threadIdForSend, null);
     if (expiredTerminalContextCount > 0) {
@@ -7669,7 +7506,7 @@ export default function ChatView({
         source: "native",
       },
     ]);
-    armTranscriptAutoFollow(threadIdForSend);
+    armTranscriptPinToTop(messageIdForSend);
 
     try {
       await persistThreadSettingsForNextTurn({
@@ -8108,6 +7945,9 @@ export default function ChatView({
       modelOptionsByProvider,
     ],
   );
+  const selectedProviderModelOptions = composerModelOptions?.[selectedProvider];
+  // Applies a trait/effort selection that rewrites the composer prompt, keeping
+  // the cursor and slash-trigger state in sync. Consumed by the model+effort picker.
   const setPromptFromTraits = useCallback(
     (nextPrompt: string) => {
       const currentPrompt = promptRef.current;
@@ -8124,7 +7964,6 @@ export default function ChatView({
     },
     [scheduleComposerFocus, setPrompt],
   );
-  const selectedProviderModelOptions = composerModelOptions?.[selectedProvider];
   const composerTraitSelection = getComposerTraitSelection(
     selectedProvider,
     selectedModel,
@@ -8188,109 +8027,8 @@ export default function ChatView({
   useLayoutEffect(() => {
     composerFooterLayoutSyncRef.current?.();
   }, [composerFooterTier]);
-  const composerModelPickerWidthClassName = isComposerFooterCompact ? "w-32" : "w-36 sm:w-44";
-  const composerOptionsPickerWidthClassName = isComposerFooterCompact ? "w-28" : "w-32";
-  const composerModelEffortPickerWidthClassName = isComposerFooterCompact ? "w-40" : "w-44 sm:w-52";
-  const isComposerModelEffortPickerOpen = isModelPickerOpen || isTraitsPickerOpen;
-  const handleComposerModelEffortPickerOpenChange = useCallback(
-    (open: boolean) => {
-      if (open) {
-        handleModelPickerOpenChange(true);
-      } else {
-        setIsModelPickerOpen(false);
-        setIsTraitsPickerOpen(false);
-      }
-    },
-    [handleModelPickerOpenChange],
-  );
-  const composerPickerControls = showComposerModelBootstrapSkeleton ? (
-    useSplitComposerPickerControls ? (
-      <>
-        {selectedProviderRuntimeModelDiscoveryPending ? (
-          <ComposerModelLoadingControl widthClassName={composerModelPickerWidthClassName} />
-        ) : (
-          <ComposerControlSkeleton widthClassName={composerModelPickerWidthClassName} />
-        )}
-        <ComposerControlSkeleton widthClassName={composerOptionsPickerWidthClassName} />
-      </>
-    ) : selectedProviderRuntimeModelDiscoveryPending ? (
-      <ComposerModelLoadingControl widthClassName={composerModelEffortPickerWidthClassName} />
-    ) : (
-      <ComposerControlSkeleton widthClassName={composerModelEffortPickerWidthClassName} />
-    )
-  ) : useSplitComposerPickerControls ? (
-    <>
-      <ProviderModelPicker
-        compact={isComposerFooterCompact}
-        hideLabel={!composerFooterControlsPlan.showModelLabel}
-        provider={selectedProvider}
-        model={selectedModelForPickerWithCustomFallback}
-        lockedProvider={lockedProvider}
-        providers={providerStatuses}
-        modelOptionsByProvider={modelOptionsByProvider}
-        loadingModelProviders={{
-          cursor: cursorModelDiscoveryPending,
-          kilo: kiloModelDiscoveryPending,
-          opencode: openCodeModelDiscoveryPending,
-          pi: piModelDiscoveryPending,
-        }}
-        hiddenProviders={settings.hiddenProviders}
-        providerOrder={settings.providerOrder}
-        onProviderModelChange={onProviderModelSelect}
-        onSelectionCommitted={scheduleComposerFocus}
-        open={isModelPickerOpen}
-        onOpenChange={handleModelPickerOpenChange}
-        shortcutLabel={modelPickerShortcutLabel}
-      />
-      <TraitsPicker
-        provider={selectedProvider}
-        threadId={threadId}
-        model={selectedModelForPickerWithCustomFallback}
-        runtimeModel={selectedRuntimeModel}
-        runtimeModels={runtimeModelsByProvider[selectedProvider]}
-        runtimeAgents={dynamicAgents}
-        modelOptions={selectedProviderModelOptions}
-        prompt={prompt}
-        onPromptChange={setPromptFromTraits}
-        open={isTraitsPickerOpen}
-        onOpenChange={handleTraitsPickerOpenChange}
-        onSelectionCommitted={scheduleComposerFocus}
-        shortcutLabel={traitsPickerShortcutLabel}
-        hideLabel={!composerFooterControlsPlan.showTraitsLabel}
-      />
-    </>
-  ) : (
-    <ComposerModelEffortPicker
-      compact={isComposerFooterCompact}
-      hideModelLabel={!composerFooterControlsPlan.showModelLabel}
-      hideStatusLabel={!composerFooterControlsPlan.showTraitsLabel}
-      provider={selectedProvider}
-      model={selectedModelForPickerWithCustomFallback}
-      lockedProvider={lockedProvider}
-      providers={providerStatuses}
-      modelOptionsByProvider={modelOptionsByProvider}
-      loadingModelProviders={{
-        cursor: cursorModelDiscoveryPending,
-        kilo: kiloModelDiscoveryPending,
-        opencode: openCodeModelDiscoveryPending,
-        pi: piModelDiscoveryPending,
-      }}
-      hiddenProviders={settings.hiddenProviders}
-      providerOrder={settings.providerOrder}
-      threadId={threadId}
-      runtimeModel={selectedRuntimeModel}
-      runtimeModels={runtimeModelsByProvider[selectedProvider]}
-      runtimeAgents={dynamicAgents}
-      modelOptions={selectedProviderModelOptions}
-      prompt={prompt}
-      onPromptChange={setPromptFromTraits}
-      onProviderModelChange={onProviderModelSelect}
-      onSelectionCommitted={scheduleComposerFocus}
-      open={isComposerModelEffortPickerOpen}
-      onOpenChange={handleComposerModelEffortPickerOpenChange}
-      shortcutLabel={modelPickerShortcutLabel}
-    />
-  );
+  // ponytail: model + effort picker removed from the composer footer per design.
+  // The selection state/handlers stay (keyboard shortcuts + model discovery use them).
   const toggleFastMode = useCallback(() => {
     if (!composerTraitSelection.caps.supportsFastMode) {
       scheduleComposerFocus();
@@ -8998,6 +8736,9 @@ export default function ChatView({
   }, []);
   const expandedImageItem = expandedImage ? expandedImage.images[expandedImage.index] : null;
   const onScrollToBottom = useCallback(() => {
+    // Jumping to the bottom releases any active top pin and resumes follow-to-bottom.
+    pinnedToTopRef.current = false;
+    timelineControllerRef.current?.clearPinnedUserMessage();
     isAtEndRef.current = true;
     showScrollDebouncer.current.cancel();
     setShowScrollToBottom(false);
@@ -9231,30 +8972,271 @@ export default function ChatView({
     activeContextWindowLabel: contextWindowSelectionStatus.activeLabel,
     pendingContextWindowLabel: contextWindowSelectionStatus.pendingSelectedLabel,
   };
-  // The composer's leading controls (extras "+" menu, access-rules/runtime
-  // indicator). At the narrowest footer tier they relocate from the footer to
-  // the branch-toolbar row below the input instead of getting clipped; the
-  // relocated variant is icon-only since relocation means space is minimal.
+  // The composer's leading controls (extras "+" menu). At the narrowest footer
+  // tier they relocate from the footer to the branch-toolbar row below the input
+  // instead of getting clipped. The runtime/access toggle lives in the floating
+  // pill row above the composer (see composerSection).
   const relocateComposerLeadingControls = composerFooterControlsPlan.relocateLeadingControls;
-  const renderComposerLeadingControls = (options: { iconOnly: boolean }) => (
-    <>
-      <ComposerExtrasMenu
-        interactionMode={interactionMode}
-        supportsFastMode={composerTraitSelection.caps.supportsFastMode}
-        fastModeEnabled={composerTraitSelection.fastModeEnabled}
-        onAddPhotos={addComposerImages}
-        onToggleFastMode={toggleFastMode}
-        onSetPlanMode={setPlanMode}
-      />
-      {!isVoiceRecording && !isVoiceTranscribing ? (
-        <RuntimeUsageControls
-          {...runtimeUsageControlsProps}
-          className="shrink-0"
-          hideLabel={options.iconOnly}
+  const renderComposerLeadingControls = () => (
+    <ComposerExtrasMenu
+      interactionMode={interactionMode}
+      supportsFastMode={composerTraitSelection.caps.supportsFastMode}
+      fastModeEnabled={composerTraitSelection.fastModeEnabled}
+      onAddPhotos={addComposerImages}
+      onToggleFastMode={toggleFastMode}
+      onSetPlanMode={setPlanMode}
+    />
+  );
+  // Floating pill row above the composer input: model + effort pickers and the
+  // runtime access toggle.
+  const composerFloatingControls =
+    !isVoiceRecording && !isVoiceTranscribing ? (
+      <div className="mb-2 flex w-fit max-w-full flex-wrap items-center gap-2 rounded-xl bg-[var(--color-background-surface)] px-1 py-1">
+        <ProviderModelPicker
+          compact={isComposerFooterCompact}
+          provider={selectedProvider}
+          model={selectedModelForPickerWithCustomFallback}
+          lockedProvider={lockedProvider}
+          providers={providerStatuses}
+          modelOptionsByProvider={modelOptionsByProvider}
+          hiddenProviders={settings.hiddenProviders}
+          providerOrder={settings.providerOrder}
+          onProviderModelChange={onProviderModelSelect}
+          onSelectionCommitted={scheduleComposerFocus}
+        />
+        <TraitsPicker
+          provider={selectedProvider}
+          threadId={threadId}
+          model={selectedModelForPickerWithCustomFallback}
+          runtimeModel={selectedRuntimeModel}
+          runtimeModels={runtimeModelsByProvider[selectedProvider]}
+          runtimeAgents={dynamicAgents}
+          modelOptions={selectedProviderModelOptions}
+          prompt={prompt}
+          onPromptChange={setPromptFromTraits}
+          onSelectionCommitted={scheduleComposerFocus}
+        />
+        {runtimeMode ? (
+          <RuntimeUsageControls {...runtimeUsageControlsProps} className="shrink-0" />
+        ) : null}
+      </div>
+    ) : null;
+  // Right-side composer actions (context meter, voice controls, and the send/stop
+  // state machine). Rendered inline to the right of the input; suppressed during an
+  // approval prompt (the footer renders the approval actions instead).
+  const composerRightActions = (
+    <div
+      data-chat-composer-actions="right"
+      className={cn(
+        "flex items-center gap-2",
+        isVoiceRecording || isVoiceTranscribing ? "min-w-0 flex-1" : "shrink-0",
+      )}
+    >
+      {isPreparingWorktree ? (
+        <span className="text-[length:var(--app-font-size-ui-xs,10px)] text-[var(--color-text-foreground-secondary)]">
+          Preparing worktree...
+        </span>
+      ) : null}
+      {!isVoiceRecording &&
+      !isVoiceTranscribing &&
+      runtimeUsageContextWindow &&
+      composerFooterControlsPlan.showContextMeter ? (
+        <ContextWindowMeter
+          usage={runtimeUsageContextWindow}
+          {...(activeCumulativeCostUsd != null
+            ? { cumulativeCostUsd: activeCumulativeCostUsd }
+            : {})}
+          {...(contextWindowSelectionStatus.activeLabel !== undefined
+            ? {
+                activeWindowLabel: contextWindowSelectionStatus.activeLabel,
+              }
+            : {})}
+          {...(contextWindowSelectionStatus.pendingSelectedLabel !== undefined
+            ? {
+                pendingWindowLabel: contextWindowSelectionStatus.pendingSelectedLabel,
+              }
+            : {})}
         />
       ) : null}
-    </>
+      {showVoiceNotesControl && (isVoiceRecording || isVoiceTranscribing) ? (
+        <ComposerVoiceRecorderBar
+          disabled={isComposerApprovalState || isConnecting || isSendBusy}
+          isRecording={isVoiceRecording}
+          isTranscribing={isVoiceTranscribing}
+          durationLabel={voiceRecordingDurationLabel}
+          waveformLevels={voiceWaveformLevels}
+          onCancel={() => {
+            if (isVoiceRecording) {
+              void submitComposerVoiceRecording();
+              return;
+            }
+            cancelComposerVoiceRecording();
+          }}
+          onSubmit={() => {
+            void submitComposerVoiceRecording();
+          }}
+        />
+      ) : null}
+      {activePendingProgress ? (
+        <div className="flex items-center gap-2">
+          {activePendingProgress.questionIndex > 0 ? (
+            <Button
+              size="sm"
+              variant="outline"
+              className="rounded-full"
+              onClick={onPreviousActivePendingUserInputQuestion}
+              disabled={activePendingIsResponding}
+            >
+              Previous
+            </Button>
+          ) : null}
+          <Button
+            type="submit"
+            size="sm"
+            className="rounded-full px-4"
+            disabled={
+              activePendingIsResponding ||
+              (activePendingProgress.isLastQuestion
+                ? !activePendingResolvedAnswers
+                : !activePendingProgress.canAdvance)
+            }
+          >
+            {activePendingIsResponding
+              ? "Submitting..."
+              : activePendingProgress.isLastQuestion
+                ? "Submit answers"
+                : "Next question"}
+          </Button>
+        </div>
+      ) : phase === "running" ? (
+        <Button
+          type="button"
+          variant="prominent"
+          size="icon-xs"
+          className="sm:size-[26px]"
+          onClick={() => void onInterrupt()}
+          aria-label="Stop generation"
+          title="Stop the current response. On Mac, press Ctrl+C to interrupt."
+        >
+          <span aria-hidden="true" className="block size-2 rounded-[2px] bg-current" />
+        </Button>
+      ) : pendingUserInputs.length === 0 && !isVoiceRecording && !isVoiceTranscribing ? (
+        showPlanFollowUpPrompt ? (
+          prompt.trim().length > 0 ? (
+            <Button
+              type="submit"
+              size="sm"
+              className="h-9 rounded-full px-4 sm:h-8"
+              disabled={isSendBusy || isConnecting}
+            >
+              {isConnecting || isSendBusy ? "Sending..." : "Refine"}
+            </Button>
+          ) : (
+            <div className="flex items-center">
+              <Button
+                type="submit"
+                size="sm"
+                className="h-9 rounded-l-full rounded-r-none px-4 sm:h-8"
+                disabled={isSendBusy || isConnecting}
+              >
+                {isConnecting || isSendBusy ? "Sending..." : "Implement"}
+              </Button>
+              <Menu>
+                <MenuTrigger
+                  render={
+                    <Button
+                      size="sm"
+                      variant="default"
+                      className="h-9 rounded-l-none rounded-r-full border-l-white/12 px-2 sm:h-8"
+                      aria-label="Implementation actions"
+                      disabled={isSendBusy || isConnecting}
+                    />
+                  }
+                >
+                  <ChevronDownIcon className="size-3.5" />
+                </MenuTrigger>
+                <MenuPopup align="end" side="top">
+                  <MenuItem
+                    disabled={isSendBusy || isConnecting}
+                    onClick={() => void onImplementPlanInNewThread()}
+                  >
+                    Implement in a new thread
+                  </MenuItem>
+                </MenuPopup>
+              </Menu>
+            </div>
+          )
+        ) : (
+          <>
+            {showVoiceNotesControl ? (
+              <ComposerVoiceButton
+                disabled={isComposerApprovalState || isConnecting || isSendBusy}
+                isRecording={isVoiceRecording}
+                isTranscribing={isVoiceTranscribing}
+                durationLabel={voiceRecordingDurationLabel}
+                onClick={toggleComposerVoiceRecording}
+              />
+            ) : null}
+            <Button
+              type="submit"
+              variant="prominent"
+              size="icon-xs"
+              className="size-7 rounded-full sm:size-7"
+              disabled={
+                isSendBusy ||
+                isConnecting ||
+                isVoiceTranscribing ||
+                !composerSendState.hasSendableContent
+              }
+              aria-label={
+                isConnecting
+                  ? "Connecting"
+                  : isVoiceTranscribing
+                    ? "Transcribing voice note"
+                    : isPreparingWorktree
+                      ? "Preparing worktree"
+                      : isSendBusy
+                        ? "Sending"
+                        : "Send message"
+              }
+            >
+              {isSendBusy ? (
+                <svg
+                  width="12"
+                  height="12"
+                  viewBox="0 0 14 14"
+                  fill="none"
+                  className="animate-spin"
+                  aria-hidden="true"
+                >
+                  <circle
+                    cx="7"
+                    cy="7"
+                    r="5.5"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    strokeDasharray="20 12"
+                  />
+                </svg>
+              ) : (
+                <ComposerSendArrowIcon aria-hidden="true" className="size-5 shrink-0" />
+              )}
+            </Button>
+          </>
+        )
+      ) : null}
+    </div>
   );
+  // The footer row now only carries the leading plan/sidebar controls; render it
+  // only when those are present so an empty row does not add composer height.
+  const showComposerFooterLeading =
+    !isVoiceRecording &&
+    !isVoiceTranscribing &&
+    (interactionMode === "plan" ||
+      Boolean(activeTaskList) ||
+      Boolean(sidebarProposedPlan) ||
+      planSidebarOpen);
   const branchToolbarProps = {
     threadId: activeThread.id,
     onEnvModeChange,
@@ -9342,6 +9324,7 @@ export default function ChatView({
     onToggleDiff,
     onOpenAutomation: openAutomationEditDialog,
     onOpenGithubRepository: openBrowserUrl,
+    onOpenServerUrl: openBrowserUrl,
     onJumpToPinnedMessage: handleJumpToPinnedMessage,
     onTogglePinnedMessageDone: handleTogglePinnedMessageDone,
     onUnpinMessage: handleUnpinMessage,
@@ -9398,6 +9381,7 @@ export default function ChatView({
           data-chat-pane-scope={paneScopeId}
         >
           <ComposerColumnFrame>
+            {composerFloatingControls}
             {showComposerLiveChangesHeader ? (
               <ComposerLiveChangesHeader
                 fileCount={activeTurnLiveDiffState.fileCount}
@@ -9513,46 +9497,56 @@ export default function ChatView({
                         onRemoveImage={removeComposerImage}
                       />
                     )}
-                  <ComposerPromptEditor
-                    ref={composerEditorRef}
-                    value={
-                      isComposerApprovalState
-                        ? ""
-                        : activePendingProgress
-                          ? activePendingProgress.customAnswer
-                          : prompt
-                    }
-                    cursor={composerCursor}
-                    terminalContexts={
-                      !isComposerApprovalState && pendingUserInputs.length === 0
-                        ? composerTerminalContexts
-                        : []
-                    }
-                    mentionReferences={selectedComposerMentions}
-                    onRemoveTerminalContext={removeComposerTerminalContextFromDraft}
-                    onChange={onPromptChange}
-                    onCommandKeyDown={onComposerCommandKey}
-                    onPaste={onComposerPaste}
-                    {...(canCollapsePastedTextToDraft
-                      ? { onCollapsePastedText: addPastedTextToDraft }
-                      : {})}
-                    placeholder={
-                      isComposerApprovalState
-                        ? "Resolve this approval request to continue"
-                        : activePendingProgress
-                          ? activePendingProgress.activeQuestion?.options.length === 0
-                            ? "Type your answer to continue"
-                            : "Type your own answer, or leave this blank to use the selected option"
-                          : showPlanFollowUpPrompt && activeProposedPlan
-                            ? "Add feedback to refine the plan, or leave this blank to implement it"
-                            : hasLiveTurn
-                              ? "Ask for follow-up changes"
-                              : phase === "disconnected"
-                                ? "Ask for follow-up changes or attach images"
-                                : "Ask anything, @tag files/folders, or use / to show available commands"
-                    }
-                    disabled={isConnecting || isComposerApprovalState}
-                  />
+                  <div className="flex items-center gap-1.5">
+                    {relocateComposerLeadingControls ? null : (
+                      <div className="flex shrink-0 items-center">
+                        {renderComposerLeadingControls()}
+                      </div>
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <ComposerPromptEditor
+                        ref={composerEditorRef}
+                        value={
+                          isComposerApprovalState
+                            ? ""
+                            : activePendingProgress
+                              ? activePendingProgress.customAnswer
+                              : prompt
+                        }
+                        cursor={composerCursor}
+                        terminalContexts={
+                          !isComposerApprovalState && pendingUserInputs.length === 0
+                            ? composerTerminalContexts
+                            : []
+                        }
+                        mentionReferences={selectedComposerMentions}
+                        onRemoveTerminalContext={removeComposerTerminalContextFromDraft}
+                        onChange={onPromptChange}
+                        onCommandKeyDown={onComposerCommandKey}
+                        onPaste={onComposerPaste}
+                        {...(canCollapsePastedTextToDraft
+                          ? { onCollapsePastedText: addPastedTextToDraft }
+                          : {})}
+                        placeholder={
+                          isComposerApprovalState
+                            ? "Resolve this approval request to continue"
+                            : activePendingProgress
+                              ? activePendingProgress.activeQuestion?.options.length === 0
+                                ? "Type your answer to continue"
+                                : "Type your own answer, or leave this blank to use the selected option"
+                              : showPlanFollowUpPrompt && activeProposedPlan
+                                ? "Add feedback to refine the plan, or leave this blank to implement it"
+                                : hasLiveTurn
+                                  ? "Ask for follow-up changes"
+                                  : phase === "disconnected"
+                                    ? "Ask for follow-up changes or attach images"
+                                    : "Ask anything, @tag files/folders, or use / to show available commands"
+                        }
+                        disabled={isConnecting || isComposerApprovalState}
+                      />
+                    </div>
+                    {!isComposerApprovalState ? composerRightActions : null}
+                  </div>
                 </div>
                 {/* Bottom toolbar */}
                 {activePendingApproval ? (
@@ -9563,7 +9557,7 @@ export default function ChatView({
                       onRespondToApproval={onRespondToApproval}
                     />
                   </div>
-                ) : (
+                ) : showComposerFooterLeading ? (
                   <div
                     data-chat-composer-footer="true"
                     className={cn(
@@ -9585,10 +9579,6 @@ export default function ChatView({
                             : "min-w-0 flex-1 gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:min-w-max sm:overflow-visible",
                       )}
                     >
-                      {relocateComposerLeadingControls
-                        ? null
-                        : renderComposerLeadingControls({ iconOnly: false })}
-
                       {!isVoiceRecording && !isVoiceTranscribing ? (
                         <>
                           {interactionMode === "plan" ? (
@@ -9624,221 +9614,8 @@ export default function ChatView({
                         </>
                       ) : null}
                     </div>
-
-                    <div
-                      data-chat-composer-actions="right"
-                      className={cn(
-                        "flex items-center gap-2",
-                        isVoiceRecording || isVoiceTranscribing ? "min-w-0 flex-1" : "shrink-0",
-                      )}
-                    >
-                      {isPreparingWorktree ? (
-                        <span className="text-[length:var(--app-font-size-ui-xs,10px)] text-[var(--color-text-foreground-secondary)]">
-                          Preparing worktree...
-                        </span>
-                      ) : null}
-                      {!isVoiceRecording &&
-                      !isVoiceTranscribing &&
-                      runtimeUsageContextWindow &&
-                      composerFooterControlsPlan.showContextMeter ? (
-                        <ContextWindowMeter
-                          usage={runtimeUsageContextWindow}
-                          {...(activeCumulativeCostUsd != null
-                            ? { cumulativeCostUsd: activeCumulativeCostUsd }
-                            : {})}
-                          {...(contextWindowSelectionStatus.activeLabel !== undefined
-                            ? {
-                                activeWindowLabel: contextWindowSelectionStatus.activeLabel,
-                              }
-                            : {})}
-                          {...(contextWindowSelectionStatus.pendingSelectedLabel !== undefined
-                            ? {
-                                pendingWindowLabel:
-                                  contextWindowSelectionStatus.pendingSelectedLabel,
-                              }
-                            : {})}
-                        />
-                      ) : null}
-                      {!isVoiceRecording && !isVoiceTranscribing ? composerPickerControls : null}
-                      {showVoiceNotesControl && (isVoiceRecording || isVoiceTranscribing) ? (
-                        <ComposerVoiceRecorderBar
-                          disabled={isComposerApprovalState || isConnecting || isSendBusy}
-                          isRecording={isVoiceRecording}
-                          isTranscribing={isVoiceTranscribing}
-                          durationLabel={voiceRecordingDurationLabel}
-                          waveformLevels={voiceWaveformLevels}
-                          onCancel={() => {
-                            if (isVoiceRecording) {
-                              void submitComposerVoiceRecording();
-                              return;
-                            }
-                            cancelComposerVoiceRecording();
-                          }}
-                          onSubmit={() => {
-                            void submitComposerVoiceRecording();
-                          }}
-                        />
-                      ) : null}
-                      {activePendingProgress ? (
-                        <div className="flex items-center gap-2">
-                          {activePendingProgress.questionIndex > 0 ? (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="rounded-full"
-                              onClick={onPreviousActivePendingUserInputQuestion}
-                              disabled={activePendingIsResponding}
-                            >
-                              Previous
-                            </Button>
-                          ) : null}
-                          <Button
-                            type="submit"
-                            size="sm"
-                            className="rounded-full px-4"
-                            disabled={
-                              activePendingIsResponding ||
-                              (activePendingProgress.isLastQuestion
-                                ? !activePendingResolvedAnswers
-                                : !activePendingProgress.canAdvance)
-                            }
-                          >
-                            {activePendingIsResponding
-                              ? "Submitting..."
-                              : activePendingProgress.isLastQuestion
-                                ? "Submit answers"
-                                : "Next question"}
-                          </Button>
-                        </div>
-                      ) : phase === "running" ? (
-                        <Button
-                          type="button"
-                          variant="prominent"
-                          size="icon-xs"
-                          className="sm:size-[26px]"
-                          onClick={() => void onInterrupt()}
-                          aria-label="Stop generation"
-                          title="Stop the current response. On Mac, press Ctrl+C to interrupt."
-                        >
-                          <span
-                            aria-hidden="true"
-                            className="block size-2 rounded-[2px] bg-current"
-                          />
-                        </Button>
-                      ) : pendingUserInputs.length === 0 &&
-                        !isVoiceRecording &&
-                        !isVoiceTranscribing ? (
-                        showPlanFollowUpPrompt ? (
-                          prompt.trim().length > 0 ? (
-                            <Button
-                              type="submit"
-                              size="sm"
-                              className="h-9 rounded-full px-4 sm:h-8"
-                              disabled={isSendBusy || isConnecting}
-                            >
-                              {isConnecting || isSendBusy ? "Sending..." : "Refine"}
-                            </Button>
-                          ) : (
-                            <div className="flex items-center">
-                              <Button
-                                type="submit"
-                                size="sm"
-                                className="h-9 rounded-l-full rounded-r-none px-4 sm:h-8"
-                                disabled={isSendBusy || isConnecting}
-                              >
-                                {isConnecting || isSendBusy ? "Sending..." : "Implement"}
-                              </Button>
-                              <Menu>
-                                <MenuTrigger
-                                  render={
-                                    <Button
-                                      size="sm"
-                                      variant="default"
-                                      className="h-9 rounded-l-none rounded-r-full border-l-white/12 px-2 sm:h-8"
-                                      aria-label="Implementation actions"
-                                      disabled={isSendBusy || isConnecting}
-                                    />
-                                  }
-                                >
-                                  <ChevronDownIcon className="size-3.5" />
-                                </MenuTrigger>
-                                <MenuPopup align="end" side="top">
-                                  <MenuItem
-                                    disabled={isSendBusy || isConnecting}
-                                    onClick={() => void onImplementPlanInNewThread()}
-                                  >
-                                    Implement in a new thread
-                                  </MenuItem>
-                                </MenuPopup>
-                              </Menu>
-                            </div>
-                          )
-                        ) : (
-                          <>
-                            {showVoiceNotesControl ? (
-                              <ComposerVoiceButton
-                                disabled={isComposerApprovalState || isConnecting || isSendBusy}
-                                isRecording={isVoiceRecording}
-                                isTranscribing={isVoiceTranscribing}
-                                durationLabel={voiceRecordingDurationLabel}
-                                onClick={toggleComposerVoiceRecording}
-                              />
-                            ) : null}
-                            <Button
-                              type="submit"
-                              variant="prominent"
-                              size="icon-xs"
-                              className="size-7 rounded-full sm:size-7"
-                              disabled={
-                                isSendBusy ||
-                                isConnecting ||
-                                isVoiceTranscribing ||
-                                !composerSendState.hasSendableContent
-                              }
-                              aria-label={
-                                isConnecting
-                                  ? "Connecting"
-                                  : isVoiceTranscribing
-                                    ? "Transcribing voice note"
-                                    : isPreparingWorktree
-                                      ? "Preparing worktree"
-                                      : isSendBusy
-                                        ? "Sending"
-                                        : "Send message"
-                              }
-                            >
-                              {isSendBusy ? (
-                                <svg
-                                  width="12"
-                                  height="12"
-                                  viewBox="0 0 14 14"
-                                  fill="none"
-                                  className="animate-spin"
-                                  aria-hidden="true"
-                                >
-                                  <circle
-                                    cx="7"
-                                    cy="7"
-                                    r="5.5"
-                                    stroke="currentColor"
-                                    strokeWidth="1.5"
-                                    strokeLinecap="round"
-                                    strokeDasharray="20 12"
-                                  />
-                                </svg>
-                              ) : (
-                                <ComposerSendArrowIcon
-                                  aria-hidden="true"
-                                  className="size-5 shrink-0"
-                                />
-                              )}
-                            </Button>
-                          </>
-                        )
-                      ) : null}
-                    </div>
                   </div>
-                )}
+                ) : null}
               </div>
             </div>
           </ComposerColumnFrame>
@@ -10059,7 +9836,7 @@ export default function ChatView({
                       CHAT_COLUMN_FRAME_CLASS_NAME,
                     )}
                   >
-                    <CTCodeLogo aria-label="CTCode logo" className="size-10" />
+                    <img src="/fcode-ghost.png" alt="FCode logo" className="size-10" />
                     <h2 className="text-[26px] font-normal leading-[1.15] tracking-[-0.015em] text-foreground/95 sm:text-[30px]">
                       {isEmptyChatLanding ? (
                         "What should we work on?"
@@ -10081,7 +9858,7 @@ export default function ChatView({
                       <div className="flex w-full items-center gap-1">
                         {relocateComposerLeadingControls ? (
                           <div className="flex shrink-0 items-center gap-1 pl-1">
-                            {renderComposerLeadingControls({ iconOnly: true })}
+                            {renderComposerLeadingControls()}
                           </div>
                         ) : null}
                         {isGitRepo && !environmentEnabled && !isCenteredEmptyLanding ? (
@@ -10089,18 +9866,6 @@ export default function ChatView({
                         ) : null}
                       </div>
                     </div>
-                  ) : null}
-                  {showComposerSuggestions ? (
-                    <DisclosureRegion
-                      open={composerSuggestionsOpen}
-                      className={COMPOSER_COLUMN_FRAME_CLASS_NAME}
-                      contentClassName="pt-5"
-                    >
-                      <ComposerSuggestions
-                        suggestions={composerSuggestions}
-                        onSelectSuggestion={onSelectComposerSuggestion}
-                      />
-                    </DisclosureRegion>
                   ) : null}
                 </div>
               </div>
@@ -10135,6 +9900,7 @@ export default function ChatView({
                     onExpandTimelineImage={onExpandTimelineImage}
                     followLiveOutput={hasStreamingAssistantText}
                     onIsAtEndChange={onIsAtEndChange}
+                    onPinnedToTopChange={onPinnedToTopChange}
                     markdownCwd={threadWorkspaceCwd ?? undefined}
                     resolvedTheme={resolvedTheme}
                     chatFontSizePx={settings.chatFontSizePx}
@@ -10196,7 +9962,7 @@ export default function ChatView({
                       <div className="flex w-full items-center gap-1">
                         {relocateComposerLeadingControls ? (
                           <div className="flex shrink-0 items-center gap-1 pl-1">
-                            {renderComposerLeadingControls({ iconOnly: true })}
+                            {renderComposerLeadingControls()}
                           </div>
                         ) : null}
                         {isGitRepo && !environmentEnabled ? (

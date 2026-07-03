@@ -61,6 +61,7 @@ interface ChatTranscriptPaneProps {
   onMessagesTouchStart: TouchEventHandler<HTMLDivElement>;
   onMessagesWheel: WheelEventHandler<HTMLDivElement>;
   onIsAtEndChange: (isAtEnd: boolean) => void;
+  onPinnedToTopChange?: ComponentProps<typeof MessagesTimeline>["onPinnedToTopChange"];
   onCloseAgentActivityDetail?: () => void;
   onOpenAgentActivity?: ComponentProps<typeof MessagesTimeline>["onOpenAgentActivity"];
   onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void;
@@ -115,6 +116,7 @@ export const ChatTranscriptPane = memo(function ChatTranscriptPane({
   onMessagesTouchStart,
   onMessagesWheel,
   onIsAtEndChange,
+  onPinnedToTopChange,
   onCloseAgentActivityDetail,
   onOpenAgentActivity,
   onOpenTurnDiff,
@@ -185,6 +187,7 @@ export const ChatTranscriptPane = memo(function ChatTranscriptPane({
             onImageExpand={onExpandTimelineImage}
             followLiveOutput={followLiveOutput}
             onIsAtEndChange={onIsAtEndChange}
+            {...(onPinnedToTopChange ? { onPinnedToTopChange } : {})}
             onMessagesScroll={onMessagesScroll}
             onMessagesClickCapture={onMessagesClickCapture}
             onMessagesMouseUp={onMessagesMouseUp}

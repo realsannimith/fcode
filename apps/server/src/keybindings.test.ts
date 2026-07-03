@@ -596,6 +596,45 @@ it.layer(NodeServices.layer)("keybindings", (it) => {
       }).pipe(Effect.provide(makeKeybindingsLayer())),
   );
 
+  it.effect(
+    "backfills a newly-added default chord for a command whose other default already exists",
+    () =>
+      Effect.gen(function* () {
+        const { keybindingsConfigPath } = yield* ServerConfig;
+        // A config seeded by an older build: terminal.splitDown is present via the shipped
+        // arrow-variant default, but the ⌘⇧D letter chord added to the defaults later is
+        // missing. The by-command backfill used to skip it because the command already had
+        // a binding; it must now be backfilled since the command is otherwise untouched.
+        yield* writeKeybindingsConfig(keybindingsConfigPath, [
+          { key: "mod+shift+arrowdown", command: "terminal.splitDown", when: "terminalFocus" },
+        ]);
+
+        yield* Effect.gen(function* () {
+          const keybindings = yield* Keybindings;
+          yield* keybindings.syncDefaultKeybindingsOnStartup;
+        });
+
+        const persisted = yield* readKeybindingsConfig(keybindingsConfigPath);
+        // The letter chord is backfilled with its shipped guard...
+        assert.isTrue(
+          persisted.some(
+            (entry) =>
+              entry.key === "mod+shift+d" &&
+              entry.command === "terminal.splitDown" &&
+              entry.when === "terminalOpen",
+          ),
+        );
+        // ...without dropping or duplicating the arrow variant the config already had.
+        assert.equal(
+          persisted.filter(
+            (entry) =>
+              entry.key === "mod+shift+arrowdown" && entry.command === "terminal.splitDown",
+          ).length,
+          1,
+        );
+      }).pipe(Effect.provide(makeKeybindingsLayer())),
+  );
+
   it.effect("skips conflicting default keybindings on startup and logs a detailed warning", () => {
     const messages: string[] = [];
     const logger = Logger.make(({ message }) => {

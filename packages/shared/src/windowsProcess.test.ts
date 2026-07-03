@@ -34,7 +34,7 @@ describe("windowsProcess", () => {
     expect(
       resolveWindowsCommandPath("codex", {
         platform: "win32",
-        cwd: "C:\\projects\\ctcode",
+        cwd: "C:\\projects\\fcode",
         env: { SystemRoot: "C:\\Windows" },
         spawnSync,
       }),
@@ -49,7 +49,7 @@ describe("windowsProcess", () => {
   it("skips current-directory command hits from where.exe", () => {
     const spawnSync = vi.fn(() => ({
       stdout: [
-        "C:\\projects\\ctcode\\codex.cmd",
+        "C:\\projects\\fcode\\codex.cmd",
         "C:\\Users\\test\\AppData\\Roaming\\npm\\codex.cmd",
       ].join("\r\n"),
       status: 0,
@@ -58,7 +58,7 @@ describe("windowsProcess", () => {
     expect(
       resolveWindowsCommandPath("codex", {
         platform: "win32",
-        cwd: "C:\\projects\\ctcode",
+        cwd: "C:\\projects\\fcode",
         env: { SystemRoot: "C:\\Windows" },
         spawnSync,
       }),
@@ -66,10 +66,10 @@ describe("windowsProcess", () => {
   });
 
   it("uses process.cwd for current-directory filtering when cwd is omitted", () => {
-    vi.spyOn(process, "cwd").mockReturnValue("C:\\projects\\ctcode");
+    vi.spyOn(process, "cwd").mockReturnValue("C:\\projects\\fcode");
     const spawnSync = vi.fn(() => ({
       stdout: [
-        "C:\\projects\\ctcode\\codex.cmd",
+        "C:\\projects\\fcode\\codex.cmd",
         "C:\\Users\\test\\AppData\\Roaming\\npm\\codex.cmd",
       ].join("\r\n"),
       status: 0,
@@ -85,7 +85,7 @@ describe("windowsProcess", () => {
     expect(spawnSync).toHaveBeenCalledWith(
       "C:\\Windows\\System32\\where.exe",
       ["codex"],
-      expect.objectContaining({ cwd: "C:\\projects\\ctcode" }),
+      expect.objectContaining({ cwd: "C:\\projects\\fcode" }),
     );
   });
 
@@ -98,7 +98,7 @@ describe("windowsProcess", () => {
     expect(
       resolveWindowsCommandPath("C:\\Users\\test\\AppData\\Roaming\\npm\\codex", {
         platform: "win32",
-        cwd: "C:\\projects\\ctcode",
+        cwd: "C:\\projects\\fcode",
         env: { SystemRoot: "C:\\Windows" },
         spawnSync,
       }),
@@ -116,7 +116,7 @@ describe("windowsProcess", () => {
     expect(
       resolveWindowsCommandPath("C:\\Users\\test\\AppData\\Roaming\\npm\\codex.cmd", {
         platform: "win32",
-        cwd: "C:\\projects\\ctcode",
+        cwd: "C:\\projects\\fcode",
         env: { SystemRoot: "C:\\Windows" },
         spawnSync,
       }),
@@ -124,7 +124,7 @@ describe("windowsProcess", () => {
     expect(
       resolveWindowsCommandPath("C:\\Program Files\\Codex\\codex.exe", {
         platform: "win32",
-        cwd: "C:\\projects\\ctcode",
+        cwd: "C:\\projects\\fcode",
         env: { SystemRoot: "C:\\Windows" },
         spawnSync,
       }),
@@ -141,7 +141,7 @@ describe("windowsProcess", () => {
     expect(
       prepareWindowsSafeProcess("codex", ["app-server"], {
         platform: "win32",
-        cwd: "C:\\projects\\ctcode",
+        cwd: "C:\\projects\\fcode",
         env: { ComSpec: "C:\\Windows\\System32\\cmd.exe", SystemRoot: "C:\\Windows" },
         spawnSync,
       }),
@@ -168,7 +168,7 @@ describe("windowsProcess", () => {
     expect(
       prepareWindowsSafeProcess("C:\\Users\\test\\AppData\\Roaming\\npm\\codex", ["app-server"], {
         platform: "win32",
-        cwd: "C:\\projects\\ctcode",
+        cwd: "C:\\projects\\fcode",
         env: { ComSpec: "C:\\Windows\\System32\\cmd.exe", SystemRoot: "C:\\Windows" },
         spawnSync,
       }),
@@ -233,7 +233,7 @@ describe("windowsProcess", () => {
     expect(
       prepareWindowsSafeProcess("codex", ["--version"], {
         platform: "win32",
-        cwd: "C:\\projects\\ctcode",
+        cwd: "C:\\projects\\fcode",
         env: { SystemRoot: "C:\\Windows" },
         spawnSync,
       }),

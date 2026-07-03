@@ -7,8 +7,9 @@ import type { CSSProperties } from "react";
 import { DEFAULT_CHAT_FONT_SIZE_PX, normalizeChatFontSizePx } from "../../appSettings";
 
 export const USER_MESSAGE_BUBBLE_RADIUS_CLASS_NAME = "rounded-[var(--radius-user-message)]";
-export const USER_MESSAGE_BUBBLE_SHELL_PADDING_CLASS_NAME = "py-[8px]";
-export const USER_MESSAGE_BUBBLE_SHELL_HORIZONTAL_PADDING_CLASS_NAME = "px-3.5";
+// Airier than the prior py-[8px]/px-3.5 to match the target's soft, padded bubbles.
+export const USER_MESSAGE_BUBBLE_SHELL_PADDING_CLASS_NAME = "py-2.5";
+export const USER_MESSAGE_BUBBLE_SHELL_HORIZONTAL_PADDING_CLASS_NAME = "px-4";
 export const USER_MESSAGE_BUBBLE_SHELL_CHROME_CLASS_NAME = [
   USER_MESSAGE_BUBBLE_SHELL_HORIZONTAL_PADDING_CLASS_NAME,
   USER_MESSAGE_BUBBLE_SHELL_PADDING_CLASS_NAME,

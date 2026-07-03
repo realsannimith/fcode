@@ -8,7 +8,7 @@ import { clampThreadNotes } from "@t3tools/shared/pinnedMessages";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
-const PROJECT_INSTRUCTIONS_STORAGE_KEY = "ctcode:project-instructions:v1";
+const PROJECT_INSTRUCTIONS_STORAGE_KEY = "fcode:project-instructions:v1";
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");

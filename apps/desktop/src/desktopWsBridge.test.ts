@@ -1,5 +1,5 @@
 // FILE: desktopWsBridge.test.ts
-// Purpose: Verifies desktop WebSocket URL resolution prefers CTCode env names with legacy fallback.
+// Purpose: Verifies desktop WebSocket URL resolution prefers FCode env names with legacy fallback.
 
 import { describe, expect, it } from "vitest";
 
@@ -17,14 +17,14 @@ describe("desktopWsBridge", () => {
     expect(normalizeDesktopWsUrl(null)).toBeNull();
   });
 
-  it("prefers CTCODE_DESKTOP_WS_URL over legacy desktop URL env names", () => {
+  it("prefers FCODE_DESKTOP_WS_URL over legacy desktop URL env names", () => {
     expect(
       resolveDesktopWsUrlFromEnv({
-        CTCODE_DESKTOP_WS_URL: "ws://127.0.0.1:6000/?token=ctcode",
+        FCODE_DESKTOP_WS_URL: "ws://127.0.0.1:6000/?token=fcode",
         DPCODE_DESKTOP_WS_URL: "ws://127.0.0.1:5000/?token=dp",
         T3CODE_DESKTOP_WS_URL: "ws://127.0.0.1:3773/?token=legacy",
       } as NodeJS.ProcessEnv),
-    ).toBe("ws://127.0.0.1:6000/?token=ctcode");
+    ).toBe("ws://127.0.0.1:6000/?token=fcode");
   });
 
   it("falls back to DPCODE_DESKTOP_WS_URL for older launchers", () => {

@@ -827,7 +827,7 @@ it.layer(TestLayer)("git integration", (it) => {
 
         const stashList = yield* git(tmp, ["stash", "list"]);
         expect(stashList).toContain("pre-existing stash");
-        expect(stashList).not.toContain("ctcode: stash before switching to feature");
+        expect(stashList).not.toContain("fcode: stash before switching to feature");
         expect(yield* readTextFile(path.join(tmp, "README.md"))).toBe("dirty changes\n");
       }),
     );
@@ -857,7 +857,7 @@ it.layer(TestLayer)("git integration", (it) => {
         expect(yield* readTextFile(path.join(tmp, "README.md"))).toBe("conflicting content\n");
         expect((yield* git(tmp, ["status", "--short"])).trim()).toBe("");
         expect(yield* git(tmp, ["stash", "list"])).toContain(
-          "ctcode: stash before switching to conflicting",
+          "fcode: stash before switching to conflicting",
         );
       }),
     );
@@ -1478,12 +1478,12 @@ it.layer(TestLayer)("git integration", (it) => {
           yield* initRepoWithCommit(tmp);
           const core = yield* GitCore;
 
-          yield* git(tmp, ["remote", "add", "origin", "git@github.com:pingdotgg/t3code.git"]);
+          yield* git(tmp, ["remote", "add", "origin", "git@github.com:example/fcode.git"]);
 
           const remoteName = yield* core.ensureRemote({
             cwd: tmp,
             preferredName: "origin",
-            url: "git@github.com:pingdotgg/t3code.git/",
+            url: "git@github.com:example/fcode.git/",
           });
 
           expect(remoteName).toBe("origin");

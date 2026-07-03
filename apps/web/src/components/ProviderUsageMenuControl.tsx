@@ -19,6 +19,7 @@ import { createAllThreadsSelector } from "~/storeSelectors";
 import { ComposerPickerMenuPopup } from "./chat/ComposerPickerMenuPopup";
 import { ChatHeaderButton } from "./chat/chatHeaderControls";
 import { ProviderIcon } from "./ProviderIcon";
+import { ProviderUsageDetailCard } from "./ProviderUsageDetailCard";
 import { ProviderUsagePanelContent } from "./ProviderUsagePanelContent";
 import { Menu, MenuTrigger } from "./ui/menu";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
@@ -29,6 +30,7 @@ export interface ProviderUsageMenuModel {
   rateLimits: ReadonlyArray<ProviderRateLimit>;
   usageLines: ReadonlyArray<OpenUsageUsageLine>;
   isLoading: boolean;
+  learnMoreHref?: string | null | undefined;
 }
 
 export function useProviderUsageMenuModel(provider: ProviderKind): ProviderUsageMenuModel | null {
@@ -64,27 +66,45 @@ export function ProviderUsageMenuPopup({
   model,
   align = "end",
   side = "bottom",
+  variant = "compact",
   children,
 }: {
   provider: ProviderKind;
   model: ProviderUsageMenuModel;
   align?: "start" | "end";
   side?: "top" | "bottom" | "left" | "right";
+  // "compact": the terse chat-header/env popover. "card": the OpenUsage-style
+  // expanded detail used by the sidebar usage chips.
+  variant?: "compact" | "card";
   children: ReactNode;
 }) {
   return (
     <Menu modal={false}>
       {children}
-      <ComposerPickerMenuPopup align={align} side={side} className="w-64 min-w-64">
-        <ProviderUsagePanelContent
-          provider={provider}
-          rateLimits={model.rateLimits}
-          usageLines={model.usageLines}
-          isLoading={model.isLoading}
-          showUsageLines={false}
-          showTitle={false}
-          className="px-2 pb-1 pt-1"
-        />
+      <ComposerPickerMenuPopup
+        align={align}
+        side={side}
+        className={variant === "card" ? "w-auto min-w-0 p-0" : "w-64 min-w-64"}
+      >
+        {variant === "card" ? (
+          <ProviderUsageDetailCard
+            provider={provider}
+            rows={deriveProviderUsageDisplayRows(model.rateLimits)}
+            usageLines={model.usageLines}
+            learnMoreHref={model.learnMoreHref}
+            isLoading={model.isLoading}
+          />
+        ) : (
+          <ProviderUsagePanelContent
+            provider={provider}
+            rateLimits={model.rateLimits}
+            usageLines={model.usageLines}
+            isLoading={model.isLoading}
+            showUsageLines={false}
+            showTitle={false}
+            className="px-2 pb-1 pt-1"
+          />
+        )}
       </ComposerPickerMenuPopup>
     </Menu>
   );

@@ -5,23 +5,26 @@
 
 import * as FS from "node:fs";
 import * as Net from "node:net";
-import * as OS from "node:os";
 import * as Path from "node:path";
 
 import type { BrowserExecuteCdpInput, ThreadBrowserState, ThreadId } from "@t3tools/contracts";
+import {
+  codexBrowserUsePipeScanRoot,
+  decodeBrowserUsePipeFrames,
+  DPCODE_BROWSER_USE_PIPE_ENV,
+  encodeBrowserUsePipeFrame,
+  FCODE_BROWSER_USE_PIPE_ENV,
+  readBrowserUsePipePathFromEnv,
+  T3CODE_BROWSER_USE_PIPE_ENV,
+} from "@t3tools/shared/browserUsePipe";
 
 import type { DesktopBrowserManager } from "./browserManager";
 
-const BROWSER_USE_HEADER_BYTES = 4;
-const BROWSER_USE_MAX_MESSAGE_BYTES = 8 * 1024 * 1024;
 const BROWSER_USE_INITIAL_URL = "about:blank";
 const BROWSER_USE_PANEL_READY_TIMEOUT_MS = 2_000;
 const BROWSER_USE_PANEL_READY_POLL_MS = 50;
-const BROWSER_USE_PIPE_DIR = "codex-browser-use";
-const BROWSER_USE_PIPE_NAME_PREFIX = "ctcode-iab";
-export const CTCODE_BROWSER_USE_PIPE_ENV = "CTCODE_BROWSER_USE_PIPE_PATH";
-export const DPCODE_BROWSER_USE_PIPE_ENV = "DPCODE_BROWSER_USE_PIPE_PATH";
-export const T3CODE_BROWSER_USE_PIPE_ENV = "T3CODE_BROWSER_USE_PIPE_PATH";
+const BROWSER_USE_PIPE_NAME_PREFIX = "fcode-iab";
+export { DPCODE_BROWSER_USE_PIPE_ENV, FCODE_BROWSER_USE_PIPE_ENV, T3CODE_BROWSER_USE_PIPE_ENV };
 
 type BrowserUseRpcId = string | number;
 
@@ -42,14 +45,43 @@ interface BrowserUsePipeServerOptions {
   requestOpenPanel?: () => void | Promise<void>;
 }
 
+// The socket must live under the Codex plugin's fixed scan root (it readdir-scans
+// the directory on unix and matches the pipe-name prefix on Windows); putting it
+// under os.tmpdir() would hide it from Codex sessions on macOS.
 export function resolveDefaultBrowserUsePipePath(platform = process.platform): string {
   if (platform === "win32") {
-    return String.raw`\\.\pipe\codex-browser-use-${BROWSER_USE_PIPE_NAME_PREFIX}-${process.pid}`;
+    return `${codexBrowserUsePipeScanRoot(platform)}-${BROWSER_USE_PIPE_NAME_PREFIX}-${process.pid}`;
   }
   return Path.join(
-    OS.tmpdir(),
-    BROWSER_USE_PIPE_DIR,
+    codexBrowserUsePipeScanRoot(platform),
     `${BROWSER_USE_PIPE_NAME_PREFIX}-${process.pid}.sock`,
+  );
+}
+
+// Sweeps dead per-process sockets left in the shared scan root by crashed or
+// force-quit instances, so pipe scans don't keep dialing corpses.
+export async function cleanupStaleBrowserUsePipeSockets(
+  platform = process.platform,
+): Promise<void> {
+  if (platform === "win32") {
+    return;
+  }
+  const scanRoot = codexBrowserUsePipeScanRoot(platform);
+  let entries: string[];
+  try {
+    entries = FS.readdirSync(scanRoot);
+  } catch {
+    return;
+  }
+  await Promise.all(
+    entries
+      .filter((entry) => entry.startsWith(`${BROWSER_USE_PIPE_NAME_PREFIX}-`))
+      .map(async (entry) => {
+        const socketPath = Path.join(scanRoot, entry);
+        if (!(await isBrowserUsePipeInUse(socketPath))) {
+          cleanupPipePath(socketPath);
+        }
+      }),
   );
 }
 
@@ -57,15 +89,26 @@ export function resolveConfiguredBrowserUsePipePath(
   env: NodeJS.ProcessEnv = process.env,
   platform = process.platform,
 ): string {
-  const configured =
-    env[CTCODE_BROWSER_USE_PIPE_ENV]?.trim() ||
-    env[DPCODE_BROWSER_USE_PIPE_ENV]?.trim() ||
-    env[T3CODE_BROWSER_USE_PIPE_ENV]?.trim();
-  return configured || resolveDefaultBrowserUsePipePath(platform);
+  return readBrowserUsePipePathFromEnv(env) ?? resolveDefaultBrowserUsePipePath(platform);
 }
 
-export const CTCODE_BROWSER_USE_PIPE_PATH = resolveConfiguredBrowserUsePipePath();
-export const DPCODE_BROWSER_USE_PIPE_PATH = CTCODE_BROWSER_USE_PIPE_PATH;
+// Probes whether another server (e.g. the official Codex desktop app) is
+// already listening on a pipe path, so we can share fixed well-known paths
+// without unlinking a live socket out from under its owner.
+export function isBrowserUsePipeInUse(pipePath: string): Promise<boolean> {
+  return new Promise<boolean>((resolve) => {
+    const socket = Net.createConnection(pipePath);
+    const settle = (inUse: boolean) => {
+      socket.destroy();
+      resolve(inUse);
+    };
+    socket.once("connect", () => settle(true));
+    socket.once("error", () => settle(false));
+  });
+}
+
+export const FCODE_BROWSER_USE_PIPE_PATH = resolveConfiguredBrowserUsePipePath();
+export const DPCODE_BROWSER_USE_PIPE_PATH = FCODE_BROWSER_USE_PIPE_PATH;
 
 function asObject(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -88,41 +131,6 @@ function requireSessionId(params: unknown): string {
     throw new Error("Missing required browser session_id");
   }
   return sessionId;
-}
-
-function encodeBrowserUseFrame(message: unknown): Buffer {
-  const payload = Buffer.from(JSON.stringify(message), "utf8");
-  const header = Buffer.alloc(BROWSER_USE_HEADER_BYTES);
-  if (OS.endianness() === "LE") {
-    header.writeUInt32LE(payload.length, 0);
-  } else {
-    header.writeUInt32BE(payload.length, 0);
-  }
-  return Buffer.concat([header, payload]);
-}
-
-function decodeBrowserUseFrames(buffer: Buffer): { messages: string[]; remaining: Buffer } | null {
-  let offset = 0;
-  const messages: string[] = [];
-  while (buffer.length - offset >= BROWSER_USE_HEADER_BYTES) {
-    const messageLength =
-      OS.endianness() === "LE" ? buffer.readUInt32LE(offset) : buffer.readUInt32BE(offset);
-    if (messageLength > BROWSER_USE_MAX_MESSAGE_BYTES) {
-      return null;
-    }
-    const frameLength = BROWSER_USE_HEADER_BYTES + messageLength;
-    if (buffer.length - offset < frameLength) {
-      break;
-    }
-    messages.push(
-      buffer.subarray(offset + BROWSER_USE_HEADER_BYTES, offset + frameLength).toString("utf8"),
-    );
-    offset += frameLength;
-  }
-  return {
-    messages,
-    remaining: buffer.subarray(offset),
-  };
 }
 
 function ensurePipeParentDirectory(pipePath: string): void {
@@ -162,10 +170,10 @@ export class BrowserUsePipeServer {
 
   constructor(
     private readonly browserManager: DesktopBrowserManager,
-    options: BrowserUsePipeServerOptions | string = CTCODE_BROWSER_USE_PIPE_PATH,
+    options: BrowserUsePipeServerOptions | string = FCODE_BROWSER_USE_PIPE_PATH,
   ) {
     this.pipePath =
-      typeof options === "string" ? options : (options.pipePath ?? CTCODE_BROWSER_USE_PIPE_PATH);
+      typeof options === "string" ? options : (options.pipePath ?? FCODE_BROWSER_USE_PIPE_PATH);
     this.requestOpenPanel = typeof options === "string" ? undefined : options.requestOpenPanel;
     this.server = Net.createServer((socket) => this.handleSocketConnection(socket));
   }
@@ -221,7 +229,7 @@ export class BrowserUsePipeServer {
   }
 
   private handleSocketData(socket: Net.Socket, chunk: Buffer): void {
-    const decoded = decodeBrowserUseFrames(
+    const decoded = decodeBrowserUsePipeFrames(
       Buffer.concat([this.pendingBySocket.get(socket) ?? Buffer.alloc(0), chunk]),
     );
     if (!decoded) {
@@ -249,10 +257,10 @@ export class BrowserUsePipeServer {
 
     try {
       const result = await this.handleRequest(request.method, request.params);
-      socket.write(encodeBrowserUseFrame({ jsonrpc: "2.0", id: request.id, result }));
+      socket.write(encodeBrowserUsePipeFrame({ jsonrpc: "2.0", id: request.id, result }));
     } catch (error) {
       socket.write(
-        encodeBrowserUseFrame({
+        encodeBrowserUsePipeFrame({
           jsonrpc: "2.0",
           id: request.id,
           error: {
@@ -271,7 +279,7 @@ export class BrowserUsePipeServer {
       case "getInfo":
         const sessionId = asString(asObject(params)?.session_id);
         return {
-          name: "CTCode In-app Browser",
+          name: "FCode In-app Browser",
           version: "0.1.0",
           type: "iab",
           ...(sessionId ? { metadata: { codexSessionId: sessionId } } : {}),
@@ -308,12 +316,29 @@ export class BrowserUsePipeServer {
     return snapshot;
   }
 
+  // The workspace outlives its panel (hide() keeps `state.open` so tabs
+  // survive), so agent activity can otherwise drive a browser nobody sees.
+  // Opening is renderer-idempotent: a hidden panel pops back, a visible one
+  // is untouched.
+  private surfacePanelIfHidden(threadId: ThreadId): void {
+    if (this.browserManager.isThreadVisiblyPresented(threadId)) {
+      return;
+    }
+    void Promise.resolve(this.requestOpenPanel?.()).catch(() => undefined);
+  }
+
+  // Resolves the workspace agent sessions should drive: the one whose panel
+  // the user can see. A hidden-but-open workspace (its thread was left for
+  // another chat) must not silently host new work, so when nothing is visible
+  // this summons the panel — which mounts on the focused thread — and waits
+  // for it. The hidden workspace is only the fallback when no panel can
+  // appear at all (e.g. the window is gone).
   private async waitForActiveBrowserHostState(): Promise<{
     threadId: ThreadId;
     state: ThreadBrowserState;
   } | null> {
     const existing = this.getActiveBrowserHostState();
-    if (existing) {
+    if (existing && this.browserManager.isThreadVisiblyPresented(existing.threadId)) {
       return existing;
     }
 
@@ -321,12 +346,12 @@ export class BrowserUsePipeServer {
     const deadline = Date.now() + BROWSER_USE_PANEL_READY_TIMEOUT_MS;
     while (Date.now() < deadline) {
       const snapshot = this.getActiveBrowserHostState();
-      if (snapshot) {
+      if (snapshot && this.browserManager.isThreadVisiblyPresented(snapshot.threadId)) {
         return snapshot;
       }
       await new Promise((resolve) => setTimeout(resolve, BROWSER_USE_PANEL_READY_POLL_MS));
     }
-    return null;
+    return this.getActiveBrowserHostState();
   }
 
   private trackTab(threadId: ThreadId, tabId: string): BrowserUseTrackedTab {
@@ -346,13 +371,19 @@ export class BrowserUsePipeServer {
     return tracked;
   }
 
-  private getTabsForSession(sessionId: string): Array<{
-    id: number;
-    title: string;
-    active: boolean;
-    url: string;
-  }> {
-    const snapshot = this.getActiveBrowserHostState();
+  // Listing tabs is the prelude to driving them (sessions re-validate their
+  // attachment against this list), so it resolves the host the same way
+  // createTab does — summoning the panel when none is visible — instead of
+  // reporting a hidden workspace's tabs as if the user could see them.
+  private async getTabsForSession(sessionId: string): Promise<
+    Array<{
+      id: number;
+      title: string;
+      active: boolean;
+      url: string;
+    }>
+  > {
+    const snapshot = await this.waitForActiveBrowserHostState();
     if (!snapshot) {
       return [];
     }
@@ -378,13 +409,18 @@ export class BrowserUsePipeServer {
   }> {
     const snapshot = await this.waitForActiveBrowserHostState();
     if (!snapshot) {
-      throw new Error("No active CTCode browser pane available");
+      throw new Error("No active FCode browser pane available");
     }
-    const nextState = this.browserManager.newTab({
-      threadId: snapshot.threadId,
-      url: BROWSER_USE_INITIAL_URL,
-      activate: true,
-    });
+    const nextState = this.browserManager.newTab(
+      {
+        threadId: snapshot.threadId,
+        url: BROWSER_USE_INITIAL_URL,
+        activate: true,
+      },
+      // The renderer <webview> adopts the surface; suppress the native view so it
+      // does not briefly overlay the chat while adoption is in flight.
+      { suppressVisibleAttach: true },
+    );
     const activeTab =
       nextState.tabs.find((tab) => tab.id === nextState.activeTabId) ?? nextState.tabs[0] ?? null;
     if (!activeTab) {
@@ -458,17 +494,27 @@ export class BrowserUsePipeServer {
     }
     const tracked = this.resolveTrackedTabForSession(sessionId, asObject(request?.target) ?? null);
     this.selectedTrackedTabIdBySessionId.set(sessionId, tracked.id);
+    if (method === "Page.navigate") {
+      // Navigations are the "show the user something" moments of a browser-use
+      // session; reads and screenshots stay silent on a hidden panel.
+      this.surfacePanelIfHidden(tracked.threadId);
+    }
     const commandParams = asObject(request?.commandParams);
-    return this.browserManager.executeCdp({
-      threadId: tracked.threadId,
-      tabId: tracked.tabId,
-      method,
-      ...(commandParams ? { params: commandParams } : {}),
-    } satisfies BrowserExecuteCdpInput);
+    return this.browserManager.executeCdp(
+      {
+        threadId: tracked.threadId,
+        tabId: tracked.tabId,
+        method,
+        ...(commandParams ? { params: commandParams } : {}),
+      } satisfies BrowserExecuteCdpInput,
+      // Browser-use drives CDP headlessly; the renderer <webview> owns the visible
+      // surface, so never promote a native runtime to a visible overlay here.
+      { present: false },
+    );
   }
 
   private broadcastNotification(method: string, params: unknown): void {
-    const payload = encodeBrowserUseFrame({
+    const payload = encodeBrowserUsePipeFrame({
       jsonrpc: "2.0",
       method,
       params,

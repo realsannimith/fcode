@@ -2,7 +2,7 @@
  * Sanitize an arbitrary string into a valid, lowercase git branch fragment.
  * Strips quotes, collapses separators, limits to 64 chars.
  */
-export const WORKTREE_BRANCH_PREFIX = "ctcode";
+export const WORKTREE_BRANCH_PREFIX = "fcode";
 const LEGACY_WORKTREE_BRANCH_PREFIXES = ["dpcode", "t3code"] as const;
 const TEMP_WORKTREE_BRANCH_PATTERN = new RegExp(
   `^(${[WORKTREE_BRANCH_PREFIX, ...LEGACY_WORKTREE_BRANCH_PREFIXES].join("|")})\\/[0-9a-f]{8}$`,
@@ -39,7 +39,7 @@ export function sanitizeFeatureBranchName(raw: string): string {
 }
 
 const AUTO_FEATURE_BRANCH_FALLBACK = "feature/update";
-const CTCODE_BRANCH_FALLBACK = "update";
+const FCODE_BRANCH_FALLBACK = "update";
 
 /**
  * Resolve a unique `feature/…` branch name that doesn't collide with
@@ -67,19 +67,19 @@ export function resolveAutoFeatureBranchName(
   return `${resolvedBase}-${suffix}`;
 }
 
-export function buildCTCodeBranchName(preferredBranch?: string | null): string {
+export function buildFCodeBranchName(preferredBranch?: string | null): string {
   const normalizedExisting =
-    preferredBranch?.trim().replace(/^(codex|t3code|dpcode|ctcode)\//i, "") ?? "";
+    preferredBranch?.trim().replace(/^(codex|t3code|dpcode|fcode)\//i, "") ?? "";
   return `${WORKTREE_BRANCH_PREFIX}/${sanitizeBranchFragment(
-    normalizedExisting || CTCODE_BRANCH_FALLBACK,
+    normalizedExisting || FCODE_BRANCH_FALLBACK,
   )}`;
 }
 
-export function resolveUniqueCTCodeBranchName(
+export function resolveUniqueFCodeBranchName(
   existingBranchNames: readonly string[],
   preferredBranch?: string | null,
 ): string {
-  const resolvedBase = buildCTCodeBranchName(preferredBranch);
+  const resolvedBase = buildFCodeBranchName(preferredBranch);
   const existingNames = new Set(existingBranchNames.map((branch) => branch.toLowerCase()));
 
   if (!existingNames.has(resolvedBase)) {

@@ -114,9 +114,9 @@ describe("splitViewStore", () => {
       ownerProjectId: PROJECT_ID,
     });
 
-    const persisted = globalThis.localStorage.getItem("ctcode:split-view-state:v1");
+    const persisted = globalThis.localStorage.getItem("fcode:split-view-state:v1");
     expect(persisted).not.toBeNull();
-    expect(globalThis.localStorage.getItem("ctcode:split-view-state:v2")).toBeNull();
+    expect(globalThis.localStorage.getItem("fcode:split-view-state:v2")).toBeNull();
     expect(JSON.parse(persisted ?? "{}")).toMatchObject({ version: 2 });
   });
 
@@ -149,7 +149,7 @@ describe("splitViewStore", () => {
     vi.resetModules();
     globalThis.localStorage = createMemoryStorage();
     globalThis.localStorage.setItem(
-      "ctcode:split-view-state:v1",
+      "fcode:split-view-state:v1",
       JSON.stringify({
         state: {
           splitViewsById: {

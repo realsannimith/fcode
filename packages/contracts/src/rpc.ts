@@ -28,6 +28,8 @@ import {
   GitCreateDetachedWorktreeResult,
   GitCreateWorktreeInput,
   GitCreateWorktreeResult,
+  GitDiscoverRepositoriesInput,
+  GitDiscoverRepositoriesResult,
   GitHubRepositoryInput,
   GitHubRepositoryResult,
   GitHandoffThreadInput,
@@ -115,6 +117,11 @@ import {
   ServerDiagnosticsResult,
   ServerGenerateAutomationIntentInput,
   ServerGenerateAutomationIntentResult,
+  ServerCodexAccountAuthError,
+  ServerCodexAccountAuthInput,
+  ServerCodexAccountLoginCancelResult,
+  ServerCodexAccountLoginResult,
+  ServerCodexAccountLogoutResult,
   ServerGenerateThreadRecapInput,
   ServerGenerateThreadRecapResult,
   ServerGetEnvironmentResult,
@@ -346,6 +353,12 @@ export const WsGitStatusRpc = Rpc.make(WS_METHODS.gitStatus, {
   error: WsRpcError,
 });
 
+export const WsGitDiscoverRepositoriesRpc = Rpc.make(WS_METHODS.gitDiscoverRepositories, {
+  payload: GitDiscoverRepositoriesInput,
+  success: GitDiscoverRepositoriesResult,
+  error: WsRpcError,
+});
+
 export const WsGitGithubRepositoryRpc = Rpc.make(WS_METHODS.gitGithubRepository, {
   payload: GitHubRepositoryInput,
   success: GitHubRepositoryResult,
@@ -556,6 +569,27 @@ export const WsServerUpdateProviderRpc = Rpc.make(WS_METHODS.serverUpdateProvide
   payload: ServerProviderUpdateInput,
   success: ServerProviderUpdateResult,
   error: ServerProviderUpdateError,
+});
+
+export const WsServerCodexAccountLoginRpc = Rpc.make(WS_METHODS.serverCodexAccountLogin, {
+  payload: ServerCodexAccountAuthInput,
+  success: ServerCodexAccountLoginResult,
+  error: ServerCodexAccountAuthError,
+});
+
+export const WsServerCodexAccountLoginCancelRpc = Rpc.make(
+  WS_METHODS.serverCodexAccountLoginCancel,
+  {
+    payload: ServerCodexAccountAuthInput,
+    success: ServerCodexAccountLoginCancelResult,
+    error: ServerCodexAccountAuthError,
+  },
+);
+
+export const WsServerCodexAccountLogoutRpc = Rpc.make(WS_METHODS.serverCodexAccountLogout, {
+  payload: ServerCodexAccountAuthInput,
+  success: ServerCodexAccountLogoutResult,
+  error: ServerCodexAccountAuthError,
 });
 
 export const WsServerListWorktreesRpc = Rpc.make(WS_METHODS.serverListWorktrees, {
@@ -807,6 +841,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsShellOpenInEditorRpc,
   WsGitGithubRepositoryRpc,
   WsGitStatusRpc,
+  WsGitDiscoverRepositoriesRpc,
   WsGitReadWorkingTreeDiffRpc,
   WsGitSummarizeDiffRpc,
   WsGitPullRpc,
@@ -841,6 +876,9 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerUpdateSettingsRpc,
   WsServerRefreshProvidersRpc,
   WsServerUpdateProviderRpc,
+  WsServerCodexAccountLoginRpc,
+  WsServerCodexAccountLoginCancelRpc,
+  WsServerCodexAccountLogoutRpc,
   WsServerListWorktreesRpc,
   WsServerListLocalServersRpc,
   WsServerStopLocalServerRpc,

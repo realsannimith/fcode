@@ -37,6 +37,24 @@ export function localServerPrimaryLabel(server: ServerLocalServerProcess): strin
 }
 
 /**
+ * Browsable URL for a detected local dev server — the first resolved address
+ * URL, falling back to a plain `http://localhost:<port>/` guess. Null when
+ * the server has no usable port at all.
+ */
+export function localServerUrl(server: ServerLocalServerProcess): string | null {
+  const addressWithUrl = server.addresses.find((address) => address.url);
+  if (addressWithUrl?.url) {
+    return addressWithUrl.url;
+  }
+
+  const port = server.ports[0];
+  if (!port) {
+    return null;
+  }
+  return `http://localhost:${port}/`;
+}
+
+/**
  * Short folder label for a local dev server — the final segment of its working
  * directory (e.g. "dpcode-website" for ".../Developer/dpcode-website"), or null
  * when the cwd is unknown. The monitor only resolves a cwd on POSIX hosts, but

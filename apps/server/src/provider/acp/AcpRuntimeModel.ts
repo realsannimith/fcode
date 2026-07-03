@@ -199,7 +199,7 @@ function normalizeToolCallStatus(
   }
 }
 
-// Converts ACP's unstable usage updates into CTCode's context-window snapshot shape.
+// Converts ACP's unstable usage updates into FCode's context-window snapshot shape.
 function tokenUsageSnapshotFromAcpUsageUpdate(input: {
   readonly size: unknown;
   readonly used: unknown;

@@ -22,7 +22,7 @@ import {
 
 let root: string;
 let homeDir: string;
-let ctcodeBaseDir: string;
+let fcodeBaseDir: string;
 
 async function writeSkill(skillDir: string, name: string, description: string): Promise<void> {
   await mkdir(skillDir, { recursive: true });
@@ -40,9 +40,9 @@ description: ${description}
 
 beforeEach(() => {
   clearSkillsCatalogCacheForTests();
-  root = mkdtempSync(path.join(os.tmpdir(), "ctcode-skills-catalog-"));
+  root = mkdtempSync(path.join(os.tmpdir(), "fcode-skills-catalog-"));
   homeDir = path.join(root, "home");
-  ctcodeBaseDir = path.join(homeDir, ".ctcode");
+  fcodeBaseDir = path.join(homeDir, ".fcode");
 });
 
 afterEach(() => {
@@ -69,13 +69,13 @@ disable-model-invocation: true
 });
 
 describe("discoverSkillsCatalog", () => {
-  it("creates the CTCode skills folder on first discovery", async () => {
-    await discoverSkillsCatalog({ homeDir, ctcodeBaseDir });
-    await expect(access(path.join(ctcodeBaseDir, "skills"))).resolves.toBeUndefined();
+  it("creates the FCode skills folder on first discovery", async () => {
+    await discoverSkillsCatalog({ homeDir, fcodeBaseDir });
+    await expect(access(path.join(fcodeBaseDir, "skills"))).resolves.toBeUndefined();
   });
 
-  it("aggregates skills from ctcode and provider home folders with origin scopes", async () => {
-    await writeSkill(path.join(ctcodeBaseDir, "skills", "portable"), "portable", "CTCode skill");
+  it("aggregates skills from fcode and provider home folders with origin scopes", async () => {
+    await writeSkill(path.join(fcodeBaseDir, "skills", "portable"), "portable", "FCode skill");
     await writeSkill(path.join(homeDir, ".codex", "skills", "codex-only"), "codex-only", "Codex");
     await writeSkill(
       path.join(homeDir, ".claude", "skills", "claude-only"),
@@ -101,10 +101,10 @@ describe("discoverSkillsCatalog", () => {
     );
     await writeSkill(path.join(homeDir, ".pi", "agent", "skills", "pi-only"), "pi-only", "Pi");
 
-    const skills = await discoverSkillsCatalog({ homeDir, ctcodeBaseDir });
+    const skills = await discoverSkillsCatalog({ homeDir, fcodeBaseDir });
     const byName = new Map(skills.map((skill) => [skill.name, skill]));
 
-    expect(byName.get("portable")?.scope).toBe("ctcode");
+    expect(byName.get("portable")?.scope).toBe("fcode");
     expect(byName.get("codex-only")?.scope).toBe("codex");
     expect(byName.get("claude-only")?.scope).toBe("claude");
     expect(byName.get("cursor-only")?.scope).toBe("cursor");
@@ -123,7 +123,7 @@ describe("discoverSkillsCatalog", () => {
 
     const skills = await discoverSkillsCatalog({
       homeDir,
-      ctcodeBaseDir,
+      fcodeBaseDir,
       includeDuplicateOrigins: true,
     });
 
@@ -136,57 +136,57 @@ describe("discoverSkillsCatalog", () => {
     await writeSkill(path.join(homeDir, ".codex", "skills", "reviewer"), "reviewer", "Codex");
     await writeSkill(path.join(homeDir, ".claude", "skills", "reviewer"), "reviewer", "Claude");
 
-    const defaultCatalog = await discoverSkillsCatalog({ homeDir, ctcodeBaseDir });
+    const defaultCatalog = await discoverSkillsCatalog({ homeDir, fcodeBaseDir });
     expect(defaultCatalog.filter((skill) => skill.name === "reviewer")).toHaveLength(1);
     expect(defaultCatalog.find((skill) => skill.name === "reviewer")?.scope).toBe("codex");
 
     const settingsCatalog = await discoverSkillsCatalog({
       homeDir,
-      ctcodeBaseDir,
+      fcodeBaseDir,
       includeDuplicateOrigins: true,
     });
     expect(settingsCatalog.filter((skill) => skill.name === "reviewer")).toHaveLength(2);
     expect(settingsCatalog.map((skill) => skill.scope).sort()).toEqual(["claude", "codex"]);
   });
 
-  it("prefers the provider-native copy and falls back to CTCode for that provider", async () => {
-    await writeSkill(path.join(ctcodeBaseDir, "skills", "shared"), "shared", "CTCode copy");
+  it("prefers the provider-native copy and falls back to FCode for that provider", async () => {
+    await writeSkill(path.join(fcodeBaseDir, "skills", "shared"), "shared", "FCode copy");
     await writeSkill(path.join(homeDir, ".codex", "skills", "shared"), "shared", "Codex copy");
     await writeSkill(path.join(homeDir, ".gemini", "skills", "shared"), "shared", "Gemini copy");
-    await writeSkill(path.join(ctcodeBaseDir, "skills", "only-ctcode"), "only-ctcode", "Fallback");
+    await writeSkill(path.join(fcodeBaseDir, "skills", "only-fcode"), "only-fcode", "Fallback");
 
-    const codexView = await discoverSkillsCatalog({ homeDir, ctcodeBaseDir, provider: "codex" });
+    const codexView = await discoverSkillsCatalog({ homeDir, fcodeBaseDir, provider: "codex" });
     const codexShared = codexView.find((skill) => skill.name === "shared");
     expect(codexShared?.scope).toBe("codex");
     expect(codexShared?.path).toContain(path.join(".codex", "skills"));
-    expect(codexView.some((skill) => skill.name === "only-ctcode")).toBe(true);
+    expect(codexView.some((skill) => skill.name === "only-fcode")).toBe(true);
 
-    // A provider without its own copy resolves the CTCode fallback.
+    // A provider without its own copy resolves the FCode fallback.
     const claudeView = await discoverSkillsCatalog({
       homeDir,
-      ctcodeBaseDir,
+      fcodeBaseDir,
       provider: "claudeAgent",
     });
     const claudeShared = claudeView.find((skill) => skill.name === "shared");
-    expect(claudeShared?.scope).toBe("ctcode");
+    expect(claudeShared?.scope).toBe("fcode");
 
     const geminiView = await discoverSkillsCatalog({
       homeDir,
-      ctcodeBaseDir,
+      fcodeBaseDir,
       provider: "gemini",
     });
     const geminiShared = geminiView.find((skill) => skill.name === "shared");
     expect(geminiShared?.scope).toBe("gemini");
   });
 
-  it("uses documented provider alias roots before CTCode fallbacks", async () => {
-    await writeSkill(path.join(ctcodeBaseDir, "skills", "shared"), "shared", "CTCode copy");
+  it("uses documented provider alias roots before FCode fallbacks", async () => {
+    await writeSkill(path.join(fcodeBaseDir, "skills", "shared"), "shared", "FCode copy");
     await writeSkill(path.join(homeDir, ".agents", "skills", "shared"), "shared", "Agents alias");
     await writeSkill(path.join(homeDir, ".gemini", "skills", "shared"), "shared", "Gemini copy");
 
     const geminiView = await discoverSkillsCatalog({
       homeDir,
-      ctcodeBaseDir,
+      fcodeBaseDir,
       provider: "gemini",
     });
 
@@ -194,19 +194,19 @@ describe("discoverSkillsCatalog", () => {
   });
 
   it("uses provider-native roots before shared aliases for Grok and Pi", async () => {
-    await writeSkill(path.join(ctcodeBaseDir, "skills", "shared"), "shared", "CTCode copy");
+    await writeSkill(path.join(fcodeBaseDir, "skills", "shared"), "shared", "FCode copy");
     await writeSkill(path.join(homeDir, ".agents", "skills", "shared"), "shared", "Agents alias");
     await writeSkill(path.join(homeDir, ".grok", "skills", "shared"), "shared", "Grok copy");
     await writeSkill(path.join(homeDir, ".pi", "agent", "skills", "shared"), "shared", "Pi copy");
 
     const grokView = await discoverSkillsCatalog({
       homeDir,
-      ctcodeBaseDir,
+      fcodeBaseDir,
       provider: "grok",
     });
     const piView = await discoverSkillsCatalog({
       homeDir,
-      ctcodeBaseDir,
+      fcodeBaseDir,
       provider: "pi",
     });
 
@@ -228,7 +228,7 @@ description: Direct Pi markdown skill
 `,
     );
 
-    const skills = await discoverSkillsCatalog({ homeDir, ctcodeBaseDir });
+    const skills = await discoverSkillsCatalog({ homeDir, fcodeBaseDir });
 
     const directSkill = skills.find((skill) => skill.name === "direct-review");
     expect(directSkill?.scope).toBe("pi");
@@ -236,31 +236,31 @@ description: Direct Pi markdown skill
   });
 
   it("serves cached results within the TTL and rescans on forceReload", async () => {
-    await writeSkill(path.join(ctcodeBaseDir, "skills", "first"), "first", "First skill");
+    await writeSkill(path.join(fcodeBaseDir, "skills", "first"), "first", "First skill");
 
-    const initial = await discoverSkillsCatalog({ homeDir, ctcodeBaseDir });
+    const initial = await discoverSkillsCatalog({ homeDir, fcodeBaseDir });
     expect(initial.map((skill) => skill.name)).toEqual(["first"]);
 
     // A skill added after the first scan is invisible to the cached entry...
-    await writeSkill(path.join(ctcodeBaseDir, "skills", "second"), "second", "Second skill");
-    const cached = await discoverSkillsCatalog({ homeDir, ctcodeBaseDir });
+    await writeSkill(path.join(fcodeBaseDir, "skills", "second"), "second", "Second skill");
+    const cached = await discoverSkillsCatalog({ homeDir, fcodeBaseDir });
     expect(cached.map((skill) => skill.name)).toEqual(["first"]);
 
     // ...but forceReload bypasses the cache and refreshes it.
-    const reloaded = await discoverSkillsCatalog({ homeDir, ctcodeBaseDir, forceReload: true });
+    const reloaded = await discoverSkillsCatalog({ homeDir, fcodeBaseDir, forceReload: true });
     expect(reloaded.map((skill) => skill.name).sort()).toEqual(["first", "second"]);
   });
 
-  it("includes project-level .ctcode skills when a cwd is provided", async () => {
+  it("includes project-level .fcode skills when a cwd is provided", async () => {
     const cwd = path.join(root, "repo", "packages", "web");
     await mkdir(cwd, { recursive: true });
     await writeSkill(
-      path.join(root, "repo", ".ctcode", "skills", "repo-skill"),
+      path.join(root, "repo", ".fcode", "skills", "repo-skill"),
       "repo-skill",
       "Project skill",
     );
 
-    const skills = await discoverSkillsCatalog({ cwd, homeDir, ctcodeBaseDir });
+    const skills = await discoverSkillsCatalog({ cwd, homeDir, fcodeBaseDir });
     expect(skills.find((skill) => skill.name === "repo-skill")?.scope).toBe("project");
   });
 
@@ -270,21 +270,21 @@ description: Direct Pi markdown skill
     const cwd = path.join(homeDir, "projects", "app");
     await mkdir(cwd, { recursive: true });
     await writeSkill(path.join(homeDir, ".codex", "skills", "from-codex"), "from-codex", "Codex");
-    await writeSkill(path.join(ctcodeBaseDir, "skills", "portable"), "portable", "CTCode");
+    await writeSkill(path.join(fcodeBaseDir, "skills", "portable"), "portable", "FCode");
 
-    const skills = await discoverSkillsCatalog({ cwd, homeDir, ctcodeBaseDir });
+    const skills = await discoverSkillsCatalog({ cwd, homeDir, fcodeBaseDir });
 
     const names = skills.map((skill) => skill.name);
     expect(names.filter((name) => name === "from-codex")).toHaveLength(1);
     expect(skills.find((skill) => skill.name === "from-codex")?.scope).toBe("codex");
-    expect(skills.find((skill) => skill.name === "portable")?.scope).toBe("ctcode");
+    expect(skills.find((skill) => skill.name === "portable")?.scope).toBe("fcode");
   });
 
   it("dedupes same-named skills within a root deterministically", async () => {
-    await writeSkill(path.join(ctcodeBaseDir, "skills", "zeta"), "twin", "Copy in zeta");
-    await writeSkill(path.join(ctcodeBaseDir, "skills", "alpha"), "twin", "Copy in alpha");
+    await writeSkill(path.join(fcodeBaseDir, "skills", "zeta"), "twin", "Copy in zeta");
+    await writeSkill(path.join(fcodeBaseDir, "skills", "alpha"), "twin", "Copy in alpha");
 
-    const skills = await discoverSkillsCatalog({ homeDir, ctcodeBaseDir });
+    const skills = await discoverSkillsCatalog({ homeDir, fcodeBaseDir });
     const twins = skills.filter((skill) => skill.name === "twin");
     expect(twins).toHaveLength(1);
     expect(twins[0]?.path).toContain(path.join("skills", "alpha"));
@@ -302,7 +302,7 @@ describe("mergeSkillsIntoCatalog", () => {
   it("keeps provider-native entries and appends catalog-only entries", () => {
     const merged = mergeSkillsIntoCatalog({
       native: [descriptor("shared", "codex-native")],
-      catalog: [descriptor("Shared", "ctcode"), descriptor("extra", "ctcode")],
+      catalog: [descriptor("Shared", "fcode"), descriptor("extra", "fcode")],
     });
     expect(merged).toHaveLength(2);
     expect(merged.find((skill) => skill.name.toLowerCase() === "shared")?.scope).toBe(

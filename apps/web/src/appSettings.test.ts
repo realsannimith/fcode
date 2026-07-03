@@ -388,6 +388,8 @@ describe("getProviderStartOptions", () => {
     expect(
       getProviderStartOptions({
         claudeBinaryPath: "/usr/local/bin/claude",
+        codexAccounts: [],
+        codexActiveAccountId: "",
         codexBinaryPath: "",
         codexHomePath: "/Users/you/.codex",
         cursorApiEndpoint: "http://localhost:3000",
@@ -428,6 +430,8 @@ describe("getProviderStartOptions", () => {
     expect(
       getProviderStartOptions({
         claudeBinaryPath: "",
+        codexAccounts: [],
+        codexActiveAccountId: "",
         codexBinaryPath: "",
         codexHomePath: "",
         cursorApiEndpoint: "",
@@ -451,6 +455,8 @@ describe("getProviderStartOptions", () => {
     expect(
       getProviderStartOptions({
         claudeBinaryPath: "claude",
+        codexAccounts: [],
+        codexActiveAccountId: "",
         codexBinaryPath: "codex",
         codexHomePath: "",
         cursorApiEndpoint: "",

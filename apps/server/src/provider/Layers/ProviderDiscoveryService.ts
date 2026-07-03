@@ -75,7 +75,7 @@ const make = Effect.gen(function* () {
       const capabilities = adapter.getComposerCapabilities
         ? yield* adapter.getComposerCapabilities()
         : disabledCapabilitiesForProvider(parsed.provider);
-      // The unified CTCode skills catalog backs skill discovery for every
+      // The unified FCode skills catalog backs skill discovery for every
       // provider, including ones without native skill support.
       return {
         ...capabilities,
@@ -98,7 +98,7 @@ const make = Effect.gen(function* () {
             .pipe(
               Effect.catch((error) =>
                 Effect.logWarning(
-                  "provider-native skill discovery failed; serving the CTCode skills catalog only",
+                  "provider-native skill discovery failed; serving the FCode skills catalog only",
                   { provider: parsed.provider, error },
                 ).pipe(Effect.as(null)),
               ),
@@ -108,13 +108,13 @@ const make = Effect.gen(function* () {
         discoverSkillsCatalog({
           cwd: parsed.cwd,
           homeDir: serverConfig.homeDir,
-          ctcodeBaseDir: serverConfig.baseDir,
+          fcodeBaseDir: serverConfig.baseDir,
           provider: parsed.provider,
           ...(parsed.forceReload !== undefined ? { forceReload: parsed.forceReload } : {}),
         }),
       ).pipe(
         Effect.catchCause((cause) =>
-          Effect.logWarning("ctcode skills catalog discovery failed", {
+          Effect.logWarning("fcode skills catalog discovery failed", {
             provider: parsed.provider,
             cause,
           }).pipe(Effect.as([] as ProviderSkillDescriptor[])),
@@ -129,7 +129,7 @@ const make = Effect.gen(function* () {
       );
       return {
         skills: filterDisabledSkills(merged, settings.skills.disabled),
-        source: nativeResult?.source ? `${nativeResult.source}+ctcode.catalog` : "ctcode.catalog",
+        source: nativeResult?.source ? `${nativeResult.source}+fcode.catalog` : "fcode.catalog",
         cached: nativeResult?.cached ?? false,
       } satisfies ProviderListSkillsResult;
     });

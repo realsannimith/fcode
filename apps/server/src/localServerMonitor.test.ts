@@ -77,7 +77,7 @@ describe("localServerMonitor", () => {
     );
   });
 
-  it("keeps dev servers and ignores Electron/CTCode-style application listeners", () => {
+  it("keeps dev servers and ignores Electron/FCode-style application listeners", () => {
     expect(
       isLikelyDevServerProcess({
         command: "node",
@@ -88,21 +88,21 @@ describe("localServerMonitor", () => {
     expect(
       isIgnoredLocalServerProcess({
         command: "Electron",
-        args: "/Applications/CTCode.app/Contents/MacOS/CTCode",
+        args: "/Applications/FCode.app/Contents/MacOS/FCode",
         ports: [61449],
       }),
     ).toBe(true);
     expect(
       isIgnoredLocalServerProcess({
-        command: "CTCode",
-        args: "/Applications/CTCode.app/Contents/MacOS/CTCode",
+        command: "FCode",
+        args: "/Applications/FCode.app/Contents/MacOS/FCode",
         ports: [61449],
       }),
     ).toBe(true);
     expect(
       isLikelyDevServerProcess({
         command: "node",
-        args: "node /Users/emanueledipietro/Developer/ctcode/apps/web/node_modules/.bin/vite",
+        args: "node /Users/emanueledipietro/Developer/fcode/apps/web/node_modules/.bin/vite",
         ports: [5733],
       }),
     ).toBe(true);

@@ -14,14 +14,14 @@ interface TerminalWriteSample {
 
 declare global {
   interface Window {
-    __ctcodeTerminalPerf?: {
+    __fcodeTerminalPerf?: {
       samples: TerminalWriteSample[];
       reset: () => void;
     };
   }
 }
 
-const TERMINAL_PERF_STORAGE_KEY = "ctcode:terminal-perf";
+const TERMINAL_PERF_STORAGE_KEY = "fcode:terminal-perf";
 const MAX_TERMINAL_PERF_SAMPLES = 200;
 
 function terminalPerfEnabled(): boolean {
@@ -33,13 +33,13 @@ function terminalPerfEnabled(): boolean {
 }
 
 function getTerminalPerfStore() {
-  window.__ctcodeTerminalPerf ??= {
+  window.__fcodeTerminalPerf ??= {
     samples: [],
     reset() {
       this.samples.length = 0;
     },
   };
-  return window.__ctcodeTerminalPerf;
+  return window.__fcodeTerminalPerf;
 }
 
 // Records a write only after xterm reports that its parser consumed the data.

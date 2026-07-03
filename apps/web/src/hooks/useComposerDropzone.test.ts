@@ -5,7 +5,9 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  COMPOSER_DROP_IGNORE_ATTRIBUTE,
   isComposerDropzoneInternalDragTransition,
+  isInsideIgnoredComposerDropRegion,
   shouldPreventDefaultForUnhandledFileDrop,
   shouldResetComposerDropzoneAfterUnhandledFileDrop,
   shouldHandleComposerDropzoneFiles,
@@ -61,5 +63,25 @@ describe("useComposerDropzone file capability helpers", () => {
     expect(isComposerDropzoneInternalDragTransition(currentTarget, child)).toBe(true);
     expect(isComposerDropzoneInternalDragTransition(currentTarget, outside)).toBe(false);
     expect(isComposerDropzoneInternalDragTransition(currentTarget, null)).toBe(false);
+  });
+
+  it("treats transitions into opted-out regions as leaving the dropzone", () => {
+    const ignoredChild = {
+      closest: (selector: string) =>
+        selector === `[${COMPOSER_DROP_IGNORE_ATTRIBUTE}]` ? {} : null,
+    };
+    const plainChild = {
+      closest: () => null,
+    };
+    const currentTarget = {
+      contains: () => true,
+    };
+
+    expect(isInsideIgnoredComposerDropRegion(ignoredChild)).toBe(true);
+    expect(isInsideIgnoredComposerDropRegion(plainChild)).toBe(false);
+    expect(isInsideIgnoredComposerDropRegion(null)).toBe(false);
+
+    expect(isComposerDropzoneInternalDragTransition(currentTarget, ignoredChild)).toBe(false);
+    expect(isComposerDropzoneInternalDragTransition(currentTarget, plainChild)).toBe(true);
   });
 });

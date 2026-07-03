@@ -1,7 +1,7 @@
 // FILE: toolCallDetails.ts
 // Purpose: Extract bounded command/edit details from provider tool lifecycle payloads.
 // Layer: Web transcript data utility
-// Exports: deriveWorkLogToolDetails, mergeWorkLogToolDetails
+// Exports: deriveWorkLogToolDetails, mergeWorkLogToolDetails, countTextLines, estimateFileChangeStat
 // Depends on: provider runtime item metadata already truncated by server ingestion
 
 import type { ToolLifecycleItemType } from "@t3tools/contracts";
@@ -205,7 +205,7 @@ function extractToolOutputDetails(input: {
     result?.exitCode,
     outputExitCode(input.detail),
   );
-  const truncated = rawOutput?.truncated === true || data?.__ctcodeTruncated === true;
+  const truncated = rawOutput?.truncated === true || data?.__fcodeTruncated === true;
   if (!stdout && !stderr && !output && exitCode === undefined && !truncated) {
     return undefined;
   }
@@ -432,6 +432,51 @@ function mergeOutputs(
       : {}),
     ...(left.truncated === true || right.truncated === true ? { truncated: true } : {}),
   };
+}
+
+// Splits text into logical lines the same way everywhere it's rendered/counted
+// (dialog line gutters, header line counts, transcript stat badges) so a
+// snippet always reports the same shape regardless of which surface uses it.
+// Drops a single trailing empty line so text ending in "\n" doesn't produce a
+// phantom extra line.
+export function splitTextLines(text: string): string[] {
+  const normalized = text.replace(/\r\n/g, "\n");
+  const lines = normalized.split("\n");
+  if (lines.length > 1 && lines[lines.length - 1] === "") {
+    lines.pop();
+  }
+  return lines;
+}
+
+export function countTextLines(text: string): number {
+  return splitTextLines(text).length;
+}
+
+// Best-effort "+N -N" line stat for a changed file when no git-backed diff
+// summary is available (e.g. edits outside the project working tree, such as
+// dotfiles in the user's home directory). Sums every edit's before/after line
+// counts; falls back to using the tool call's only edit when it isn't
+// path-tagged but the call touched exactly one file.
+export function estimateFileChangeStat(
+  details: WorkLogToolDetails | undefined,
+  path: string,
+): { additions: number; deletions: number } | undefined {
+  const edits = details?.edits;
+  if (!edits?.length) {
+    return undefined;
+  }
+  const matching = edits.filter((edit) => edit.path === path);
+  const relevant = matching.length > 0 ? matching : edits.every((edit) => !edit.path) ? edits : [];
+  if (relevant.length === 0) {
+    return undefined;
+  }
+  return relevant.reduce(
+    (total, edit) => ({
+      additions: total.additions + (edit.newText !== undefined ? countTextLines(edit.newText) : 0),
+      deletions: total.deletions + (edit.oldText !== undefined ? countTextLines(edit.oldText) : 0),
+    }),
+    { additions: 0, deletions: 0 },
+  );
 }
 
 export function mergeWorkLogToolDetails(

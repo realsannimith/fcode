@@ -183,8 +183,8 @@ async function resolveDesktopVoiceAuth(
         method: "initialize",
         params: {
           clientInfo: {
-            name: "ctcode-desktop",
-            title: "CTCode Desktop",
+            name: "fcode-desktop",
+            title: "FCode Desktop",
             version: app.getVersion(),
           },
           capabilities: { experimentalApi: true },
@@ -206,7 +206,7 @@ async function requestDesktopVoiceTranscription(input: {
   readonly token: string;
   readonly transcriptionUrl: string;
 }): Promise<{ statusCode: number; body: string }> {
-  const boundary = `CTCodeVoice-${Crypto.randomUUID()}`;
+  const boundary = `FCodeVoice-${Crypto.randomUUID()}`;
   const preamble = Buffer.from(
     `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="voice.wav"\r\nContent-Type: ${input.mimeType}\r\n\r\n`,
     "utf8",

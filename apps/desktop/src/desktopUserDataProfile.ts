@@ -6,8 +6,8 @@ import * as FS from "node:fs";
 import * as OS from "node:os";
 import * as Path from "node:path";
 
-const DEV_USER_DATA_DIR_NAME = "ctcode-dev";
-const PROD_USER_DATA_DIR_NAME = "ctcode";
+const DEV_USER_DATA_DIR_NAME = "fcode-dev";
+const PROD_USER_DATA_DIR_NAME = "fcode";
 const DEV_LEGACY_USER_DATA_DIR_NAMES = ["dpcode-dev", "t3code-dev", "DP Code (Dev)"] as const;
 const PROD_LEGACY_USER_DATA_DIR_NAMES = ["dpcode", "t3code", "DP Code (Alpha)"] as const;
 const PROFILE_SEED_ENTRY_NAMES = [
@@ -100,7 +100,7 @@ export function seedDesktopUserDataProfileFromLegacy(input: {
       });
     }
     FS.writeFileSync(
-      Path.join(input.targetPath, "ctcode-profile-seed.json"),
+      Path.join(input.targetPath, "fcode-profile-seed.json"),
       `${JSON.stringify(
         {
           sourcePath,

@@ -8,6 +8,7 @@ import nodePath from "node:path";
 
 import type { ServerProviderUsageLimit } from "@t3tools/contracts";
 
+import { fetchAntigravityUsageSnapshot } from "../antigravityQuota";
 import { readJsonFile } from "../credentials";
 import { fetchJson, isAuthFailureStatus } from "../http";
 import {
@@ -132,6 +133,15 @@ export function parseGeminiQuota(input: { json: unknown; nowMs: number; planName
 export const geminiUsageFetcher: ProviderUsageFetcher = {
   provider: "gemini",
   async fetch(ctx) {
+    // Google retired the standalone Gemini CLI for Antigravity (`agy`), which stores its OAuth
+    // token in the macOS Keychain, not `~/.gemini/oauth_creds.json`. Prefer that path so Antigravity
+    // users see their Gemini pool usage; a null result means there's no Antigravity token, so fall
+    // through to the legacy Gemini CLI credential file below.
+    const antigravity = await fetchAntigravityUsageSnapshot(ctx);
+    if (antigravity) {
+      return antigravity;
+    }
+
     const creds = await resolveGeminiCreds(ctx);
     if (!creds) {
       return needsAuthSnapshot("gemini", ctx.nowMs, SOURCE);

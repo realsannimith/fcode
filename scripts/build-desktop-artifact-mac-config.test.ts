@@ -26,6 +26,7 @@ describe("createDesktopPlatformBuildConfig", () => {
     assert.equal(mac.entitlementsInherit, MAC_INHERITED_ENTITLEMENTS_PATH);
     assert.equal(extendInfo.NSMicrophoneUsageDescription, MICROPHONE_USAGE_DESCRIPTION);
     assert.equal(config.afterPack, undefined);
+    assert.equal(config.afterSign, "./electron-builder-after-sign.cjs");
     assert.equal(config.dmg, undefined);
   });
 
@@ -42,6 +43,7 @@ describe("createDesktopPlatformBuildConfig", () => {
     assert.deepStrictEqual(config.asarUnpack, ["node_modules/node-pty/**"]);
     assert.equal(extendInfo.CFBundleIconFile, "icon.icns");
     assert.equal(config.afterPack, "./electron-builder-after-pack.cjs");
+    assert.equal(config.afterSign, "./electron-builder-after-sign.cjs");
     assert.deepStrictEqual(config.dmg, { icon: "icon.icns" });
   });
 
@@ -60,15 +62,16 @@ describe("createDesktopPlatformBuildConfig", () => {
 
     assert.equal(linux.mac, undefined);
     assert.equal(linux.afterPack, undefined);
+    assert.equal(linux.afterSign, undefined);
     assert.deepStrictEqual(linux.asarUnpack, ["node_modules/node-pty/**"]);
     assert.deepStrictEqual(linux.linux, {
       target: ["AppImage"],
-      executableName: "ctcode",
+      executableName: "fcode",
       icon: "icon.png",
       category: "Development",
       desktop: {
         entry: {
-          StartupWMClass: "ctcode",
+          StartupWMClass: "fcode",
         },
       },
     });

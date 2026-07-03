@@ -946,12 +946,12 @@ describe("deriveWorkLogEntries", () => {
         id: "automation-created",
         createdAt: "2026-02-23T00:00:05.000Z",
         kind: "automation.created",
-        summary: "Created automation: Watch CTCode PR 231 - Every 5m",
+        summary: "Created automation: Watch FCode PR 231 - Every 5m",
         tone: "info",
         payload: {
           source: "chat-composer",
           automationId: "automation-7",
-          automationName: "Watch CTCode PR 231",
+          automationName: "Watch FCode PR 231",
           cadenceLabel: "Every 5m",
         },
       }),
@@ -965,7 +965,7 @@ describe("deriveWorkLogEntries", () => {
     expect(automationEntry).toBeDefined();
     expect(automationEntry?.automation).toEqual({
       id: "automation-7",
-      name: "Watch CTCode PR 231",
+      name: "Watch FCode PR 231",
       cadenceLabel: "Every 5m",
     });
   });

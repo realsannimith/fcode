@@ -348,6 +348,12 @@ export const MODEL_OPTIONS_BY_PROVIDER = {
       },
     },
     {
+      slug: "claude-sonnet-5",
+      name: "Claude Sonnet 5",
+      // First Sonnet-tier model with the full xhigh ladder; adaptive thinking, no fast mode.
+      capabilities: { ...CLAUDE_FLAGSHIP_CAPABILITIES, supportsFastMode: false },
+    },
+    {
       slug: "claude-sonnet-4-6",
       name: "Claude Sonnet 4.6",
       capabilities: { ...CLAUDE_EXTENDED_THINKING_CAPABILITIES, supportsFastMode: false },
@@ -547,7 +553,7 @@ export type ProviderWithDefaultModel = Exclude<ProviderKind, "pi">;
 
 export const DEFAULT_MODEL_BY_PROVIDER: Record<ProviderWithDefaultModel, ModelSlug> = {
   codex: "gpt-5.5",
-  claudeAgent: "claude-sonnet-4-6",
+  claudeAgent: "claude-sonnet-5",
   cursor: "auto",
   gemini: "auto-gemini-3",
   grok: "grok-build",
@@ -585,7 +591,11 @@ export const MODEL_SLUG_ALIASES_BY_PROVIDER: Record<ProviderKind, Record<string,
     "opus-4.5": "claude-opus-4-5",
     "claude-opus-4.5": "claude-opus-4-5",
     "claude-opus-4-5-20250120": "claude-opus-4-5",
-    sonnet: "claude-sonnet-4-6",
+    sonnet: "claude-sonnet-5",
+    "sonnet-5": "claude-sonnet-5",
+    "sonnet-5.0": "claude-sonnet-5",
+    "claude-sonnet-5.0": "claude-sonnet-5",
+    "claude-sonnet-5-0": "claude-sonnet-5",
     "sonnet-4.6": "claude-sonnet-4-6",
     "claude-sonnet-4.6": "claude-sonnet-4-6",
     "claude-sonnet-4-6-20251117": "claude-sonnet-4-6",

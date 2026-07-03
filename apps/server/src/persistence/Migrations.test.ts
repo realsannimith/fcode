@@ -19,19 +19,19 @@ const projectionThreadsColumnNames = (sql: SqlClient.SqlClient) =>
 
 layer("reconcileMigrationLineage", (it) => {
   // The SYN-99 failure shape: a legacy ~/.t3 import whose tracker high-water
-  // mark is at or beyond CTCode's latest migration ID. The migrator's max-ID
-  // gate then skips every CTCode migration — including the #032 self-heal —
+  // mark is at or beyond FCode's latest migration ID. The migrator's max-ID
+  // gate then skips every FCode migration — including the #032 self-heal —
   // and startup crashes on the missing env_mode column.
-  it.effect("re-runs skipped migrations when an imported tracker outruns CTCode's latest ID", () =>
+  it.effect("re-runs skipped migrations when an imported tracker outruns FCode's latest ID", () =>
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
 
-      // Bring the schema to where T3 Code and CTCode last agreed.
+      // Bring the schema to where T3 Code and FCode last agreed.
       yield* runMigrations({ toMigrationInclusive: 16 });
 
-      // Record foreign T3 Code migrations 17 through past CTCode's latest ID.
-      const latestCTCodeId = Math.max(...migrationEntries.map(([id]) => id));
-      for (let id = 17; id <= latestCTCodeId + 3; id++) {
+      // Record foreign T3 Code migrations 17 through past FCode's latest ID.
+      const latestFCodeId = Math.max(...migrationEntries.map(([id]) => id));
+      for (let id = 17; id <= latestFCodeId + 3; id++) {
         yield* sql`
           INSERT INTO effect_sql_migrations (migration_id, name)
           VALUES (${id}, ${`T3CodeMigration${id}`})
@@ -55,7 +55,7 @@ layer("reconcileMigrationLineage", (it) => {
       assert.include(afterColumns, "env_mode");
       assert.include(afterColumns, "archived_at");
 
-      // The tracker now mirrors the CTCode lineage exactly; foreign rows are gone.
+      // The tracker now mirrors the FCode lineage exactly; foreign rows are gone.
       const rows = yield* trackerRows(sql);
       assert.deepStrictEqual(
         rows.map((row) => [row.migration_id, row.name]),
@@ -80,7 +80,7 @@ layer("reconcileMigrationLineage", (it) => {
     }),
   );
 
-  it.effect("preserves tracker rows written by a newer CTCode build", () =>
+  it.effect("preserves tracker rows written by a newer FCode build", () =>
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
 
@@ -88,7 +88,7 @@ layer("reconcileMigrationLineage", (it) => {
       const futureId = Math.max(...migrationEntries.map(([id]) => id)) + 1;
       yield* sql`
         INSERT INTO effect_sql_migrations (migration_id, name)
-        VALUES (${futureId}, 'FutureCTCodeMigration')
+        VALUES (${futureId}, 'FutureFCodeMigration')
       `;
 
       const executed = yield* runMigrations();
@@ -97,7 +97,7 @@ layer("reconcileMigrationLineage", (it) => {
       const rows = yield* trackerRows(sql);
       assert.deepStrictEqual(rows[rows.length - 1], {
         migration_id: futureId,
-        name: "FutureCTCodeMigration",
+        name: "FutureFCodeMigration",
       });
     }),
   );

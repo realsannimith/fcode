@@ -10,13 +10,13 @@
 ## Running the App
 
 - When the user asks to run, start, launch, or "rerun" the project, run the **native desktop (Electron) app** — not the web/server target alone.
-- Use `bun electron:dev` (isolated dev home at `./.ctcode/electron-dev`). This boots the server, the Vite web app, and the Electron shell together.
+- Use `bun electron:dev` (isolated dev home at `./.fcode/electron-dev`). This boots the server, the Vite web app, and the Electron shell together.
 
 ## Project Snapshot
 
-CTCode is a minimal web GUI for using coding agents. It is multi-provider: `ProviderKind` currently spans 8 providers — Codex, Claude (`claudeAgent`), Cursor, Gemini, Grok, Kilo, OpenCode, and Pi. Each provider has its own model options and capabilities (reasoning effort, thinking budget/level, context window, fast mode), defined in `packages/contracts` and resolved in `packages/shared/src/model.ts`.
+FCode is a minimal web GUI for using coding agents. It is multi-provider: `ProviderKind` currently spans 8 providers — Codex, Claude (`claudeAgent`), Cursor, Gemini, Grok, Kilo, OpenCode, and Pi. Each provider has its own model options and capabilities (reasoning effort, thinking budget/level, context window, fast mode), defined in `packages/contracts` and resolved in `packages/shared/src/model.ts`.
 
-Codex was the first integration and remains the most fleshed-out reference (see the Codex App Server section), but CTCode is not Codex-only.
+Codex was the first integration and remains the most fleshed-out reference (see the Codex App Server section), but FCode is not Codex-only.
 
 This repository is a VERY EARLY WIP. Proposing sweeping changes that improve long-term maintainability is encouraged.
 

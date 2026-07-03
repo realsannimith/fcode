@@ -30,7 +30,7 @@ import {
   XIcon,
 } from "~/lib/icons";
 
-import { localServerPrimaryLabel } from "@t3tools/shared/localServers";
+import { localServerPrimaryLabel, localServerUrl } from "@t3tools/shared/localServers";
 import {
   BROWSER_BLANK_URL,
   isBlankBrowserTabUrl,
@@ -87,9 +87,9 @@ interface BrowserPanelProps {
 
 const BROWSER_BOUNDS_SYNC_BURST_FRAMES = 30;
 const BROWSER_BOUNDS_SYNC_STABLE_FRAME_TARGET = 2;
-const BROWSER_WEBVIEW_PARTITION = "persist:ctcode-browser";
+const BROWSER_WEBVIEW_PARTITION = "persist:fcode-browser";
 const BROWSER_PERF_SAMPLE_INTERVAL_MS = 5_000;
-const CTCODE_BROWSER_LABEL = "CTCode browser";
+const FCODE_BROWSER_LABEL = "FCode browser";
 // The address field and tab pills share one chrome-control surface so the whole row reads
 // as a single cohesive control: matching height, radius, border width, and type scale.
 const BROWSER_CHROME_CONTROL_CLASS_NAME = "h-8 rounded-lg border text-xs";
@@ -333,7 +333,7 @@ function isBrowserPerfLoggingEnabled(): boolean {
 
   try {
     return (
-      window.localStorage.getItem("ctcode:browser-perf") === "1" ||
+      window.localStorage.getItem("fcode:browser-perf") === "1" ||
       window.localStorage.getItem("dpcode:browser-perf") === "1" ||
       window.localStorage.getItem("t3code:browser-perf") === "1"
     );
@@ -375,19 +375,6 @@ function BrowserRuntimePreview(props: { title: string; detail: string }) {
       </div>
     </div>
   );
-}
-
-function browserLocalServerUrl(server: ServerLocalServerProcess): string | null {
-  const addressWithUrl = server.addresses.find((address) => address.url);
-  if (addressWithUrl?.url) {
-    return addressWithUrl.url;
-  }
-
-  const port = server.ports[0];
-  if (!port) {
-    return null;
-  }
-  return `http://localhost:${port}/`;
 }
 
 // Paints a tiny browser-preview tile without fetching screenshots or adding network work.
@@ -472,7 +459,7 @@ function BrowserLocalServersHome({
         ) : (
           <div className="mt-4 flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pb-6">
             {servers.map((server) => {
-              const url = browserLocalServerUrl(server);
+              const url = localServerUrl(server);
 
               return (
                 <button
@@ -815,7 +802,7 @@ export function BrowserPanel({
     }
 
     const intervalId = window.setInterval(() => {
-      console.info(`[${CTCODE_BROWSER_LABEL} panel perf]`, {
+      console.info(`[${FCODE_BROWSER_LABEL} panel perf]`, {
         threadId,
         ...perfCountersRef.current,
       });
@@ -845,22 +832,31 @@ export function BrowserPanel({
       lastOverlayObscuredRef.current = obscuredByOverlay;
       setBrowserWebviewOverlayOcclusion(browserWebviewRef.current, obscuredByOverlay);
       const rect = element.getBoundingClientRect();
-      const bounds = obscuredByOverlay
-        ? null
-        : (() => {
-            if (rect.width <= 0 || rect.height <= 0) {
-              return null;
-            }
-            return {
+      // Presented = the panel's box is actually renderable in the viewport.
+      // Kept separate from `bounds`, which also go null while the local
+      // servers home or an obscuring overlay suppresses native painting on a
+      // panel the user can still see — browser-use relies on the distinction
+      // to decide whether an agent navigation must re-summon the panel.
+      const presented =
+        rect.width > 0 &&
+        rect.height > 0 &&
+        rect.right > 0 &&
+        rect.bottom > 0 &&
+        rect.left < window.innerWidth &&
+        rect.top < window.innerHeight &&
+        (element.checkVisibility?.() ?? true);
+      const bounds =
+        obscuredByOverlay || !presented
+          ? null
+          : {
               x: rect.left,
               y: rect.top,
               width: rect.width,
               height: rect.height,
             };
-          })();
       const nextKey = bounds
-        ? `renderer:${Math.round(bounds.x)}:${Math.round(bounds.y)}:${Math.round(bounds.width)}:${Math.round(bounds.height)}`
-        : "renderer:hidden";
+        ? `renderer:${Math.round(bounds.x)}:${Math.round(bounds.y)}:${Math.round(bounds.width)}:${Math.round(bounds.height)}:${presented ? 1 : 0}`
+        : `renderer:hidden:${presented ? 1 : 0}`;
       lastMeasuredBoundsKeyRef.current = nextKey;
       if (lastSentBoundsRef.current === nextKey) {
         perfCountersRef.current.syncSkips += 1;
@@ -869,7 +865,7 @@ export function BrowserPanel({
       lastSentBoundsRef.current = nextKey;
       perfCountersRef.current.syncSends += 1;
       void api.browser
-        .setPanelBounds({ threadId, bounds, surface: "renderer" })
+        .setPanelBounds({ threadId, bounds, presented, surface: "renderer" })
         .catch(ignoreBrowserBoundsSyncError);
     };
 
@@ -890,7 +886,7 @@ export function BrowserPanel({
         perfCountersRef.current.burstFrames += 1;
         const previousMeasuredKey = lastMeasuredBoundsKeyRef.current;
         syncBounds();
-        const measuredHidden = lastMeasuredBoundsKeyRef.current?.endsWith(":hidden") ?? false;
+        const measuredHidden = lastMeasuredBoundsKeyRef.current?.includes(":hidden") ?? false;
         if (!measuredHidden && lastMeasuredBoundsKeyRef.current === previousMeasuredKey) {
           burstStableFramesRef.current += 1;
         } else {

@@ -73,34 +73,39 @@ describe("generatedImagePathFromRuntimeEvent", () => {
 });
 
 describe("resolveCodexGeneratedImagesRoot(s)", () => {
-  const previousCTCodeHome = process.env.CTCODE_HOME;
+  const previousFCodeHome = process.env.FCODE_HOME;
   const previousDpcodeHome = process.env.DPCODE_HOME;
   const previousT3codeHome = process.env.T3CODE_HOME;
+  const previousCodexHome = process.env.CODEX_HOME;
   const previousDisableFlag = process.env.DPCODE_DISABLE_CODEX_DPCODE_BROWSER_PLUGIN;
 
   afterEach(() => {
-    if (previousCTCodeHome === undefined) delete process.env.CTCODE_HOME;
-    else process.env.CTCODE_HOME = previousCTCodeHome;
+    if (previousFCodeHome === undefined) delete process.env.FCODE_HOME;
+    else process.env.FCODE_HOME = previousFCodeHome;
     if (previousDpcodeHome === undefined) delete process.env.DPCODE_HOME;
     else process.env.DPCODE_HOME = previousDpcodeHome;
     if (previousT3codeHome === undefined) delete process.env.T3CODE_HOME;
     else process.env.T3CODE_HOME = previousT3codeHome;
+    if (previousCodexHome === undefined) delete process.env.CODEX_HOME;
+    else process.env.CODEX_HOME = previousCodexHome;
     if (previousDisableFlag === undefined)
       delete process.env.DPCODE_DISABLE_CODEX_DPCODE_BROWSER_PLUGIN;
     else process.env.DPCODE_DISABLE_CODEX_DPCODE_BROWSER_PLUGIN = previousDisableFlag;
   });
 
   it("returns the overlay generated_images directory as the active write root by default", () => {
-    process.env.CTCODE_HOME = "/ctcode-test/runtime";
+    process.env.FCODE_HOME = "/fcode-test/runtime";
+    // Pin the default home: non-default homes get a per-home overlay suffix.
+    process.env.CODEX_HOME = "/codex-test/.codex";
     delete process.env.DPCODE_DISABLE_CODEX_DPCODE_BROWSER_PLUGIN;
     assert.equal(
       resolveCodexGeneratedImagesRoot("/codex-test/.codex"),
-      path.join("/ctcode-test/runtime", "codex-home-overlay", "generated_images"),
+      path.join("/fcode-test/runtime", "codex-home-overlay", "generated_images"),
     );
   });
 
   it("returns the source generated_images directory when the dpcode-browser plugin is enabled", () => {
-    process.env.CTCODE_HOME = "/ctcode-test/runtime";
+    process.env.FCODE_HOME = "/fcode-test/runtime";
     process.env.DPCODE_DISABLE_CODEX_DPCODE_BROWSER_PLUGIN = "0";
     assert.equal(
       resolveCodexGeneratedImagesRoot("/codex-test/.codex"),
@@ -109,23 +114,24 @@ describe("resolveCodexGeneratedImagesRoot(s)", () => {
   });
 
   it("returns both source and overlay generated_images roots for the allowlist", () => {
-    process.env.CTCODE_HOME = "/ctcode-test/runtime";
+    process.env.FCODE_HOME = "/fcode-test/runtime";
+    process.env.CODEX_HOME = "/codex-test/.codex";
     delete process.env.DPCODE_DISABLE_CODEX_DPCODE_BROWSER_PLUGIN;
     assert.deepEqual(resolveCodexGeneratedImagesRoots("/codex-test/.codex"), [
       path.join("/codex-test/.codex", "generated_images"),
-      path.join("/ctcode-test/runtime", "codex-home-overlay", "generated_images"),
+      path.join("/fcode-test/runtime", "codex-home-overlay", "generated_images"),
     ]);
   });
 
   it("collapses to a single root when overlay equals source", () => {
-    delete process.env.CTCODE_HOME;
+    delete process.env.FCODE_HOME;
     delete process.env.DPCODE_HOME;
     delete process.env.T3CODE_HOME;
-    // The overlay falls under `<dirname(source)>/.ctcode/runtime/codex-home-overlay`,
+    // The overlay falls under `<dirname(source)>/.fcode/runtime/codex-home-overlay`,
     // which is always distinct from `<source>` itself, so the helper still returns
     // both candidates; this test guards the dedupe path with an artificial home
     // whose dirname happens to equal the overlay root.
-    const homePath = "/runtime/.ctcode/runtime/codex-home-overlay";
+    const homePath = "/runtime/.fcode/runtime/codex-home-overlay";
     const roots = resolveCodexGeneratedImagesRoots(homePath);
     assert.ok(roots.length >= 1 && roots.length <= 2, `expected 1-2 roots, got ${roots.length}`);
     assert.ok(roots.includes(path.join(homePath, "generated_images")));

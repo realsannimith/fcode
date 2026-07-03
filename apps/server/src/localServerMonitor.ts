@@ -72,7 +72,7 @@ const EXCLUDED_PROCESS_COMMANDS = new Set([
   "electron",
   "electron helper",
   "electron helper (renderer)",
-  "ctcode",
+  "fcode",
 ]);
 
 // Chromium/Electron spawns child processes (renderers, GPU, utility, plugin hosts) that can hold
@@ -602,7 +602,7 @@ async function fetchLocalPageTitleResponse(
     signal: AbortSignal.timeout(PAGE_TITLE_FETCH_TIMEOUT_MS),
     headers: {
       Accept: "text/html,application/xhtml+xml;q=0.9,*/*;q=0.1",
-      "User-Agent": "CTCodeLocalServerMonitor/1.0",
+      "User-Agent": "FCodeLocalServerMonitor/1.0",
     },
   });
   if (response.status >= 300 && response.status < 400) {
@@ -808,7 +808,7 @@ function toServerProcess(
     ports,
     addresses,
     isStoppable,
-    ...(isStoppable ? {} : { stopDisabledReason: "CTCode cannot signal this process." }),
+    ...(isStoppable ? {} : { stopDisabledReason: "FCode cannot signal this process." }),
   };
 }
 
@@ -984,7 +984,7 @@ export async function stopLocalServer(
     return {
       pid: input.pid,
       stopped: false,
-      message: target.stopDisabledReason ?? "CTCode cannot stop this process.",
+      message: target.stopDisabledReason ?? "FCode cannot stop this process.",
     };
   }
 

@@ -81,8 +81,8 @@ export const ProviderListSkillsResult = Schema.Struct({
 });
 export type ProviderListSkillsResult = typeof ProviderListSkillsResult.Type;
 
-// Unified cross-provider skills catalog (CTCode portable skills). Descriptors use
-// `scope` to carry the origin label ("ctcode", "codex", "claude", "cursor", ...).
+// Unified cross-provider skills catalog (FCode portable skills). Descriptors use
+// `scope` to carry the origin label ("fcode", "codex", "claude", "cursor", ...).
 export const ProviderSkillsCatalogInput = Schema.Struct({
   cwd: Schema.optional(TrimmedNonEmptyString),
 });
@@ -90,7 +90,7 @@ export type ProviderSkillsCatalogInput = typeof ProviderSkillsCatalogInput.Type;
 
 export const ProviderSkillsCatalogResult = Schema.Struct({
   skills: Schema.Array(ProviderSkillDescriptor),
-  ctcodeSkillsDir: Schema.optional(TrimmedNonEmptyString),
+  fcodeSkillsDir: Schema.optional(TrimmedNonEmptyString),
 });
 export type ProviderSkillsCatalogResult = typeof ProviderSkillsCatalogResult.Type;
 

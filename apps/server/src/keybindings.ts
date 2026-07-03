@@ -977,7 +977,20 @@ const makeKeybindings = Effect.gen(function* () {
         return;
       }
       const customConfig = runtimeConfig.keybindings;
-      const existingCommands = new Set(customConfig.map((entry) => entry.command));
+      // A command counts as "customized" when the config carries at least one binding for
+      // it that is not one of its shipped defaults. For untouched commands we backfill any
+      // default rule the config is missing (matched by exact key+command+when), so default
+      // chords added after the config was first seeded still reach configs written by older
+      // builds. The previous by-command check skipped every default once the command had any
+      // binding, which is why a newly-added sibling chord (e.g. ⌘⇧D for terminal.splitDown,
+      // added alongside the pre-existing ⌘⇧↓ arrow variant) never got backfilled. Customized
+      // commands are left untouched so a default the user deliberately rebound away — which
+      // upsert persists as a single replacement binding — is never resurrected.
+      const isShippedDefaultRule = (entry: KeybindingRule): boolean =>
+        DEFAULT_KEYBINDINGS.some((defaultRule) => isSameKeybindingRule(entry, defaultRule));
+      const customizedCommands = new Set(
+        customConfig.filter((entry) => !isShippedDefaultRule(entry)).map((entry) => entry.command),
+      );
       const missingDefaults: KeybindingRule[] = [];
       const shortcutConflictWarnings: Array<{
         defaultCommand: KeybindingRule["command"];
@@ -986,7 +999,10 @@ const makeKeybindings = Effect.gen(function* () {
         when: string | null;
       }> = [];
       for (const defaultRule of DEFAULT_KEYBINDINGS) {
-        if (existingCommands.has(defaultRule.command)) {
+        if (customConfig.some((entry) => isSameKeybindingRule(entry, defaultRule))) {
+          continue;
+        }
+        if (customizedCommands.has(defaultRule.command)) {
           continue;
         }
         const conflictingEntry = customConfig.find((entry) =>

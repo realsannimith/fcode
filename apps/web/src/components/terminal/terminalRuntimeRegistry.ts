@@ -91,6 +91,14 @@ class TerminalRuntimeRegistry {
     this.entries.get(runtimeKey)?.terminal.focus();
   }
 
+  // Route text through xterm's paste path so it reaches the PTY with the same
+  // bracketed-paste framing as a clipboard paste (agent CLIs rely on it to
+  // treat dropped file paths as one atomic input).
+  paste(runtimeKey: string, text: string): void {
+    if (text.length === 0) return;
+    this.entries.get(runtimeKey)?.terminal.paste(text);
+  }
+
   // Resolve once a terminal's PTY is open at its fitted container width ("ready"), or false
   // after a timeout. Callers that type a startup command (e.g. an agent CLI) wait on this so
   // the command runs only after the pane has sized itself — otherwise the agent TUI boots at a

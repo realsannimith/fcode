@@ -1,6 +1,6 @@
 // FILE: stats.ts
 // Purpose: Schemas for the local profile-stats RPCs that power the Profile page and
-// the shareable activity card. All metrics are backed by CTCode's local DB
+// the shareable activity card. All metrics are backed by FCode's local DB
 // projections; no provider archive or cloud data is part of this contract.
 // Layer: shared contracts (schema-only, no runtime logic)
 
@@ -77,7 +77,7 @@ export const ProfileActivity = Schema.Struct({
   totalThreads: NonNegativeInt,
   promptsToday: NonNegativeInt,
   // Activity heatmap counts native user prompts per local day (same source as
-  // totalPromptsSent), i.e. days the user actually used CTCode.
+  // totalPromptsSent), i.e. days the user actually used FCode.
   heatmapMetric: Schema.Literal("prompts"),
   heatmap: Schema.Array(ProfileHeatmapCell),
 });
@@ -134,7 +134,7 @@ export type ProfileStats = typeof ProfileStats.Type;
 export const StatsGetProfileStatsResult = ProfileStats;
 export type StatsGetProfileStatsResult = typeof StatsGetProfileStatsResult.Type;
 
-// Token totals come from CTCode's projected context-window updates. `available`
+// Token totals come from FCode's projected context-window updates. `available`
 // is false when the DB has not recorded token totals yet.
 export const ProfileTokenStats = Schema.Struct({
   available: Schema.Boolean,

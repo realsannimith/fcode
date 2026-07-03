@@ -19,6 +19,7 @@ import {
 } from "./attachmentPaths";
 import { resolveAttachmentPathById } from "./attachmentStore.ts";
 import { authErrorResponse, makeEffectAuthRequest, serveAuthHttpRoute } from "./auth/http";
+import { browserUseEffectRouteLayer } from "./browserUse/browserUseHttpRoute.ts";
 import { ServerAuth } from "./auth/Services/ServerAuth";
 import type { ServerAuthShape } from "./auth/Services/ServerAuth";
 import type { SessionCredentialServiceShape } from "./auth/Services/SessionCredentialService";
@@ -184,6 +185,7 @@ export function makeEffectHttpRouteLayer(readiness: ServerReadiness) {
       ),
     ),
     authEffectRouteLayer,
+    browserUseEffectRouteLayer,
     projectFaviconEffectRouteLayer,
     siteFaviconEffectRouteLayer,
     editorIconEffectRouteLayer,

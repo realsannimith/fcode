@@ -10,7 +10,9 @@
  */
 import * as OS from "node:os";
 import type {
+  CodexAccountSettings,
   ProviderKind,
+  ServerCodexAccountStatus,
   ServerSettings,
   ServerProviderAuthStatus,
   ServerProviderStatus,
@@ -56,6 +58,19 @@ import {
   normalizeGeminiCapabilityProbeResult,
   probeGeminiCapabilities,
 } from "../geminiAcpProbe";
+import {
+  ANTIGRAVITY_AUTH_GUIDANCE,
+  ANTIGRAVITY_PROBE_TIMEOUT_MS,
+  antigravityCapabilityResultFromModelsCommand,
+  isAntigravityAuthFailure,
+} from "../antigravityCliProbe";
+import { fetchAntigravityUsageSnapshot } from "../../providerUsage/antigravityQuota";
+import {
+  geminiCliCandidates,
+  geminiCliFlavorForBinaryPath,
+  geminiCliNotInstalledMessage,
+  type GeminiCliFlavor,
+} from "../geminiCli";
 import { DEFAULT_CURSOR_AGENT_BINARY, resolveCursorAgentBinaryPath } from "../acp/CursorAcpCommand";
 import { hasGrokApiKeyEnv } from "../acp/GrokAcpSupport";
 import { ProviderHealth, type ProviderHealthShape } from "../Services/ProviderHealth";
@@ -76,6 +91,7 @@ import {
   type ProviderMaintenanceCapabilities,
 } from "../providerMaintenance";
 import { collectUint8StreamText } from "../../stream/collectUint8StreamText";
+import { prepareCodexAccountHome } from "../../codexAccounts.ts";
 import { buildCodexProcessEnv } from "../../codexProcessEnv.ts";
 
 const DEFAULT_TIMEOUT_MS = 4_000;
@@ -91,7 +107,7 @@ const KILO_PROVIDER = "kilo" as const;
 const OPENCODE_PROVIDER = "opencode" as const;
 const PI_PROVIDER = "pi" as const;
 type ProviderStatuses = ReadonlyArray<ServerProviderStatus>;
-const DISABLED_PROVIDER_STATUS_MESSAGE = "Provider is disabled in CTCode settings.";
+const DISABLED_PROVIDER_STATUS_MESSAGE = "Provider is disabled in FCode settings.";
 
 const PROVIDERS = [
   CODEX_PROVIDER,
@@ -837,9 +853,90 @@ const hasCustomModelProviderForEnv = (env: NodeJS.ProcessEnv) =>
     (provider) => provider !== undefined && !OPENAI_AUTH_PROVIDERS.has(provider),
   );
 
+// Derives the auth fields shared by the provider-level probe and the
+// per-account probes from one `codex login status` output.
+function codexAuthFieldsFromOutput(authOutput: CommandResult): {
+  readonly status: ServerProviderStatusState;
+  readonly authStatus: ServerProviderAuthStatus;
+  readonly authType: string | undefined;
+  readonly authLabel: string | undefined;
+  readonly voiceTranscriptionAvailable: boolean | undefined;
+  readonly message: string | undefined;
+} {
+  const parsed = parseAuthStatusFromOutput(authOutput);
+  const codexPlanType = extractSubscriptionTypeFromOutput(authOutput);
+  const codexAccountType = extractCodexAccountTypeFromOutput(authOutput);
+  const authLabel =
+    parsed.authStatus === "authenticated"
+      ? codexAccountAuthLabel({ type: codexAccountType, planType: codexPlanType })
+      : undefined;
+  const authType =
+    parsed.authStatus === "authenticated"
+      ? codexAccountType === "apiKey"
+        ? "apiKey"
+        : codexPlanType
+      : undefined;
+  return {
+    status: parsed.status,
+    authStatus: parsed.authStatus,
+    authType,
+    authLabel,
+    voiceTranscriptionAvailable: parsed.voiceTranscriptionAvailable,
+    message: parsed.message,
+  };
+}
+
+// Auth-only probe for one additional Codex account. The CLI/version checks
+// are shared with the provider-level probe, so this only has to answer
+// "which login lives in this account's home?".
+const probeCodexAccountStatus = (input: {
+  readonly executable: string;
+  readonly homePath: string | undefined;
+  readonly accounts: ReadonlyArray<CodexAccountSettings>;
+  readonly account: CodexAccountSettings;
+}): Effect.Effect<ServerCodexAccountStatus, never, ChildProcessSpawner.ChildProcessSpawner> =>
+  Effect.gen(function* () {
+    const base = {
+      id: input.account.id,
+      ...(input.account.label.trim() ? { label: input.account.label.trim() } : {}),
+    };
+    const prepared = yield* Effect.sync(() =>
+      prepareCodexAccountHome(
+        { homePath: input.homePath ?? "", accounts: input.accounts },
+        input.account.id,
+      ),
+    );
+    if (!prepared.ok) {
+      return { ...base, authStatus: "unknown" as const, message: prepared.reason };
+    }
+
+    const probeEnv = makeCodexProbeEnv(prepared.resolution.effectiveHomePath);
+    const authProbe = yield* runCodexCommand(["login", "status"], input.executable, probeEnv).pipe(
+      Effect.timeoutOption(DEFAULT_TIMEOUT_MS),
+      Effect.result,
+    );
+    if (Result.isFailure(authProbe) || Option.isNone(authProbe.success)) {
+      return {
+        ...base,
+        authStatus: "unknown" as const,
+        message: "Could not verify Codex authentication status for this account.",
+      };
+    }
+
+    const fields = codexAuthFieldsFromOutput(authProbe.success.value);
+    return {
+      ...base,
+      authStatus: fields.authStatus,
+      ...(fields.authType ? { authType: fields.authType } : {}),
+      ...(fields.authLabel ? { authLabel: fields.authLabel } : {}),
+      ...(fields.message ? { message: fields.message } : {}),
+    };
+  });
+
 export const makeCheckCodexProviderStatus = (
   binaryPath?: string,
   homePath?: string,
+  accounts: ReadonlyArray<CodexAccountSettings> = [],
 ): Effect.Effect<
   ServerProviderStatus,
   never,
@@ -926,6 +1023,19 @@ export const makeCheckCodexProviderStatus = (
       } satisfies ServerProviderStatus;
     }
 
+    // Extra accounts probe independently of the primary login: the CLI is
+    // known to work at this point, and each account answers only for the
+    // login stored in its own (shadow) home.
+    const accountStatuses =
+      accounts.length > 0
+        ? yield* Effect.forEach(
+            accounts,
+            (account) => probeCodexAccountStatus({ executable, homePath, accounts, account }),
+            { concurrency: "unbounded" },
+          )
+        : [];
+    const accountsField = accountStatuses.length > 0 ? { accounts: accountStatuses } : {};
+
     const authProbe = yield* runCodexCommand(["login", "status"], executable, probeEnv).pipe(
       Effect.timeoutOption(DEFAULT_TIMEOUT_MS),
       Effect.result,
@@ -944,6 +1054,7 @@ export const makeCheckCodexProviderStatus = (
           error instanceof Error
             ? `Could not verify Codex authentication status: ${error.message}.`
             : "Could not verify Codex authentication status.",
+        ...accountsField,
       };
     }
 
@@ -956,37 +1067,26 @@ export const makeCheckCodexProviderStatus = (
         version: parsedVersion,
         checkedAt,
         message: "Could not verify Codex authentication status. Timed out while running command.",
+        ...accountsField,
       };
     }
 
-    const authOutput = authProbe.success.value;
-    const parsed = parseAuthStatusFromOutput(authOutput);
-    const codexPlanType = extractSubscriptionTypeFromOutput(authOutput);
-    const codexAccountType = extractCodexAccountTypeFromOutput(authOutput);
-    const codexLabel =
-      parsed.authStatus === "authenticated"
-        ? codexAccountAuthLabel({ type: codexAccountType, planType: codexPlanType })
-        : undefined;
-    const codexAuthType =
-      parsed.authStatus === "authenticated"
-        ? codexAccountType === "apiKey"
-          ? "apiKey"
-          : codexPlanType
-        : undefined;
+    const fields = codexAuthFieldsFromOutput(authProbe.success.value);
 
     return {
       provider: CODEX_PROVIDER,
-      status: parsed.status,
+      status: fields.status,
       available: true,
-      authStatus: parsed.authStatus,
+      authStatus: fields.authStatus,
       version: parsedVersion,
-      ...(codexAuthType ? { authType: codexAuthType } : {}),
-      ...(codexLabel ? { authLabel: codexLabel } : {}),
-      ...(parsed.voiceTranscriptionAvailable !== undefined
-        ? { voiceTranscriptionAvailable: parsed.voiceTranscriptionAvailable }
+      ...(fields.authType ? { authType: fields.authType } : {}),
+      ...(fields.authLabel ? { authLabel: fields.authLabel } : {}),
+      ...(fields.voiceTranscriptionAvailable !== undefined
+        ? { voiceTranscriptionAvailable: fields.voiceTranscriptionAvailable }
         : {}),
       checkedAt,
-      ...(parsed.message ? { message: parsed.message } : {}),
+      ...(fields.message ? { message: fields.message } : {}),
+      ...accountsField,
     } satisfies ServerProviderStatus;
   });
 
@@ -1195,61 +1295,209 @@ export const makeCheckClaudeProviderStatus = (
 
 export const checkClaudeProviderStatus = makeCheckClaudeProviderStatus();
 
+interface ResolvedGeminiHealthBinary {
+  readonly executable: string;
+  readonly flavor: GeminiCliFlavor;
+  readonly version?: string;
+}
+
 export const makeCheckGeminiProviderStatus = (
   binaryPath?: string,
+  // Injectable so tests can exercise the Antigravity auth outcomes (and the
+  // `agy models` fallback) without touching the real Keychain / network.
+  options?: {
+    readonly fetchAntigravityUsage?: typeof fetchAntigravityUsageSnapshot;
+  },
 ): Effect.Effect<ServerProviderStatus, never, ChildProcessSpawner.ChildProcessSpawner> =>
   Effect.gen(function* () {
     const checkedAt = new Date().toISOString();
-    const executable = nonEmptyTrimmed(binaryPath) ?? "gemini";
+    const configured = nonEmptyTrimmed(binaryPath);
+    const fetchAntigravityUsage = options?.fetchAntigravityUsage ?? fetchAntigravityUsageSnapshot;
 
-    const versionProbe = yield* runGeminiCommand(["--version"], executable).pipe(
-      Effect.timeoutOption(DEFAULT_TIMEOUT_MS),
-      Effect.result,
-    );
+    // Google replaced the consumer Gemini CLI (`gemini`) with the Antigravity
+    // CLI (`agy`) in June 2026, so the default configuration probes both.
+    let resolved: ResolvedGeminiHealthBinary | undefined;
+    let brokenCandidateMessage: string | undefined;
 
-    if (Result.isFailure(versionProbe)) {
-      const error = versionProbe.failure;
+    for (const candidate of geminiCliCandidates(configured)) {
+      const versionProbe = yield* runGeminiCommand(["--version"], candidate).pipe(
+        Effect.timeoutOption(DEFAULT_TIMEOUT_MS),
+        Effect.result,
+      );
+
+      if (Result.isFailure(versionProbe)) {
+        const error = versionProbe.failure;
+        if (!isCommandMissingCause(error)) {
+          brokenCandidateMessage = `Failed to execute Gemini provider health check for \`${candidate}\`: ${error instanceof Error ? error.message : String(error)}.`;
+        }
+        continue;
+      }
+
+      if (Option.isNone(versionProbe.success)) {
+        brokenCandidateMessage = `\`${candidate}\` is installed but failed to run. ${PROVIDER_COMMAND_TIMEOUT_DETAIL}`;
+        continue;
+      }
+
+      const version = versionProbe.success.value;
+      if (version.code !== 0) {
+        const detail = detailFromResult(version);
+        brokenCandidateMessage = detail
+          ? `\`${candidate}\` is installed but failed to run. ${detail}`
+          : `\`${candidate}\` is installed but failed to run.`;
+        continue;
+      }
+
+      const parsedVersion = parseGenericCliVersion(`${version.stdout}\n${version.stderr}`);
+      resolved = {
+        executable: candidate,
+        flavor: geminiCliFlavorForBinaryPath(candidate),
+        ...(parsedVersion ? { version: parsedVersion } : {}),
+      };
+      break;
+    }
+
+    if (!resolved) {
       return {
         provider: GEMINI_PROVIDER,
         status: "error" as const,
         available: false,
         authStatus: "unknown" as const,
         checkedAt,
-        message: isCommandMissingCause(error)
-          ? "Gemini CLI (`gemini`) is not installed or not on PATH."
-          : `Failed to execute Gemini CLI health check: ${error instanceof Error ? error.message : String(error)}.`,
+        message: brokenCandidateMessage ?? geminiCliNotInstalledMessage(configured),
       };
     }
 
-    if (Option.isNone(versionProbe.success)) {
-      return {
-        provider: GEMINI_PROVIDER,
-        status: "error" as const,
-        available: false,
-        authStatus: "unknown" as const,
-        checkedAt,
-        message: "Gemini CLI is installed but failed to run. Timed out while running command.",
-      };
-    }
+    if (resolved.flavor === "antigravity") {
+      // Verify Antigravity auth the reliable way: read its OAuth token from the
+      // macOS Keychain and check the Google Cloud Code quota — the same path the
+      // usage sidebar uses. This avoids `agy models`, which HANGS when FCode's
+      // background agy can't reach the desktop login session (its own language
+      // server reports "not logged in"), producing a false "couldn't verify"
+      // even though the user is signed in. A null result means there is no
+      // Antigravity keychain token at all (non-macOS, or the legacy Gemini CLI),
+      // so fall through to the `agy models` probe below.
+      const antigravityUsage = yield* Effect.promise(() =>
+        fetchAntigravityUsage({
+          homeDir: OS.homedir(),
+          env: process.env,
+          platform: process.platform,
+          nowMs: Date.now(),
+        }),
+      );
 
-    const version = versionProbe.success.value;
-    if (version.code !== 0) {
-      const detail = detailFromResult(version);
+      if (antigravityUsage) {
+        const usageStatus = antigravityUsage.status ?? "ok";
+        if (usageStatus === "ok") {
+          return {
+            provider: GEMINI_PROVIDER,
+            status: "ready" as const,
+            available: true,
+            authStatus: "authenticated" as const,
+            ...(resolved.version ? { version: resolved.version } : {}),
+            checkedAt,
+            message: "Antigravity CLI (`agy`) is installed and signed in.",
+          } satisfies ServerProviderStatus;
+        }
+        if (usageStatus === "needs-auth") {
+          return {
+            provider: GEMINI_PROVIDER,
+            status: "warning" as const,
+            available: true,
+            authStatus: "unauthenticated" as const,
+            ...(resolved.version ? { version: resolved.version } : {}),
+            checkedAt,
+            message: `Antigravity is not signed in. ${ANTIGRAVITY_AUTH_GUIDANCE}`,
+          } satisfies ServerProviderStatus;
+        }
+        // Transient outage reaching the quota service; tag with the timeout
+        // detail so a previously verified "ready" status is kept rather than
+        // clobbered on one slow check.
+        return {
+          provider: GEMINI_PROVIDER,
+          status: "warning" as const,
+          available: true,
+          authStatus: "unknown" as const,
+          ...(resolved.version ? { version: resolved.version } : {}),
+          checkedAt,
+          message: `Couldn't verify Antigravity sign-in right now. ${PROVIDER_COMMAND_TIMEOUT_DETAIL} Try Refresh.`,
+        } satisfies ServerProviderStatus;
+      }
+
+      // No Antigravity keychain token (non-macOS / legacy Gemini CLI): the
+      // `agy models` probe is the only remaining signal.
+      const modelsProbe = yield* runGeminiCommand(["models"], resolved.executable).pipe(
+        Effect.timeoutOption(ANTIGRAVITY_PROBE_TIMEOUT_MS),
+        Effect.result,
+      );
+
+      // A spawn failure (the CLI errored before producing output) and a timeout
+      // (the CLI never answered) are distinct situations that each deserve
+      // clearer guidance than a bare "could not verify".
+      if (Result.isFailure(modelsProbe)) {
+        const error = modelsProbe.failure;
+        const detail = error instanceof Error ? error.message : String(error);
+        // Some spawn failures surface the not-signed-in string directly; that is
+        // a definitive "sign in first" signal.
+        if (isAntigravityAuthFailure(detail)) {
+          return {
+            provider: GEMINI_PROVIDER,
+            status: "warning" as const,
+            available: true,
+            authStatus: "unauthenticated" as const,
+            ...(resolved.version ? { version: resolved.version } : {}),
+            checkedAt,
+            message: `Antigravity is not signed in. ${ANTIGRAVITY_AUTH_GUIDANCE}`,
+          } satisfies ServerProviderStatus;
+        }
+        return {
+          provider: GEMINI_PROVIDER,
+          status: "warning" as const,
+          available: true,
+          authStatus: "unknown" as const,
+          ...(resolved.version ? { version: resolved.version } : {}),
+          checkedAt,
+          message: `Antigravity CLI (\`agy\`) is installed, but FCode could not run it to verify status: ${detail}`,
+        } satisfies ServerProviderStatus;
+      }
+
+      if (Option.isNone(modelsProbe.success)) {
+        // `agy models` never answered within the window. In practice this is a
+        // background-session limitation, not a real sign-out: `agy` spawned by
+        // FCode's server can't always reach the Antigravity login session (the
+        // credential is bound to the desktop app's macOS Keychain / sidecar),
+        // so its own language server reports "not logged in" and the call
+        // hangs — even though `agy` works from a terminal. Tag the message with
+        // the shared timeout detail so
+        // stabilizeProviderStatusesAgainstTransientTimeouts keeps a previously
+        // verified "ready" status instead of flipping Gemini to a scary state,
+        // and keep it non-blocking (authStatus "unknown", not "unauthenticated")
+        // so the model picker never disables a provider that may still run
+        // turns fine.
+        return {
+          provider: GEMINI_PROVIDER,
+          status: "warning" as const,
+          available: true,
+          authStatus: "unknown" as const,
+          ...(resolved.version ? { version: resolved.version } : {}),
+          checkedAt,
+          message: `FCode couldn't verify Antigravity sign-in — the \`agy\` CLI didn't respond in time. ${PROVIDER_COMMAND_TIMEOUT_DETAIL} If \`agy\` works in your terminal, this is just the background status check; try Refresh, and keep the Antigravity desktop app open + signed in.`,
+        } satisfies ServerProviderStatus;
+      }
+
+      const parsed = antigravityCapabilityResultFromModelsCommand(modelsProbe.success.value);
       return {
         provider: GEMINI_PROVIDER,
-        status: "error" as const,
-        available: false,
-        authStatus: "unknown" as const,
+        status: parsed.status,
+        available: true,
+        authStatus: parsed.auth.status,
+        ...(resolved.version ? { version: resolved.version } : {}),
         checkedAt,
-        message: detail
-          ? `Gemini CLI is installed but failed to run. ${detail}`
-          : "Gemini CLI is installed but failed to run.",
-      };
+        ...(parsed.message ? { message: parsed.message } : {}),
+      } satisfies ServerProviderStatus;
     }
-    const parsedVersion = parseGenericCliVersion(`${version.stdout}\n${version.stderr}`);
 
     const capabilityProbe = yield* probeGeminiCapabilities({
-      binaryPath: executable,
+      binaryPath: resolved.executable,
       cwd: OS.homedir(),
     }).pipe(Effect.result);
 
@@ -1260,7 +1508,7 @@ export const makeCheckGeminiProviderStatus = (
         status: "warning" as const,
         available: true,
         authStatus: "unknown" as const,
-        version: parsedVersion,
+        ...(resolved.version ? { version: resolved.version } : {}),
         checkedAt,
         message:
           error instanceof Error
@@ -1275,7 +1523,7 @@ export const makeCheckGeminiProviderStatus = (
       status: parsed.status,
       available: true,
       authStatus: parsed.auth.status,
-      version: parsedVersion,
+      ...(resolved.version ? { version: resolved.version } : {}),
       checkedAt,
       ...(parsed.message ? { message: parsed.message } : {}),
     } satisfies ServerProviderStatus;
@@ -1509,7 +1757,7 @@ export const checkPiProviderStatus = (
       Effect.result,
     );
 
-    // Pi itself is SDK-backed in CTCode. Keep this CLI probe advisory so health
+    // Pi itself is SDK-backed in FCode. Keep this CLI probe advisory so health
     // refreshes do not import the SDK and initialize its native clipboard module.
     if (Result.isFailure(versionProbe)) {
       const error = versionProbe.failure;
@@ -1520,7 +1768,7 @@ export const checkPiProviderStatus = (
         authStatus: "unknown" as const,
         checkedAt,
         message: isCommandMissingCause(error)
-          ? "Pi SDK is bundled, but the Pi CLI (`pi`) is not on PATH, so CTCode could not verify the installed CLI version."
+          ? "Pi SDK is bundled, but the Pi CLI (`pi`) is not on PATH, so FCode could not verify the installed CLI version."
           : `Pi SDK is bundled, but the CLI health check failed: ${error instanceof Error ? error.message : String(error)}.`,
       } satisfies ServerProviderStatus;
     }
@@ -1533,7 +1781,7 @@ export const checkPiProviderStatus = (
         authStatus: "unknown" as const,
         checkedAt,
         message:
-          "Pi SDK is bundled, but the CLI health check timed out before CTCode could verify the installed version.",
+          "Pi SDK is bundled, but the CLI health check timed out before FCode could verify the installed version.",
       } satisfies ServerProviderStatus;
     }
 
@@ -1562,7 +1810,7 @@ export const checkPiProviderStatus = (
       version: parsedVersion,
       checkedAt,
       message: configuredAgentDir
-        ? `Pi CLI is installed. CTCode will use Pi agent dir ${configuredAgentDir}.`
+        ? `Pi CLI is installed. FCode will use Pi agent dir ${configuredAgentDir}.`
         : "Pi CLI is installed. Configure provider credentials inside Pi as needed.",
     } satisfies ServerProviderStatus;
   });
@@ -2041,6 +2289,7 @@ export const ProviderHealthLive = Layer.effect(
                 makeCheckCodexProviderStatus(
                   settings.providers.codex.binaryPath,
                   settings.providers.codex.homePath,
+                  settings.providers.codex.accounts,
                 ),
               ),
               checkProviderWhenEnabled(
@@ -2258,7 +2507,7 @@ export const ProviderHealthLive = Layer.effect(
       if (!isProviderEnabledForSettings(provider, settings)) {
         return yield* new ServerProviderUpdateError({
           provider,
-          reason: "Provider is disabled in CTCode settings.",
+          reason: "Provider is disabled in FCode settings.",
         });
       }
       const capabilities = yield* getProviderMaintenanceCapabilities(provider).pipe(
@@ -2337,7 +2586,7 @@ export const ProviderHealthLive = Layer.effect(
             startedAt,
             finishedAt,
             message: stillOutdated
-              ? "Update command completed, but CTCode still detects an outdated provider version."
+              ? "Update command completed, but FCode still detects an outdated provider version."
               : "Provider updated.",
             output: output ? output.slice(0, UPDATE_OUTPUT_MAX_BYTES) : null,
           }),

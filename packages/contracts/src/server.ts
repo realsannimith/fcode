@@ -45,6 +45,22 @@ export const ServerProviderAuthStatus = Schema.Literals([
 ]);
 export type ServerProviderAuthStatus = typeof ServerProviderAuthStatus.Type;
 
+/**
+ * Auth snapshot for one additional Codex account (see
+ * `CodexAccountSettings`). The provider-level `authStatus`/`authLabel`
+ * fields describe the primary account; entries here describe the extra
+ * accounts configured under `providers.codex.accounts`.
+ */
+export const ServerCodexAccountStatus = Schema.Struct({
+  id: TrimmedNonEmptyString,
+  label: Schema.optional(TrimmedNonEmptyString),
+  authStatus: ServerProviderAuthStatus,
+  authType: Schema.optional(TrimmedNonEmptyString),
+  authLabel: Schema.optional(TrimmedNonEmptyString),
+  message: Schema.optional(TrimmedNonEmptyString),
+});
+export type ServerCodexAccountStatus = typeof ServerCodexAccountStatus.Type;
+
 export const ServerProviderStatus = Schema.Struct({
   provider: ProviderKind,
   status: ServerProviderStatusState,
@@ -52,6 +68,7 @@ export const ServerProviderStatus = Schema.Struct({
   authStatus: ServerProviderAuthStatus,
   authType: Schema.optional(TrimmedNonEmptyString),
   authLabel: Schema.optional(TrimmedNonEmptyString),
+  accounts: Schema.optionalKey(Schema.Array(ServerCodexAccountStatus)),
   voiceTranscriptionAvailable: Schema.optional(Schema.Boolean),
   version: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
   checkedAt: IsoDateTime,
@@ -429,6 +446,45 @@ export class ServerProviderUpdateError extends Schema.TaggedErrorClass<ServerPro
 
 export const ServerProviderUpdateResult = ServerProviderStatusesUpdatedPayload;
 export type ServerProviderUpdateResult = typeof ServerProviderUpdateResult.Type;
+
+// ── Codex account auth (multi-account) ──────────────────────────────
+//
+// `accountId` selects one of `providers.codex.accounts`; omit it to target
+// the primary account (the provider's own CODEX_HOME).
+
+export const ServerCodexAccountAuthInput = Schema.Struct({
+  accountId: Schema.optional(TrimmedNonEmptyString),
+});
+export type ServerCodexAccountAuthInput = typeof ServerCodexAccountAuthInput.Type;
+
+// Login spawns `codex login` against the account's home and returns
+// immediately; completion is observable through the provider-status push
+// channel once the CLI exits and statuses are re-probed.
+export const ServerCodexAccountLoginResult = Schema.Struct({
+  status: Schema.Literals(["started", "alreadyRunning"]),
+});
+export type ServerCodexAccountLoginResult = typeof ServerCodexAccountLoginResult.Type;
+
+export const ServerCodexAccountLoginCancelResult = Schema.Struct({
+  status: Schema.Literals(["cancelled", "notRunning"]),
+});
+export type ServerCodexAccountLoginCancelResult = typeof ServerCodexAccountLoginCancelResult.Type;
+
+export const ServerCodexAccountLogoutResult = ServerProviderStatusesUpdatedPayload;
+export type ServerCodexAccountLogoutResult = typeof ServerCodexAccountLogoutResult.Type;
+
+export class ServerCodexAccountAuthError extends Schema.TaggedErrorClass<ServerCodexAccountAuthError>()(
+  "ServerCodexAccountAuthError",
+  {
+    accountId: Schema.NullOr(TrimmedNonEmptyString),
+    reason: TrimmedNonEmptyString,
+  },
+) {
+  override get message(): string {
+    const account = this.accountId === null ? "primary account" : `account '${this.accountId}'`;
+    return `Codex ${account} auth action failed: ${this.reason}`;
+  }
+}
 
 export const ServerGetSettingsResult = ServerSettings;
 export type ServerGetSettingsResult = typeof ServerGetSettingsResult.Type;

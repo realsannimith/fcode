@@ -18,12 +18,15 @@ export async function fetchJson(input: {
   body?: unknown;
   timeoutMs?: number;
 }): Promise<FetchJsonResult> {
-  const response = await fetch(input.url, {
+  // Build init incrementally so optional fields are omitted rather than set to
+  // `undefined`, which `exactOptionalPropertyTypes` rejects for `RequestInit`.
+  const init: RequestInit = {
     method: input.method ?? "GET",
-    headers: input.headers,
-    body: input.body === undefined ? undefined : JSON.stringify(input.body),
     signal: AbortSignal.timeout(input.timeoutMs ?? DEFAULT_TIMEOUT_MS),
-  });
+  };
+  if (input.headers !== undefined) init.headers = input.headers;
+  if (input.body !== undefined) init.body = JSON.stringify(input.body);
+  const response = await fetch(input.url, init);
 
   let json: unknown = null;
   try {

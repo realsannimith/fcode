@@ -13,6 +13,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 
@@ -40,12 +41,24 @@ export interface LocalImagePreviewState {
   imgProps: LocalImagePreviewImgProps;
 }
 
+// Chat markdown can reference an image the agent is still writing to disk, so
+// the first fetch may 404 moments before the file exists. Retry with backoff
+// (skeleton stays visible) before surfacing the error card.
+const LOCAL_IMAGE_RETRY_DELAYS_MS = [1_000, 2_500, 5_000] as const;
+
 export function useLocalImagePreview(input: {
   src: string;
   cwd: string | null | undefined;
 }): LocalImagePreviewState {
   const { src, cwd } = input;
-  const previewUrl = useMemo(() => buildLocalImageUrl({ src, cwd: cwd ?? undefined }), [cwd, src]);
+  const [retryAttempt, setRetryAttempt] = useState(0);
+  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const previewUrl = useMemo(() => {
+    const url = buildLocalImageUrl({ src, cwd: cwd ?? undefined });
+    // Bump a throwaway param on retries so the browser issues a fresh request
+    // instead of reusing the failed load for an identical src.
+    return retryAttempt > 0 ? `${url}&retry=${retryAttempt}` : url;
+  }, [cwd, retryAttempt, src]);
   const downloadUrl = useMemo(
     () => buildLocalImageUrl({ src, cwd: cwd ?? undefined, download: true }),
     [cwd, src],
@@ -55,7 +68,26 @@ export function useLocalImagePreview(input: {
 
   useEffect(() => {
     setStatus("loading");
-  }, [previewUrl]);
+    setRetryAttempt(0);
+    return () => {
+      if (retryTimerRef.current !== null) {
+        clearTimeout(retryTimerRef.current);
+        retryTimerRef.current = null;
+      }
+    };
+  }, [src, cwd]);
+
+  const handleLoadError = useCallback(() => {
+    const delayMs = LOCAL_IMAGE_RETRY_DELAYS_MS[retryAttempt];
+    if (delayMs === undefined) {
+      setStatus("error");
+      return;
+    }
+    retryTimerRef.current = setTimeout(() => {
+      retryTimerRef.current = null;
+      setRetryAttempt(retryAttempt + 1);
+    }, delayMs);
+  }, [retryAttempt]);
 
   const imgProps = useMemo<LocalImagePreviewImgProps>(
     () => ({
@@ -64,9 +96,9 @@ export function useLocalImagePreview(input: {
       decoding: "async",
       draggable: false,
       onLoad: () => setStatus("ready"),
-      onError: () => setStatus("error"),
+      onError: handleLoadError,
     }),
-    [previewUrl],
+    [handleLoadError, previewUrl],
   );
 
   return { previewUrl, downloadUrl, fileName, downloadName: fileName || "", status, imgProps };

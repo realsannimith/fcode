@@ -26,6 +26,7 @@ import type {
   ProviderInteractionMode,
   ProjectKind,
   RuntimeMode,
+  ThreadEntryPoint,
   ThreadEnvironmentMode,
 } from "@t3tools/contracts";
 
@@ -183,6 +184,9 @@ export interface Thread extends ThreadWorkspaceState {
   modelSelection: ModelSelection;
   runtimeMode: RuntimeMode;
   interactionMode: ProviderInteractionMode;
+  // Server-persisted primary surface: terminal threads reopen as terminals on
+  // any client, independent of the client-local terminal state store.
+  entryPoint?: ThreadEntryPoint;
   session: ThreadSession | null;
   messages: ChatMessage[];
   proposedPlans: ProposedPlan[];
@@ -221,6 +225,7 @@ export interface ThreadShell extends ThreadWorkspaceState {
   modelSelection: ModelSelection;
   runtimeMode: RuntimeMode;
   interactionMode: ProviderInteractionMode;
+  entryPoint?: ThreadEntryPoint;
   error: string | null;
   createdAt: string;
   archivedAt?: string | null;

@@ -1,14 +1,34 @@
 import assert from "node:assert/strict";
+import { homedir } from "node:os";
 import path from "node:path";
 import { describe, it } from "vitest";
 
 import {
+  expandHomePath,
   resolveActiveCodexHomeWritePath,
   resolveBaseCodexHomePath,
   resolveCodexHomeAllowlistCandidates,
   resolveDpCodeCodexHomeOverlayPath,
   shouldDisableDpCodeBrowserPlugin,
 } from "./codexHomePaths.ts";
+
+describe("expandHomePath", () => {
+  it("expands a bare tilde to the home directory", () => {
+    assert.equal(expandHomePath("~"), homedir());
+  });
+
+  it("expands a tilde-prefixed path", () => {
+    assert.equal(
+      expandHomePath("~/.codex-accounts/work"),
+      path.join(homedir(), ".codex-accounts", "work"),
+    );
+  });
+
+  it("leaves absolute and relative paths untouched", () => {
+    assert.equal(expandHomePath("/users/me/.codex"), "/users/me/.codex");
+    assert.equal(expandHomePath("relative/path"), "relative/path");
+  });
+});
 
 describe("resolveBaseCodexHomePath", () => {
   it("prefers the explicit home path over CODEX_HOME and the default", () => {
@@ -26,34 +46,69 @@ describe("resolveBaseCodexHomePath", () => {
     const result = resolveBaseCodexHomePath({});
     assert.ok(result.endsWith(`${path.sep}.codex`));
   });
+
+  it("expands tilde-prefixed explicit home paths", () => {
+    assert.equal(
+      resolveBaseCodexHomePath({}, "~/.codex-work"),
+      path.join(homedir(), ".codex-work"),
+    );
+  });
 });
 
 describe("resolveDpCodeCodexHomeOverlayPath", () => {
-  it("anchors the overlay under CTCODE_HOME when set", () => {
+  it("anchors the overlay under FCODE_HOME when set", () => {
     assert.equal(
-      resolveDpCodeCodexHomeOverlayPath({ CTCODE_HOME: "/ctcode/runtime" }, "/users/me/.codex"),
-      path.join("/ctcode/runtime", "codex-home-overlay"),
+      resolveDpCodeCodexHomeOverlayPath(
+        { FCODE_HOME: "/fcode/runtime", CODEX_HOME: "/users/me/.codex" },
+        "/users/me/.codex",
+      ),
+      path.join("/fcode/runtime", "codex-home-overlay"),
     );
   });
 
   it("honours the legacy DPCODE_HOME variable", () => {
     assert.equal(
-      resolveDpCodeCodexHomeOverlayPath({ DPCODE_HOME: "/dp/runtime" }, "/users/me/.codex"),
+      resolveDpCodeCodexHomeOverlayPath(
+        { DPCODE_HOME: "/dp/runtime", CODEX_HOME: "/users/me/.codex" },
+        "/users/me/.codex",
+      ),
       path.join("/dp/runtime", "codex-home-overlay"),
     );
   });
 
   it("honours the legacy T3CODE_HOME variable", () => {
     assert.equal(
-      resolveDpCodeCodexHomeOverlayPath({ T3CODE_HOME: "/t3/runtime" }, "/users/me/.codex"),
+      resolveDpCodeCodexHomeOverlayPath(
+        { T3CODE_HOME: "/t3/runtime", CODEX_HOME: "/users/me/.codex" },
+        "/users/me/.codex",
+      ),
       path.join("/t3/runtime", "codex-home-overlay"),
     );
   });
 
   it("derives a default overlay sibling of the source home", () => {
     assert.equal(
-      resolveDpCodeCodexHomeOverlayPath({}, "/users/me/.codex"),
-      path.join("/users/me", ".ctcode", "runtime", "codex-home-overlay"),
+      resolveDpCodeCodexHomeOverlayPath({ CODEX_HOME: "/users/me/.codex" }, "/users/me/.codex"),
+      path.join("/users/me", ".fcode", "runtime", "codex-home-overlay"),
+    );
+  });
+
+  it("suffixes the overlay directory for non-default source homes", () => {
+    const env = { FCODE_HOME: "/fcode/runtime", CODEX_HOME: "/users/me/.codex" };
+    const defaultOverlay = resolveDpCodeCodexHomeOverlayPath(env, "/users/me/.codex");
+    const accountOverlay = resolveDpCodeCodexHomeOverlayPath(env, "/users/me/.codex-accounts/work");
+    const otherAccountOverlay = resolveDpCodeCodexHomeOverlayPath(
+      env,
+      "/users/me/.codex-accounts/personal",
+    );
+
+    assert.notEqual(accountOverlay, defaultOverlay);
+    assert.notEqual(accountOverlay, otherAccountOverlay);
+    assert.ok(path.basename(accountOverlay).startsWith("codex-home-overlay-"));
+    // Stable across calls so persisted state keeps resolving to the same dir.
+    assert.equal(
+      accountOverlay,
+      resolveDpCodeCodexHomeOverlayPath(env, "/users/me/.codex-accounts/work"),
     );
   });
 });
@@ -75,10 +130,10 @@ describe("resolveActiveCodexHomeWritePath", () => {
   it("returns the overlay home when the plugin is disabled (default)", () => {
     assert.equal(
       resolveActiveCodexHomeWritePath({
-        env: { CTCODE_HOME: "/ctcode/runtime" },
+        env: { FCODE_HOME: "/fcode/runtime", CODEX_HOME: "/users/me/.codex" },
         homePath: "/users/me/.codex",
       }),
-      path.join("/ctcode/runtime", "codex-home-overlay"),
+      path.join("/fcode/runtime", "codex-home-overlay"),
     );
   });
 
@@ -99,20 +154,21 @@ describe("resolveActiveCodexHomeWritePath", () => {
 describe("resolveCodexHomeAllowlistCandidates", () => {
   it("includes both source and overlay homes when distinct", () => {
     const candidates = resolveCodexHomeAllowlistCandidates({
-      env: { CTCODE_HOME: "/ctcode/runtime" },
+      env: { FCODE_HOME: "/fcode/runtime", CODEX_HOME: "/users/me/.codex" },
       homePath: "/users/me/.codex",
     });
     assert.deepEqual(candidates, [
       "/users/me/.codex",
-      path.join("/ctcode/runtime", "codex-home-overlay"),
+      path.join("/fcode/runtime", "codex-home-overlay"),
     ]);
   });
 
   it("returns just the source when overlay equals source", () => {
+    const source = path.join("/users/me", "codex-home-overlay");
     const candidates = resolveCodexHomeAllowlistCandidates({
-      env: { DPCODE_HOME: "/users/me" },
-      homePath: path.join("/users/me", "codex-home-overlay"),
+      env: { DPCODE_HOME: "/users/me", CODEX_HOME: source },
+      homePath: source,
     });
-    assert.deepEqual(candidates, [path.join("/users/me", "codex-home-overlay")]);
+    assert.deepEqual(candidates, [source]);
   });
 });

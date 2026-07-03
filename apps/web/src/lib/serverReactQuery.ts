@@ -156,7 +156,7 @@ export async function fetchAllProviderUsage(input: ServerListProviderUsageInput 
 }
 
 // Local profile + shareable-card core statistics. The client passes its own fixed
-// UTC offset; all metrics are computed from CTCode's local DB projections.
+// UTC offset; all metrics are computed from FCode's local DB projections.
 export function serverProfileStatsQueryOptions(input: { enabled?: boolean } = {}) {
   const utcOffsetMinutes = -new Date().getTimezoneOffset();
   return queryOptions({

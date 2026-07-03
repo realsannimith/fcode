@@ -53,7 +53,7 @@ export interface ThreadTerminalState {
   activeTerminalGroupId: string;
 }
 
-const TERMINAL_STATE_STORAGE_KEY = "ctcode:terminal-state:v1";
+const TERMINAL_STATE_STORAGE_KEY = "fcode:terminal-state:v1";
 
 function normalizeTerminalIds(terminalIds: string[]): string[] {
   const ids = [...new Set(terminalIds.map((id) => id.trim()).filter((id) => id.length > 0))];
@@ -1282,6 +1282,7 @@ interface TerminalStateStoreState {
     terminalIds: readonly string[],
   ) => void;
   clearTerminalState: (threadId: ThreadId) => void;
+  seedTerminalEntryPoints: (threadIds: readonly ThreadId[]) => void;
   removeOrphanedTerminalStates: (activeThreadIds: Set<ThreadId>) => void;
 }
 
@@ -1373,6 +1374,27 @@ export const useTerminalStateStore = create<TerminalStateStoreState>()(
           ),
         clearTerminalState: (threadId) =>
           updateTerminal(threadId, () => createDefaultThreadTerminalState()),
+        // Restores the terminal identity of server-created terminal threads whose
+        // client-local state is missing (fresh browser, cleared storage, pruned
+        // entry). Threads with meaningful local state are left untouched so a
+        // user's explicit chat/terminal surface choice survives.
+        seedTerminalEntryPoints: (threadIds) =>
+          set((state) => {
+            let changed = false;
+            const next = { ...state.terminalStateByThreadId };
+            for (const threadId of threadIds) {
+              const existing = next[threadId];
+              if (existing && !isDefaultThreadTerminalState(existing)) {
+                continue;
+              }
+              next[threadId] = normalizeThreadTerminalState({
+                ...createDefaultThreadTerminalState(),
+                entryPoint: "terminal",
+              });
+              changed = true;
+            }
+            return changed ? { terminalStateByThreadId: next } : state;
+          }),
         removeOrphanedTerminalStates: (activeThreadIds) =>
           set((state) => {
             const orphanedIds = Object.keys(state.terminalStateByThreadId).filter(

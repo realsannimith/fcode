@@ -265,7 +265,7 @@ function handleCheckoutError(
                   type: "warning",
                   title: "Changes saved, but not reapplied.",
                   description:
-                    "CTCode switched branches and kept your changes in a stash because they could not be restored onto this branch cleanly.",
+                    "FCode switched branches and kept your changes in a stash because they could not be restored onto this branch cleanly.",
                   data: { copyText: toBranchActionErrorMessage(stashError) },
                   actionProps: {
                     children: "Discard stash",
@@ -754,7 +754,9 @@ export function BranchToolbarBranchSelector({
         >
           <div className="flex min-w-0 flex-col items-start py-1">
             <span className="truncate font-medium">Checkout Pull Request</span>
-            <span className="truncate text-muted-foreground text-xs">{prReference}</span>
+            <span className="truncate text-[length:var(--app-font-size-ui-sm,11px)] text-muted-foreground">
+              {prReference}
+            </span>
           </div>
         </ComboboxItem>
       );
@@ -897,7 +899,7 @@ export function BranchToolbarBranchSelector({
           <div className="border-t border-[color:var(--color-border-light)] p-1">
             <button
               type="button"
-              className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-[var(--color-text-foreground)] transition-colors hover:bg-[var(--color-background-elevated-secondary)] disabled:cursor-not-allowed disabled:opacity-50"
+              className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[length:var(--app-font-size-ui,12px)] text-[var(--color-text-foreground)] transition-colors hover:bg-[var(--color-background-elevated-secondary)] disabled:cursor-not-allowed disabled:opacity-50"
               disabled={isBranchActionPending}
               onClick={openCreateBranchDialog}
             >

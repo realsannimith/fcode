@@ -73,8 +73,8 @@ function writeFakeLinuxDesktopIcon(input: {
 
 describe("resolveCachedEditorIcon", () => {
   it("copies a macOS app PNG icon into the cache", async () => {
-    const homeDir = makeTempDir("ctcode-editor-icon-home-");
-    const cacheDir = makeTempDir("ctcode-editor-icon-cache-");
+    const homeDir = makeTempDir("fcode-editor-icon-home-");
+    const cacheDir = makeTempDir("fcode-editor-icon-cache-");
     const bytes = new Uint8Array([137, 80, 78, 71, 1, 2, 3]);
     writeFakeMacAppIcon({
       homeDir,
@@ -96,8 +96,8 @@ describe("resolveCachedEditorIcon", () => {
   });
 
   it("resolves a Linux desktop icon by icon name", async () => {
-    const homeDir = makeTempDir("ctcode-editor-icon-linux-home-");
-    const cacheDir = makeTempDir("ctcode-editor-icon-linux-cache-");
+    const homeDir = makeTempDir("fcode-editor-icon-linux-home-");
+    const cacheDir = makeTempDir("fcode-editor-icon-linux-cache-");
     const bytes = new Uint8Array([137, 80, 78, 71, 4, 5, 6]);
     writeFakeLinuxDesktopIcon({
       homeDir,
@@ -125,8 +125,8 @@ describe("resolveCachedEditorIcon", () => {
   });
 
   it("does not match Linux desktop files from unrelated comments", async () => {
-    const homeDir = makeTempDir("ctcode-editor-icon-linux-comment-home-");
-    const cacheDir = makeTempDir("ctcode-editor-icon-linux-comment-cache-");
+    const homeDir = makeTempDir("fcode-editor-icon-linux-comment-home-");
+    const cacheDir = makeTempDir("fcode-editor-icon-linux-comment-cache-");
     writeFakeLinuxDesktopIcon({
       homeDir,
       desktopFileName: "notes.desktop",
@@ -152,8 +152,8 @@ describe("resolveCachedEditorIcon", () => {
   });
 
   it("does not match short Linux editor ids inside unrelated words", async () => {
-    const homeDir = makeTempDir("ctcode-editor-icon-linux-short-home-");
-    const cacheDir = makeTempDir("ctcode-editor-icon-linux-short-cache-");
+    const homeDir = makeTempDir("fcode-editor-icon-linux-short-home-");
+    const cacheDir = makeTempDir("fcode-editor-icon-linux-short-cache-");
     writeFakeLinuxDesktopIcon({
       homeDir,
       desktopFileName: "good-ideas.desktop",
@@ -179,8 +179,8 @@ describe("resolveCachedEditorIcon", () => {
   });
 
   it("short-circuits repeated missing native icon lookups briefly", async () => {
-    const homeDir = makeTempDir("ctcode-editor-icon-linux-negative-home-");
-    const cacheDir = makeTempDir("ctcode-editor-icon-linux-negative-cache-");
+    const homeDir = makeTempDir("fcode-editor-icon-linux-negative-home-");
+    const cacheDir = makeTempDir("fcode-editor-icon-linux-negative-cache-");
     const lookup = {
       editorId: "ghostty",
       cacheDir,
@@ -216,9 +216,9 @@ describe("resolveCachedEditorIcon", () => {
     await expect(
       resolveCachedEditorIcon({
         editorId: "missing-editor",
-        cacheDir: makeTempDir("ctcode-editor-icon-missing-cache-"),
+        cacheDir: makeTempDir("fcode-editor-icon-missing-cache-"),
         platform: "darwin",
-        env: { HOME: makeTempDir("ctcode-editor-icon-missing-home-"), PATH: "" },
+        env: { HOME: makeTempDir("fcode-editor-icon-missing-home-"), PATH: "" },
       }),
     ).resolves.toBeNull();
   });

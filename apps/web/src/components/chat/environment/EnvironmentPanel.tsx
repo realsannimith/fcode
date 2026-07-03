@@ -44,6 +44,7 @@ import {
 import { EnvironmentUsageSection } from "./EnvironmentUsageSection";
 import { EnvironmentLocalServersSection } from "./EnvironmentLocalServersSection";
 import { EnvironmentMarkersSection } from "./EnvironmentMarkersSection";
+import { MultiRepoGitSection } from "./MultiRepoGitSection";
 import { EnvironmentNotesSection } from "./EnvironmentNotesSection";
 import { EnvironmentPinnedSection } from "./EnvironmentPinnedSection";
 import { EnvironmentProjectInstructionsSection } from "./EnvironmentProjectInstructionsSection";
@@ -132,6 +133,8 @@ export interface EnvironmentPanelProps {
   onOpenAutomation: (definition: AutomationDefinition) => void;
   /** Open the repository URL in the in-app browser panel. */
   onOpenGithubRepository?: (url: string) => void;
+  /** Open a detected local dev server's URL in the in-app browser panel. */
+  onOpenServerUrl?: ((url: string) => void) | undefined;
   /** Scroll the transcript to a pinned message. */
   onJumpToPinnedMessage: (messageId: MessageId) => void;
   /** Toggle a pinned message's done state (strikethrough; stays pinned). */
@@ -217,6 +220,7 @@ export function EnvironmentPanel({
   onToggleDiff,
   onOpenAutomation,
   onOpenGithubRepository,
+  onOpenServerUrl,
   onJumpToPinnedMessage,
   onTogglePinnedMessageDone,
   onUnpinMessage,
@@ -296,7 +300,11 @@ export function EnvironmentPanel({
         <GitActionsControl gitCwd={gitCwd} activeThreadId={activeThreadId} variant="panel" />
       ) : null}
 
-      <EnvironmentLocalServersSection enabled={open} />
+      {/* Surfaces sibling repos when the project folder is a container of several repos
+          (e.g. pk/frontend + pk/backend). Renders nothing for ordinary single-repo projects. */}
+      <MultiRepoGitSection gitCwd={gitCwd} activeThreadId={activeThreadId} />
+
+      <EnvironmentLocalServersSection enabled={open} onOpenServerUrl={onOpenServerUrl} />
 
       {/*
         Optional sections below the git block. Each renders its own leading divider only when it

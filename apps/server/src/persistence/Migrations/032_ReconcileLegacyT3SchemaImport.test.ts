@@ -32,11 +32,11 @@ layer("032_ReconcileLegacyT3SchemaImport", (it) => {
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
 
-      // Bring the schema to where T3 Code and CTCode last agreed.
+      // Bring the schema to where T3 Code and FCode last agreed.
       yield* runMigrations({ toMigrationInclusive: 16 });
 
       // Mark IDs 17-31 applied under T3 Code's old names so the migrator
-      // skips CTCode's renumbered 17-23. Names are illustrative; only the
+      // skips FCode's renumbered 17-23. Names are illustrative; only the
       // IDs matter to the migrator's "run anything past max(id)" gate.
       const legacyT3MigrationNames: ReadonlyArray<readonly [number, string]> = [
         [17, "ProjectionThreadsArchivedAt"],
@@ -255,7 +255,7 @@ layer("032_ReconcileLegacyT3SchemaImport", (it) => {
     }),
   );
 
-  it.effect("is a no-op on a fresh CTCode install", () =>
+  it.effect("is a no-op on a fresh FCode install", () =>
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
 

@@ -19,7 +19,7 @@ export function SplashScreen({
       <div className="flex flex-col items-center gap-5 select-none">
         <img
           src="/splash.png"
-          alt="CTCode"
+          alt="FCode"
           draggable={false}
           className="w-[min(56vmin,360px)] animate-pulse"
         />

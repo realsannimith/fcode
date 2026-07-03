@@ -12,6 +12,10 @@ import {
 } from "react";
 
 import { DEFAULT_THREAD_TERMINAL_HEIGHT } from "../../types";
+// Same drag-gated reflow pause as the split-divider drag in TerminalViewportPane:
+// the drawer clips/reveals the existing xterm rows while dragging, and the panes
+// snap to their final grid once, on release.
+import { resumeTerminalVisualResize, suspendTerminalVisualResize } from "./terminalRuntime";
 
 const MIN_DRAWER_HEIGHT = 180;
 const MAX_DRAWER_HEIGHT_RATIO = 0.75;
@@ -75,6 +79,7 @@ export function useTerminalDrawerHeight(options: {
       startY: event.clientY,
       startHeight: drawerHeightRef.current,
     };
+    suspendTerminalVisualResize();
   }, []);
 
   const handleResizePointerMove = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
@@ -100,10 +105,11 @@ export function useTerminalDrawerHeight(options: {
       if (event.currentTarget.hasPointerCapture(event.pointerId)) {
         event.currentTarget.releasePointerCapture(event.pointerId);
       }
-      if (!didResizeDuringDragRef.current) {
-        return;
+      if (didResizeDuringDragRef.current) {
+        syncHeight(drawerHeightRef.current);
       }
-      syncHeight(drawerHeightRef.current);
+      // Commit the height first, then reflow once to the final drawer size.
+      resumeTerminalVisualResize();
     },
     [syncHeight],
   );
@@ -128,6 +134,11 @@ export function useTerminalDrawerHeight(options: {
 
   useEffect(() => {
     return () => {
+      // Unmounting mid-drag must not leave the global reflow pause stuck on.
+      if (resizeStateRef.current) {
+        resizeStateRef.current = null;
+        resumeTerminalVisualResize();
+      }
       syncHeight(drawerHeightRef.current);
     };
   }, [syncHeight]);

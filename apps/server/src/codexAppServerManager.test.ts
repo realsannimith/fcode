@@ -428,15 +428,17 @@ describe("buildCodexProcessEnv", () => {
   it("allows the configured desktop browser-use socket in the Codex sandbox", () => {
     const env = buildCodexProcessEnv({
       env: {
-        CTCODE_BROWSER_USE_PIPE_PATH: "/tmp/codex-browser-use/ctcode.sock",
+        FCODE_BROWSER_USE_PIPE_PATH: "/tmp/codex-browser-use/fcode.sock",
         NODE_REPL_SANDBOX_ALLOWED_UNIX_SOCKETS: "/tmp/existing.sock",
         DPCODE_DISABLE_CODEX_DPCODE_BROWSER_PLUGIN: "0",
       },
       platform: "darwin",
     });
 
+    // The fixed Codex default path rides along because the official
+    // control-in-app-browser plugin always dials it.
     expect(env.NODE_REPL_SANDBOX_ALLOWED_UNIX_SOCKETS).toBe(
-      "/tmp/existing.sock,/tmp/codex-browser-use/ctcode.sock",
+      "/tmp/existing.sock,/tmp/codex-browser-use/fcode.sock,/tmp/codex-browser-use",
     );
   });
 
@@ -449,7 +451,7 @@ describe("buildCodexProcessEnv", () => {
     ).toBe("/tmp/codex-browser-use/t3.sock");
   });
 
-  it("disables the local dpcode-browser plugin in CTCode's Codex home overlay", () => {
+  it("disables the local dpcode-browser plugin in FCode's Codex home overlay", () => {
     const tempDir = mkdtempSync(path.join(os.tmpdir(), "t3-codex-env-"));
     const runtimeHome = mkdtempSync(path.join(os.tmpdir(), "t3-runtime-home-"));
     try {
@@ -466,7 +468,7 @@ describe("buildCodexProcessEnv", () => {
       );
 
       const env = buildCodexProcessEnv({
-        env: { CTCODE_HOME: runtimeHome },
+        env: { FCODE_HOME: runtimeHome },
         homePath: tempDir,
         platform: "darwin",
       });
@@ -485,7 +487,7 @@ describe("buildCodexProcessEnv", () => {
     }
   });
 
-  it("repairs stale real files in CTCode's Codex home overlay", () => {
+  it("repairs stale real files in FCode's Codex home overlay", () => {
     const tempDir = mkdtempSync(path.join(os.tmpdir(), "t3-codex-env-"));
     const runtimeHome = mkdtempSync(path.join(os.tmpdir(), "t3-runtime-home-"));
     try {
@@ -499,7 +501,7 @@ describe("buildCodexProcessEnv", () => {
       writeFileSync(overlayMemoryPath, "stale-overlay-db", "utf8");
 
       const env = buildCodexProcessEnv({
-        env: { CTCODE_HOME: runtimeHome },
+        env: { FCODE_HOME: runtimeHome },
         homePath: tempDir,
         platform: "darwin",
       });
@@ -513,7 +515,7 @@ describe("buildCodexProcessEnv", () => {
     }
   });
 
-  it("repairs stale auth.json files in CTCode's Codex home overlay", () => {
+  it("repairs stale auth.json files in FCode's Codex home overlay", () => {
     const tempDir = mkdtempSync(path.join(os.tmpdir(), "t3-codex-env-"));
     const runtimeHome = mkdtempSync(path.join(os.tmpdir(), "t3-runtime-home-"));
     try {
@@ -527,7 +529,7 @@ describe("buildCodexProcessEnv", () => {
       writeFileSync(overlayAuthPath, '{"tokens":{"access_token":"stale"}}', "utf8");
 
       const env = buildCodexProcessEnv({
-        env: { CTCODE_HOME: runtimeHome },
+        env: { FCODE_HOME: runtimeHome },
         homePath: tempDir,
         platform: "darwin",
       });
@@ -542,7 +544,7 @@ describe("buildCodexProcessEnv", () => {
     }
   });
 
-  it("preserves real generated image directories in CTCode's Codex home overlay", () => {
+  it("preserves real generated image directories in FCode's Codex home overlay", () => {
     const tempDir = mkdtempSync(path.join(os.tmpdir(), "t3-codex-env-"));
     const runtimeHome = mkdtempSync(path.join(os.tmpdir(), "t3-runtime-home-"));
     try {
@@ -558,7 +560,7 @@ describe("buildCodexProcessEnv", () => {
       writeFileSync(overlayImagePath, "overlay-image", "utf8");
 
       const env = buildCodexProcessEnv({
-        env: { CTCODE_HOME: runtimeHome },
+        env: { FCODE_HOME: runtimeHome },
         homePath: tempDir,
         platform: "darwin",
       });
@@ -576,6 +578,19 @@ describe("buildCodexProcessEnv", () => {
     expect(disableDpCodeBrowserPluginInCodexConfig('model = "gpt-5.5"')).toContain(
       '[plugins."dpcode-browser@local"]\nenabled = false',
     );
+  });
+
+  it("also appends a disabled openai-bundled browser plugin section when absent", () => {
+    expect(disableDpCodeBrowserPluginInCodexConfig('model = "gpt-5.5"')).toContain(
+      '[plugins."browser@openai-bundled"]\nenabled = false',
+    );
+  });
+
+  it("flips an enabled openai-bundled browser plugin to disabled in place", () => {
+    const config = '[plugins."browser@openai-bundled"]\nenabled = true\n';
+    const result = disableDpCodeBrowserPluginInCodexConfig(config);
+    expect(result).toContain('[plugins."browser@openai-bundled"]\nenabled = false');
+    expect(result).not.toContain("enabled = true");
   });
 });
 
@@ -702,8 +717,8 @@ describe("startSession", () => {
   it("enables Codex experimental api capabilities during initialize", () => {
     expect(buildCodexInitializeParams()).toEqual({
       clientInfo: {
-        name: "ctcode_desktop",
-        title: "CTCode Desktop",
+        name: "fcode_desktop",
+        title: "FCode Desktop",
         version: "0.1.0",
       },
       capabilities: {
@@ -714,7 +729,7 @@ describe("startSession", () => {
 
   it("uses an isolated scratch workspace path when no cwd is provided", () => {
     const cwd = ensureIsolatedScratchWorkspace(asThreadId("thread-1"));
-    expect(cwd).toContain(`${path.sep}ctcode-codex-workspaces${path.sep}thread-1`);
+    expect(cwd).toContain(`${path.sep}fcode-codex-workspaces${path.sep}thread-1`);
   });
 
   it("fails fast with an upgrade message when codex is below the minimum supported version", async () => {
@@ -741,7 +756,7 @@ describe("startSession", () => {
       )
       .mockImplementation(() => {
         throw new Error(
-          "Codex CLI v0.36.0 is too old for CTCode. Upgrade to v0.37.0 or newer and restart CTCode.",
+          "Codex CLI v0.36.0 is too old for FCode. Upgrade to v0.37.0 or newer and restart FCode.",
         );
       });
 
@@ -753,7 +768,7 @@ describe("startSession", () => {
           runtimeMode: "full-access",
         }),
       ).rejects.toThrow(
-        "Codex CLI v0.36.0 is too old for CTCode. Upgrade to v0.37.0 or newer and restart CTCode.",
+        "Codex CLI v0.36.0 is too old for FCode. Upgrade to v0.37.0 or newer and restart FCode.",
       );
       expect(versionCheck).toHaveBeenCalledTimes(1);
       expect(events).toEqual([
@@ -761,7 +776,7 @@ describe("startSession", () => {
           method: "session/startFailed",
           kind: "error",
           message:
-            "Codex CLI v0.36.0 is too old for CTCode. Upgrade to v0.37.0 or newer and restart CTCode.",
+            "Codex CLI v0.36.0 is too old for FCode. Upgrade to v0.37.0 or newer and restart FCode.",
         },
       ]);
     } finally {

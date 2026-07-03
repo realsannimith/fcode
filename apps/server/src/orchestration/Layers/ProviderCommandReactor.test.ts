@@ -1529,20 +1529,20 @@ describe("ProviderCommandReactor", () => {
         (entry) => entry.id === ThreadId.makeUnsafe("thread-1"),
       );
       return (
-        thread?.branch === "ctcode/app-startup-crash" &&
-        thread.associatedWorktreeBranch === "ctcode/app-startup-crash" &&
-        thread.associatedWorktreeRef === "ctcode/app-startup-crash"
+        thread?.branch === "fcode/app-startup-crash" &&
+        thread.associatedWorktreeBranch === "fcode/app-startup-crash" &&
+        thread.associatedWorktreeRef === "fcode/app-startup-crash"
       );
     });
 
     const readModel = await Effect.runPromise(harness.engine.getReadModel());
     const thread = readModel.threads.find((entry) => entry.id === ThreadId.makeUnsafe("thread-1"));
     expect(thread).toMatchObject({
-      branch: "ctcode/app-startup-crash",
+      branch: "fcode/app-startup-crash",
       worktreePath: "/tmp/provider-project/.worktrees/cb661f0d",
       associatedWorktreePath: "/tmp/provider-project/.worktrees/cb661f0d",
-      associatedWorktreeBranch: "ctcode/app-startup-crash",
-      associatedWorktreeRef: "ctcode/app-startup-crash",
+      associatedWorktreeBranch: "fcode/app-startup-crash",
+      associatedWorktreeRef: "fcode/app-startup-crash",
     });
   });
 
@@ -1589,7 +1589,7 @@ describe("ProviderCommandReactor", () => {
     expect(harness.generateBranchName).not.toHaveBeenCalled();
     expect(harness.renameBranch.mock.calls[0]?.[0]).toMatchObject({
       oldBranch: "dpcode/cb661f0d",
-      newBranch: "ctcode/fix-provider-startup-timeouts",
+      newBranch: "fcode/fix-provider-startup-timeouts",
     });
 
     await waitFor(async () => {
@@ -1597,7 +1597,7 @@ describe("ProviderCommandReactor", () => {
       const thread = readModel.threads.find(
         (entry) => entry.id === ThreadId.makeUnsafe("thread-1"),
       );
-      return thread?.branch === "ctcode/fix-provider-startup-timeouts";
+      return thread?.branch === "fcode/fix-provider-startup-timeouts";
     });
   });
 

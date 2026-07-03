@@ -1,5 +1,8 @@
 // FILE: terminalModeReplay.ts
-// Purpose: Tracks live terminal modes so a fresh renderer can reattach with matching input state.
+// Purpose: Maintains a live headless terminal per session so a fresh renderer can reattach with
+// matching input state (modes) and an exact screen/scrollback replay (serialized buffer). Feeding
+// the raw PTY stream through a real terminal emulator — instead of hand-sanitizing it — is what
+// makes replay correct: cursor moves and erases are actually applied rather than pattern-matched.
 // Layer: Terminal infrastructure
 
 import { createRequire } from "node:module";
@@ -7,11 +10,17 @@ import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 const { Terminal: HeadlessTerminal } =
   require("@xterm/headless") as typeof import("@xterm/headless");
+const { SerializeAddon } =
+  require("@xterm/addon-serialize") as typeof import("@xterm/addon-serialize");
 
 export interface TerminalModeReplayTracker {
   feed(data: string): void;
   resize(cols: number, rows: number): void;
   buildPreamble(): string;
+  /** Serializes the current screen + scrollback into a string replayable by a fresh terminal. */
+  serialize(): string;
+  /** Wipes scrollback and the visible screen (mirrors a shell `clear`), keeping modes intact. */
+  clear(): void;
   dispose(): void;
 }
 
@@ -72,11 +81,12 @@ function feedKittyKeyboardReplayState(state: KittyKeyboardReplayState, data: str
 export function createTerminalModeReplayTracker(
   cols: number,
   rows: number,
+  scrollback: number,
 ): TerminalModeReplayTracker {
   const terminal = new HeadlessTerminal({
     cols,
     rows,
-    scrollback: 1,
+    scrollback,
     allowProposedApi: true,
   });
   const internals = terminal as unknown as HeadlessTerminalInternals;
@@ -94,6 +104,8 @@ export function createTerminalModeReplayTracker(
     pendingSequence: "",
     stack: [],
   };
+  const serializeAddon = new SerializeAddon();
+  terminal.loadAddon(serializeAddon);
 
   return {
     feed(data) {
@@ -103,6 +115,12 @@ export function createTerminalModeReplayTracker(
     resize(cols, rows) {
       if (terminal.cols === cols && terminal.rows === rows) return;
       terminal.resize(cols, rows);
+    },
+    serialize() {
+      return serializeAddon.serialize();
+    },
+    clear() {
+      terminal.clear();
     },
     buildPreamble() {
       const modes = terminal.modes;

@@ -1,6 +1,6 @@
 # Keybindings
 
-Synara reads keybindings from:
+FCode reads keybindings from:
 
 - `~/.dpcode/userdata/keybindings.json`
 

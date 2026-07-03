@@ -40,10 +40,10 @@ const serverStart = Effect.acquireRelease(
   () => Effect.sync(() => stop()),
 );
 const findAvailablePort = vi.fn((preferred: number) => Effect.succeed(preferred));
-let defaultCTCodeHome = "";
+let defaultFCodeHome = "";
 const tempHomes = new Set<string>();
 
-function makeTempHome(prefix = "ctcode-main-test-"): string {
+function makeTempHome(prefix = "fcode-main-test-"): string {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
   tempHomes.add(directory);
   return directory;
@@ -81,7 +81,7 @@ const runCli = (args: ReadonlyArray<string>, env: Record<string, string> = {}) =
       ConfigProvider.layer(
         ConfigProvider.fromEnv({
           env: {
-            CTCODE_HOME: defaultCTCodeHome,
+            FCODE_HOME: defaultFCodeHome,
             T3CODE_NO_BROWSER: "true",
             ...env,
           },
@@ -94,7 +94,7 @@ const runCli = (args: ReadonlyArray<string>, env: Record<string, string> = {}) =
 
 beforeEach(() => {
   vi.clearAllMocks();
-  defaultCTCodeHome = makeTempHome();
+  defaultFCodeHome = makeTempHome();
   resolvedConfig = null;
   start.mockImplementation(() => undefined);
   stop.mockImplementation(() => undefined);
@@ -111,7 +111,7 @@ afterEach(() => {
 it.layer(testLayer)("server CLI command", (it) => {
   it.effect("parses all CLI flags and wires scoped start/stop", () =>
     Effect.gen(function* () {
-      const flagHome = makeTempHome("ctcode-main-flag-");
+      const flagHome = makeTempHome("fcode-main-flag-");
 
       yield* runCli([
         "--mode",
@@ -156,13 +156,13 @@ it.layer(testLayer)("server CLI command", (it) => {
 
   it.effect("uses env fallbacks when flags are not provided", () =>
     Effect.gen(function* () {
-      const envHome = makeTempHome("ctcode-main-env-");
+      const envHome = makeTempHome("fcode-main-env-");
 
       yield* runCli([], {
         T3CODE_MODE: "desktop",
         T3CODE_PORT: "4999",
         T3CODE_HOST: "100.88.10.4",
-        CTCODE_HOME: envHome,
+        FCODE_HOME: envHome,
         VITE_DEV_SERVER_URL: "http://localhost:5173",
         T3CODE_NO_BROWSER: "true",
         T3CODE_AUTH_TOKEN: "env-token",

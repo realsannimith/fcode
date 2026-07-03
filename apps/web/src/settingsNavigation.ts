@@ -19,7 +19,7 @@ export const SETTINGS_SECTION_IDS = [
 ] as const;
 
 export type SettingsSectionId = (typeof SETTINGS_SECTION_IDS)[number];
-export type SettingsNavGroupId = "app" | "ctcode";
+export type SettingsNavGroupId = "app" | "fcode";
 
 /**
  * Deep-link scroll targets inside a settings panel. Each id is shared by the element that owns
@@ -50,7 +50,7 @@ export const SETTINGS_NAV_GROUPS: ReadonlyArray<{
   label: string;
 }> = [
   { id: "app", label: "App" },
-  { id: "ctcode", label: "CTCode" },
+  { id: "fcode", label: "FCode" },
 ] as const;
 
 export const SETTINGS_NAV_ITEMS: readonly SettingsNavItem[] = [
@@ -98,7 +98,7 @@ export const SETTINGS_NAV_ITEMS: readonly SettingsNavItem[] = [
     id: "worktrees",
     group: "app",
     label: "Worktrees",
-    description: "Review and clean up the worktrees created by CTCode.",
+    description: "Review and clean up the worktrees created by FCode.",
     icon: "branch-simple",
     eyebrow: "Workspace management",
   },
@@ -112,7 +112,7 @@ export const SETTINGS_NAV_ITEMS: readonly SettingsNavItem[] = [
   },
   {
     id: "models",
-    group: "ctcode",
+    group: "fcode",
     label: "Models",
     description: "Git writing defaults and custom model slugs.",
     icon: "brain",
@@ -120,7 +120,7 @@ export const SETTINGS_NAV_ITEMS: readonly SettingsNavItem[] = [
   },
   {
     id: "providers",
-    group: "ctcode",
+    group: "fcode",
     label: "Providers",
     description: "Choose visible providers, review CLI installs, and update provider tools.",
     icon: "puzzle",
@@ -128,7 +128,7 @@ export const SETTINGS_NAV_ITEMS: readonly SettingsNavItem[] = [
   },
   {
     id: "skills",
-    group: "ctcode",
+    group: "fcode",
     label: "Skills",
     description: "Every skill found across providers, with toggles to control availability.",
     icon: "building-blocks",
@@ -136,7 +136,7 @@ export const SETTINGS_NAV_ITEMS: readonly SettingsNavItem[] = [
   },
   {
     id: "usage",
-    group: "ctcode",
+    group: "fcode",
     label: "Usage",
     description: "Remaining quota and credits for each signed-in provider.",
     icon: "gauge",
@@ -144,20 +144,13 @@ export const SETTINGS_NAV_ITEMS: readonly SettingsNavItem[] = [
   },
   {
     id: "advanced",
-    group: "ctcode",
+    group: "fcode",
     label: "Advanced",
     description: "Keybindings, recovery, and version info.",
     icon: "toolbox",
     eyebrow: "System tools",
   },
 ] as const;
-
-// Settings sections that only apply to the GUI chat experience. When the app is in
-// terminal interface mode these are hidden from the nav and not reachable by deep link.
-export const TERMINAL_HIDDEN_SETTINGS_SECTIONS: ReadonlySet<SettingsSectionId> = new Set([
-  "archived",
-  "worktrees",
-]);
 
 /**
  * Stable DOM id for a settings row, derived from its (string) title. Shared by the row that

@@ -7,7 +7,14 @@
     "bun.lock",
     "*.tsbuildinfo",
     "**/routeTree.gen.ts",
-    ".dpcode-*"
+    "**/pageControllerInjection.gen.ts",
+    ".dpcode-*",
+    ".ctcode",
+    ".ctcode-*",
+    ".fcode",
+    ".fcode-*",
+    ".synara-*",
+    "**/codex-home-overlay"
   ],
   "plugins": ["eslint", "oxc", "react", "unicorn", "typescript"],
   "categories": {

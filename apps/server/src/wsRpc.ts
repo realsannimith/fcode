@@ -5,6 +5,7 @@ import {
   CommandId,
   DEFAULT_TERMINAL_ID,
   ORCHESTRATION_WS_METHODS,
+  ServerCodexAccountAuthError,
   ThreadId,
   WS_METHODS,
   WsRpcError,
@@ -28,8 +29,10 @@ import { authErrorResponse, makeEffectAuthRequest } from "./auth/http";
 import { ServerAuth } from "./auth/Services/ServerAuth";
 import { SessionCredentialService } from "./auth/Services/SessionCredentialService";
 import { CheckpointDiffQuery } from "./checkpointing/Services/CheckpointDiffQuery";
+import { makeCodexAccountAuthManager } from "./codexAccountAuth";
 import { ServerConfig } from "./config";
 import { DevServerManager, findProjectDevServerForLocalServer } from "./devServerManager";
+import { discoverRepositories } from "./git/discoverRepositories";
 import { GitCore, type GitCoreShape } from "./git/Services/GitCore";
 import { GitManager } from "./git/Services/GitManager";
 import { GitStatusBroadcaster } from "./git/Services/GitStatusBroadcaster";
@@ -42,7 +45,7 @@ import { makeImportThreadHandler } from "./orchestration/importThreadRoute";
 import { OrchestrationEngineService } from "./orchestration/Services/OrchestrationEngine";
 import { ProjectionSnapshotQuery } from "./orchestration/Services/ProjectionSnapshotQuery";
 import { ProviderDiscoveryService } from "./provider/Services/ProviderDiscoveryService";
-import { discoverSkillsCatalog, ctcodeSkillsDir } from "./provider/skillsCatalog";
+import { discoverSkillsCatalog, fcodeSkillsDir } from "./provider/skillsCatalog";
 import { ProviderAdapterRegistry } from "./provider/Services/ProviderAdapterRegistry";
 import { ProviderHealth } from "./provider/Services/ProviderHealth";
 import { ProviderService } from "./provider/Services/ProviderService";
@@ -351,6 +354,15 @@ export const makeWsRpcLayer = () =>
       const textGeneration = yield* TextGeneration;
       const workspaceEntries = yield* WorkspaceEntries;
       const workspaceFileSystem = yield* WorkspaceFileSystem;
+
+      // Singleton across connections: login child processes are keyed per
+      // account, and every auth change re-probes provider statuses so all
+      // connected clients converge through the status push channel.
+      const codexAccountAuth = makeCodexAccountAuthManager({
+        onAuthStateChanged: () => {
+          Effect.runFork(providerHealth.refresh.pipe(Effect.asVoid));
+        },
+      });
 
       const canonicalizeProjectWorkspaceRoot = Effect.fnUntraced(function* (
         workspaceRoot: string,
@@ -729,6 +741,11 @@ export const makeWsRpcLayer = () =>
           rpcEffect(resolveGitHubRepository(git, input.cwd), "Failed to resolve GitHub repository"),
         [WS_METHODS.gitStatus]: (input) =>
           rpcEffect(gitStatusBroadcaster.getStatus(input), "Failed to read git status"),
+        [WS_METHODS.gitDiscoverRepositories]: (input) =>
+          rpcEffect(
+            Effect.sync(() => discoverRepositories(input.cwd, { maxDepth: input.maxDepth })),
+            "Failed to discover repositories",
+          ),
         [WS_METHODS.gitReadWorkingTreeDiff]: (input) =>
           rpcEffect(gitManager.readWorkingTreeDiff(input), "Failed to read working tree diff"),
         [WS_METHODS.gitSummarizeDiff]: (input) =>
@@ -906,6 +923,54 @@ export const makeWsRpcLayer = () =>
             "Failed to refresh providers",
           ),
         [WS_METHODS.serverUpdateProvider]: (input) => providerHealth.updateProvider(input),
+        [WS_METHODS.serverCodexAccountLogin]: (input) =>
+          serverSettings.getSettings.pipe(
+            Effect.mapError(
+              (cause) =>
+                new ServerCodexAccountAuthError({
+                  accountId: input.accountId ?? null,
+                  reason: `Failed to load server settings: ${cause.message}`,
+                }),
+            ),
+            Effect.flatMap((settings) => {
+              const result = codexAccountAuth.login(settings.providers.codex, input.accountId);
+              return result.status === "error"
+                ? Effect.fail(
+                    new ServerCodexAccountAuthError({
+                      accountId: input.accountId ?? null,
+                      reason: result.reason,
+                    }),
+                  )
+                : Effect.succeed({ status: result.status });
+            }),
+          ),
+        [WS_METHODS.serverCodexAccountLoginCancel]: (input) =>
+          Effect.sync(() => codexAccountAuth.cancelLogin(input.accountId)),
+        [WS_METHODS.serverCodexAccountLogout]: (input) =>
+          Effect.gen(function* () {
+            const settings = yield* serverSettings.getSettings.pipe(
+              Effect.mapError(
+                (cause) =>
+                  new ServerCodexAccountAuthError({
+                    accountId: input.accountId ?? null,
+                    reason: `Failed to load server settings: ${cause.message}`,
+                  }),
+              ),
+            );
+            const result = yield* Effect.promise(() =>
+              codexAccountAuth.logout(settings.providers.codex, input.accountId),
+            );
+            if (!result.ok) {
+              return yield* Effect.fail(
+                new ServerCodexAccountAuthError({
+                  accountId: input.accountId ?? null,
+                  reason: result.reason,
+                }),
+              );
+            }
+            const providers = yield* providerHealth.refresh;
+            return { providers };
+          }),
         [WS_METHODS.serverListWorktrees]: () => Effect.succeed({ worktrees: [] }),
         [WS_METHODS.serverListLocalServers]: () =>
           rpcEffect(
@@ -1127,13 +1192,13 @@ export const makeWsRpcLayer = () =>
               discoverSkillsCatalog({
                 cwd: input.cwd ?? null,
                 homeDir: config.homeDir,
-                ctcodeBaseDir: config.baseDir,
+                fcodeBaseDir: config.baseDir,
                 includeDuplicateOrigins: true,
               }),
             ).pipe(
               Effect.map((skills) => ({
                 skills,
-                ctcodeSkillsDir: ctcodeSkillsDir(config.baseDir),
+                fcodeSkillsDir: fcodeSkillsDir(config.baseDir),
               })),
             ),
             "Failed to list the skills catalog",

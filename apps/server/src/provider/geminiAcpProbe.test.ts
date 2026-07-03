@@ -171,14 +171,14 @@ describe("normalizeGeminiCapabilityProbeResult", () => {
         auth: { status: "authenticated" },
         models: [],
         message:
-          "Gemini CLI is installed, but CTCode could not verify authentication or discover models. Gemini ACP session started, but it did not report any available models.",
+          "Gemini CLI is installed, but FCode could not verify authentication or discover models. Gemini ACP session started, but it did not report any available models.",
       }),
     ).toEqual({
       status: "ready",
       auth: { status: "authenticated" },
       models: [],
       message:
-        "Gemini CLI is installed and authenticated, but it did not report any available models. CTCode will use its built-in Gemini model list.",
+        "Gemini CLI is installed and authenticated, but it did not report any available models. FCode will use its built-in Gemini model list.",
     });
   });
 
@@ -199,7 +199,7 @@ describe("normalizeGeminiCapabilityProbeResult", () => {
       auth: { status: "unknown" as const },
       models: [],
       message:
-        "Gemini CLI is installed, but CTCode could not verify authentication or discover models. Timed out while starting Gemini ACP session.",
+        "Gemini CLI is installed, but FCode could not verify authentication or discover models. Timed out while starting Gemini ACP session.",
     };
 
     expect(normalizeGeminiCapabilityProbeResult(result)).toEqual(result);

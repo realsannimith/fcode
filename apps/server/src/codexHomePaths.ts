@@ -7,6 +7,7 @@
 // Layer: Server utility (no IO; safe to import from anywhere)
 // Exports: overlay constants, base/overlay home resolvers, write-home + allowlist helpers.
 
+import { createHash } from "node:crypto";
 import { homedir } from "node:os";
 import path from "node:path";
 
@@ -19,11 +20,26 @@ export interface CodexHomePathsInput {
   readonly homePath?: string;
 }
 
+// Codex resolves CODEX_HOME verbatim, so `~/.codex-accounts/work` from
+// settings would trip "path does not exist" checks. Expand it before any
+// path math.
+export function expandHomePath(input: string): string {
+  const trimmed = input.trim();
+  if (trimmed === "~") {
+    return homedir();
+  }
+  if (trimmed.startsWith("~/") || trimmed.startsWith(`~${path.sep}`)) {
+    return path.join(homedir(), trimmed.slice(2));
+  }
+  return trimmed;
+}
+
 export function resolveBaseCodexHomePath(
   env: NodeJS.ProcessEnv,
   explicitHomePath?: string,
 ): string {
-  return explicitHomePath?.trim() || env.CODEX_HOME?.trim() || path.join(homedir(), ".codex");
+  const raw = explicitHomePath?.trim() || env.CODEX_HOME?.trim();
+  return raw ? expandHomePath(raw) : path.join(homedir(), ".codex");
 }
 
 export function shouldDisableDpCodeBrowserPlugin(env: NodeJS.ProcessEnv): boolean {
@@ -35,14 +51,24 @@ export function resolveDpCodeCodexHomeOverlayPath(
   env: NodeJS.ProcessEnv,
   sourceHomePath: string,
 ): string {
-  const runtimeHome = env.CTCODE_HOME?.trim() || env.DPCODE_HOME?.trim() || env.T3CODE_HOME?.trim();
-  const overlayRoot = runtimeHome || path.join(path.dirname(sourceHomePath), ".ctcode", "runtime");
-  return path.join(overlayRoot, DPCODE_CODEX_HOME_OVERLAY_DIR);
+  const runtimeHome = env.FCODE_HOME?.trim() || env.DPCODE_HOME?.trim() || env.T3CODE_HOME?.trim();
+  const overlayRoot = runtimeHome || path.join(path.dirname(sourceHomePath), ".fcode", "runtime");
+  // The overlay directory must be unique per source home: with multiple Codex
+  // accounts (distinct shadow CODEX_HOMEs) a single shared overlay would flip
+  // its auth.json symlink to whichever account spawned last. The default home
+  // keeps the historical unsuffixed name so existing overlays stay valid.
+  const resolvedSource = path.resolve(sourceHomePath);
+  const defaultSource = path.resolve(resolveBaseCodexHomePath(env));
+  const overlayDirName =
+    resolvedSource === defaultSource
+      ? DPCODE_CODEX_HOME_OVERLAY_DIR
+      : `${DPCODE_CODEX_HOME_OVERLAY_DIR}-${createHash("sha256").update(resolvedSource).digest("hex").slice(0, 8)}`;
+  return path.join(overlayRoot, overlayDirName);
 }
 
 /**
  * Returns the home directory that the codex app-server child process actually
- * writes under. This is the overlay home when CTCode wraps Codex with the
+ * writes under. This is the overlay home when FCode wraps Codex with the
  * dpcode-browser plugin disabled (the production default), otherwise the
  * caller-supplied or env-provided home.
  */

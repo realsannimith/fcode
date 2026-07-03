@@ -1,5 +1,5 @@
 // FILE: codexProcessEnv.ts
-// Purpose: Builds the exact environment used when CTCode launches Codex subprocesses.
+// Purpose: Builds the exact environment used when FCode launches Codex subprocesses.
 // Layer: Server runtime utility
 // Exports: Codex process env builder and browser-plugin overlay helpers.
 // Depends on: Codex home path helpers, shared Codex config parsing, login-shell env reader.
@@ -17,6 +17,10 @@ import {
 } from "node:fs";
 import path from "node:path";
 
+import {
+  codexBrowserUsePipeScanRoot,
+  readBrowserUsePipePathFromEnv,
+} from "@t3tools/shared/browserUsePipe";
 import { readActiveCodexProviderEnvKey } from "@t3tools/shared/codexConfig";
 import {
   readEnvironmentFromLoginShell,
@@ -24,6 +28,10 @@ import {
   type ShellEnvironmentReader,
 } from "@t3tools/shared/shell";
 
+import {
+  CODEX_SHADOW_HOME_MARKER_FILE,
+  rematerializeCodexShadowHomeIfMarked,
+} from "./codexAccounts.ts";
 import {
   resolveBaseCodexHomePath,
   resolveDpCodeCodexHomeOverlayPath,
@@ -33,6 +41,19 @@ import {
 const CODEX_PROCESS_SHELL_ENV_NAMES = ["PATH", "SSH_AUTH_SOCK"] as const;
 const NODE_REPL_SANDBOX_ALLOWED_UNIX_SOCKETS = "NODE_REPL_SANDBOX_ALLOWED_UNIX_SOCKETS";
 const DPCODE_BROWSER_PLUGIN_CONFIG_HEADER = '[plugins."dpcode-browser@local"]';
+// OpenAI's bundled Browser Use plugin drives the in-app browser through a
+// privileged `nodeRepl.nativePipe` bridge that only the official Codex desktop
+// app injects. FCode spawns `codex app-server` directly, so the bridge is
+// absent and the plugin's iab discovery finds zero backends ("Browser is not
+// available: iab") — with no net-socket fallback. Left enabled, it advertises a
+// broken in-app browser tool that the model tries first and then abandons the
+// browser task (falling back to Playwright). Disabling it makes Codex use the
+// portable `fcode-browser` skill instead, matching every other provider.
+const OPENAI_BUNDLED_BROWSER_PLUGIN_CONFIG_HEADER = '[plugins."browser@openai-bundled"]';
+const CODEX_DISABLED_PLUGIN_CONFIG_HEADERS = [
+  DPCODE_BROWSER_PLUGIN_CONFIG_HEADER,
+  OPENAI_BUNDLED_BROWSER_PLUGIN_CONFIG_HEADER,
+] as const;
 const CODEX_OVERLAY_SHARED_STATE_FILES = new Set(["auth.json"]);
 
 export function resolveCodexBrowserUsePipePath(
@@ -42,19 +63,14 @@ export function resolveCodexBrowserUsePipePath(
   } = {},
 ): string {
   const env = input.env ?? process.env;
-  const configured =
-    env.CTCODE_BROWSER_USE_PIPE_PATH?.trim() ||
-    env.DPCODE_BROWSER_USE_PIPE_PATH?.trim() ||
-    env.T3CODE_BROWSER_USE_PIPE_PATH?.trim();
+  const configured = readBrowserUsePipePathFromEnv(env);
   if (configured) {
     return configured;
   }
-  return (input.platform ?? process.platform) === "win32"
-    ? String.raw`\\.\pipe\codex-browser-use`
-    : "/tmp/codex-browser-use.sock";
+  return codexBrowserUsePipeScanRoot(input.platform ?? process.platform);
 }
 
-export function disableDpCodeBrowserPluginInCodexConfig(config: string): string {
+function disablePluginSectionInCodexConfig(config: string, targetHeader: string): string {
   const lines = config.split(/\r?\n/);
   const output: string[] = [];
   let inTargetSection = false;
@@ -71,7 +87,7 @@ export function disableDpCodeBrowserPluginInCodexConfig(config: string): string 
     const trimmed = line.trim();
     if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
       closeTargetSection();
-      inTargetSection = trimmed === DPCODE_BROWSER_PLUGIN_CONFIG_HEADER;
+      inTargetSection = trimmed === targetHeader;
       sawTargetSection ||= inTargetSection;
       targetSectionHasEnabled = false;
       output.push(line);
@@ -93,10 +109,19 @@ export function disableDpCodeBrowserPluginInCodexConfig(config: string): string 
     if (output.length > 0 && output.at(-1)?.trim()) {
       output.push("");
     }
-    output.push(DPCODE_BROWSER_PLUGIN_CONFIG_HEADER, "enabled = false");
+    output.push(targetHeader, "enabled = false");
   }
 
   return output.join("\n");
+}
+
+// Disables every FCode-incompatible Codex browser plugin (see the header
+// constants for why each one cannot work under FCode's spawned app-server).
+export function disableDpCodeBrowserPluginInCodexConfig(config: string): string {
+  return CODEX_DISABLED_PLUGIN_CONFIG_HEADERS.reduce(
+    (current, header) => disablePluginSectionInCodexConfig(current, header),
+    config,
+  );
 }
 
 function ensureCodexOverlaySymlink(input: {
@@ -147,7 +172,9 @@ function prepareDpCodeCodexHomeOverlay(input: {
 
   try {
     for (const entry of readdirSync(sourceHomePath)) {
-      if (entry === "config.toml") {
+      // The shadow-home marker stays out of the overlay so the overlay can
+      // never be mistaken for (and re-materialized as) an account home.
+      if (entry === "config.toml" || entry === CODEX_SHADOW_HOME_MARKER_FILE) {
         continue;
       }
       const sourcePath = path.join(sourceHomePath, entry);
@@ -185,6 +212,10 @@ export function buildCodexProcessEnv(
   } = {},
 ): NodeJS.ProcessEnv {
   const baseEnv = { ...(input.env ?? process.env) };
+  // Account shadow homes re-sync their shared-state symlinks before every
+  // spawn so directories Codex created in the shared home after account
+  // setup are visible to this account too.
+  rematerializeCodexShadowHomeIfMarked(resolveBaseCodexHomePath(baseEnv, input.homePath));
   const overlayHomePath = shouldDisableDpCodeBrowserPlugin(baseEnv)
     ? prepareDpCodeCodexHomeOverlay({
         env: baseEnv,
@@ -223,16 +254,23 @@ export function buildCodexProcessEnv(
   }
 
   if (platform !== "win32") {
-    const browserUsePipePath = resolveCodexBrowserUsePipePath({ env: effectiveEnv, platform });
     const allowedSockets =
       effectiveEnv[NODE_REPL_SANDBOX_ALLOWED_UNIX_SOCKETS]
         ?.split(",")
         .map((entry) => entry.trim())
         .filter((entry) => entry.length > 0) ?? [];
-    if (!allowedSockets.includes(browserUsePipePath)) {
+    // Allow both the FCode-configured pipe and Codex's fixed scan root — the
+    // official control-in-app-browser plugin always dials sockets under the
+    // latter (the sandbox allowance is subpath-rooted).
+    const requiredSockets = [
+      resolveCodexBrowserUsePipePath({ env: effectiveEnv, platform }),
+      codexBrowserUsePipeScanRoot(platform),
+    ];
+    const missingSockets = requiredSockets.filter((entry) => !allowedSockets.includes(entry));
+    if (missingSockets.length > 0) {
       effectiveEnv[NODE_REPL_SANDBOX_ALLOWED_UNIX_SOCKETS] = [
         ...allowedSockets,
-        browserUsePipePath,
+        ...new Set(missingSockets),
       ].join(",");
     }
   }

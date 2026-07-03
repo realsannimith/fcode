@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 import {
   buildSettingsBackAvailableThreadIds,
   buildProjectThreadTree,
-  createSidebarThreadHoverAnchorId,
   derivePinnedProjectIdsForSidebar,
   derivePinnedThreadIdsForSidebar,
   deriveSidebarProjectData,
@@ -35,7 +34,6 @@ import {
   resolveSettingsBackTarget,
   resolveProjectStatusIndicator,
   resolveSidebarNewThreadEnvMode,
-  resolveThreadHoverCardMetadata,
   resolveThreadRowClassName,
   resolveThreadStatusPill,
   shouldShowDebugFeatureFlagsMenu,
@@ -147,54 +145,6 @@ describe("debug feature flags menu visibility", () => {
         storageValue: null,
       }),
     ).toBe(false);
-  });
-});
-
-describe("resolveThreadHoverCardMetadata", () => {
-  it("includes source project and worktree names for worktree-backed chats", () => {
-    const metadata = resolveThreadHoverCardMetadata({
-      thread: makeSidebarThreadSummary({
-        envMode: "worktree",
-        branch: "codex/ctcode-mobile",
-        worktreePath: "/Users/me/.codex/worktrees/1234/Remodex",
-        associatedWorktreePath: "/Users/me/.codex/worktrees/1234/Remodex",
-        associatedWorktreeBranch: "codex/ctcode-mobile",
-      }),
-      project: {
-        name: "ctcode-mobile",
-        folderName: "Remodex",
-        cwd: "/Users/me/Developer/Remodex",
-      },
-    });
-
-    expect(metadata).toEqual({
-      projectName: "ctcode-mobile",
-      projectCwd: "/Users/me/Developer/Remodex",
-      sourceProjectName: "Remodex",
-      branch: "codex/ctcode-mobile",
-      worktreeName: "Remodex",
-    });
-  });
-
-  it("keeps local chats compact", () => {
-    const metadata = resolveThreadHoverCardMetadata({
-      thread: makeSidebarThreadSummary({
-        branch: "main",
-      }),
-      project: {
-        name: "ctcode",
-        folderName: "ctcode",
-        cwd: "/Users/me/Developer/ctcode",
-      },
-    });
-
-    expect(metadata).toEqual({
-      projectName: "ctcode",
-      projectCwd: "/Users/me/Developer/ctcode",
-      sourceProjectName: null,
-      branch: "main",
-      worktreeName: null,
-    });
   });
 });
 
@@ -1319,15 +1269,6 @@ describe("getSidebarThreadIdsToPrewarm", () => {
       ThreadId.makeUnsafe("thread-1"),
       ThreadId.makeUnsafe("thread-2"),
     ]);
-  });
-});
-
-describe("createSidebarThreadHoverAnchorId", () => {
-  it("keeps duplicated thread rows addressable by sidebar surface", () => {
-    const threadId = ThreadId.makeUnsafe("thread-1");
-
-    expect(createSidebarThreadHoverAnchorId({ scope: "pinned", threadId })).toBe("pinned:thread-1");
-    expect(createSidebarThreadHoverAnchorId({ scope: "chat", threadId })).toBe("chat:thread-1");
   });
 });
 

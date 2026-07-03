@@ -8,7 +8,15 @@
     "bun.lock",
     "*.tsbuildinfo",
     "**/routeTree.gen.ts",
-    "apps/web/public/mockServiceWorker.js"
+    "**/pageControllerInjection.gen.ts",
+    "apps/web/public/mockServiceWorker.js",
+    ".dpcode-*",
+    ".ctcode",
+    ".ctcode-*",
+    ".fcode",
+    ".fcode-*",
+    ".synara-*",
+    "**/codex-home-overlay"
   ],
   "sortPackageJson": {}
 }

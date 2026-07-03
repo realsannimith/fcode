@@ -8,6 +8,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Option, Schema } from "effect";
 import {
   type AssistantDeliveryMode,
+  CodexAccountSettings,
   DEFAULT_GIT_TEXT_GENERATION_MODEL,
   DEFAULT_SERVER_SETTINGS,
   TrimmedNonEmptyString,
@@ -39,7 +40,7 @@ import {
   normalizeUiDensity as normalizeUiDensityValue,
 } from "./lib/appDensity";
 
-const APP_SETTINGS_STORAGE_KEY = "ctcode:app-settings:v1";
+const APP_SETTINGS_STORAGE_KEY = "fcode:app-settings:v1";
 const SERVER_SETTINGS_MIGRATION_STORAGE_KEY = "t3code:server-settings-migrated:v1";
 const MAX_CUSTOM_MODEL_COUNT = 32;
 export const MAX_CUSTOM_MODEL_LENGTH = 256;
@@ -83,12 +84,6 @@ export const DEFAULT_SIDEBAR_THREAD_SORT_ORDER: SidebarThreadSortOrder = "update
 export const UiDensity = Schema.Literals(UI_DENSITY_MODES);
 export type UiDensity = typeof UiDensity.Type;
 export { DEFAULT_UI_DENSITY };
-
-// Top-level interface style. "terminal" is the CMUX-style launcher/terminal
-// surface (current default); "gui" is the classic chat GUI (sidebar + ChatView).
-export const InterfaceMode = Schema.Literals(["terminal", "gui"]);
-export type InterfaceMode = typeof InterfaceMode.Type;
-export const DEFAULT_INTERFACE_MODE: InterfaceMode = "terminal";
 
 export function getDefaultNativeFontSmoothing(platform = globalThis.navigator?.platform ?? "") {
   return /mac|iphone|ipad|ipod/i.test(platform);
@@ -148,6 +143,10 @@ export const AppSettingsSchema = Schema.Struct({
   ),
   codexBinaryPath: Schema.String.check(Schema.isMaxLength(4096)).pipe(withDefaults(() => "")),
   codexHomePath: Schema.String.check(Schema.isMaxLength(4096)).pipe(withDefaults(() => "")),
+  // Additional Codex accounts (mirrors `providers.codex.accounts` on the
+  // server) plus the account used for new sessions ("" = primary account).
+  codexAccounts: Schema.Array(CodexAccountSettings).pipe(withDefaults(() => [])),
+  codexActiveAccountId: Schema.String.check(Schema.isMaxLength(64)).pipe(withDefaults(() => "")),
   cursorBinaryPath: Schema.String.check(Schema.isMaxLength(4096)).pipe(withDefaults(() => "")),
   cursorApiEndpoint: Schema.String.check(Schema.isMaxLength(4096)).pipe(withDefaults(() => "")),
   geminiBinaryPath: Schema.String.check(Schema.isMaxLength(4096)).pipe(withDefaults(() => "")),
@@ -168,9 +167,6 @@ export const AppSettingsSchema = Schema.Struct({
   confirmThreadArchive: Schema.Boolean.pipe(withDefaults(() => false)),
   confirmTerminalTabClose: Schema.Boolean.pipe(withDefaults(() => true)),
   diffWordWrap: Schema.Boolean.pipe(withDefaults(() => false)),
-  // Local-only UI preference: show prompt suggestions under the composer on the
-  // empty new-thread landing. Off hides the suggestion list entirely.
-  enableComposerSuggestions: Schema.Boolean.pipe(withDefaults(() => true)),
   // Local-only UI preferences for hiding sidebar surfaces a user doesn't want.
   // `showChatsSection` controls the standalone "Chats" list in the sidebar footer
   // (rootless chats not tied to a project). `showWorkspaceSection` controls the
@@ -182,7 +178,6 @@ export const AppSettingsSchema = Schema.Struct({
   // Local-only UI preference: top-level interface style. "terminal" keeps the
   // CMUX-style launcher/terminal surface (current default); "gui" switches to the
   // classic chat sidebar + ChatView shell. Swaps the sidebar and home screen only.
-  interfaceMode: InterfaceMode.pipe(withDefaults(() => DEFAULT_INTERFACE_MODE)),
   // Local-only UI preferences: which optional sections of the chat Environment panel are
   // shown. The git block (Changes/Worktree/branch/Commit and Push) is always visible; these
   // toggle the sections beneath it via the panel header's gear menu.
@@ -221,6 +216,9 @@ export const AppSettingsSchema = Schema.Struct({
   // The active/locked provider for a thread is always shown regardless, so users
   // never get stuck on a thread whose provider they later chose to hide.
   hiddenProviders: Schema.Array(ProviderKind).pipe(withDefaults(() => [])),
+  // Local-only UI preference: providers hidden from the usage displays (sidebar
+  // footer + Settings → Usage cards). Empty = show every detected provider.
+  usageHiddenProviders: Schema.Array(ProviderKind).pipe(withDefaults(() => [])),
   // Local-only UI preference: top-level provider order in Settings and the composer picker.
   providerOrder: Schema.Array(ProviderKind).pipe(withDefaults(() => [...DEFAULT_PROVIDER_ORDER])),
   // Deprecated local-only preference kept for backward-compatible decoding.
@@ -443,6 +441,7 @@ function normalizeAppSettings(settings: AppSettings): AppSettings {
     customOpenCodeModels: normalizeCustomModelSlugs(settings.customOpenCodeModels, "opencode"),
     customPiModels: normalizeCustomModelSlugs(settings.customPiModels, "pi"),
     hiddenProviders: normalizeHiddenProviders(settings.hiddenProviders),
+    usageHiddenProviders: normalizeHiddenProviders(settings.usageHiddenProviders),
     providerOrder: normalizeProviderOrder(settings.providerOrder),
     hiddenModels: [],
   };
@@ -453,6 +452,8 @@ function serverSettingsToAppSettings(settings: ServerSettings): Partial<AppSetti
     claudeBinaryPath: settings.providers.claudeAgent.binaryPath,
     codexBinaryPath: settings.providers.codex.binaryPath,
     codexHomePath: settings.providers.codex.homePath,
+    codexAccounts: settings.providers.codex.accounts,
+    codexActiveAccountId: settings.providers.codex.activeAccountId,
     cursorApiEndpoint: settings.providers.cursor.apiEndpoint,
     cursorBinaryPath: settings.providers.cursor.binaryPath,
     defaultThreadEnvMode: settings.defaultThreadEnvMode,
@@ -535,11 +536,17 @@ function appSettingsPatchToServerSettingsPatch(patch: Partial<AppSettings>): Ser
   if (
     hasOwn(patch, "codexBinaryPath") ||
     hasOwn(patch, "codexHomePath") ||
+    hasOwn(patch, "codexAccounts") ||
+    hasOwn(patch, "codexActiveAccountId") ||
     hasOwn(patch, "customCodexModels")
   ) {
     providers.codex = {
       ...(hasOwn(patch, "codexBinaryPath") ? { binaryPath: patch.codexBinaryPath ?? "" } : {}),
       ...(hasOwn(patch, "codexHomePath") ? { homePath: patch.codexHomePath ?? "" } : {}),
+      ...(hasOwn(patch, "codexAccounts") ? { accounts: patch.codexAccounts ?? [] } : {}),
+      ...(hasOwn(patch, "codexActiveAccountId")
+        ? { activeAccountId: patch.codexActiveAccountId ?? "" }
+        : {}),
       ...(hasOwn(patch, "customCodexModels")
         ? { customModels: patch.customCodexModels ?? [] }
         : {}),
@@ -851,10 +858,52 @@ export function getCustomModelOptionsByProvider(
   };
 }
 
+/**
+ * Effective CODEX_HOME for one configured Codex account, as a settings-level
+ * path string (the server expands `~`). Mirrors the server-side default of
+ * `<sharedHome>-accounts/<id>` so probes, login, and sessions agree on the
+ * account's home even when no explicit shadow path was saved.
+ */
+export function deriveCodexAccountHomePath(
+  codexHomePath: string,
+  account: Pick<CodexAccountSettings, "id" | "shadowHomePath">,
+): string {
+  const explicit = account.shadowHomePath.trim();
+  if (explicit) {
+    return explicit;
+  }
+  const sharedHome = codexHomePath.trim().replace(/[/\\]+$/, "") || "~/.codex";
+  return `${sharedHome}-accounts/${account.id}`;
+}
+
+/**
+ * Resolve the account new Codex sessions should run as. Returns undefined for
+ * the primary account (empty selection) and for stale selections whose
+ * account has been removed, so callers fall back to the plain shared home.
+ */
+export function resolveActiveCodexAccount(
+  settings: Pick<AppSettings, "codexAccounts" | "codexActiveAccountId" | "codexHomePath">,
+): { readonly id: string; readonly homePath: string } | undefined {
+  const activeId = settings.codexActiveAccountId.trim();
+  if (!activeId) {
+    return undefined;
+  }
+  const account = settings.codexAccounts.find((entry) => entry.id === activeId);
+  if (!account) {
+    return undefined;
+  }
+  return {
+    id: account.id,
+    homePath: deriveCodexAccountHomePath(settings.codexHomePath, account),
+  };
+}
+
 export function getProviderStartOptions(
   settings: Pick<
     AppSettings,
     | "claudeBinaryPath"
+    | "codexAccounts"
+    | "codexActiveAccountId"
     | "codexBinaryPath"
     | "codexHomePath"
     | "cursorApiEndpoint"
@@ -892,12 +941,20 @@ export function getProviderStartOptions(
     settings.openCodeServerUrl ||
     settings.openCodeServerPassword,
   );
+  const activeCodexAccount = resolveActiveCodexAccount(settings);
   const providerOptions: ProviderStartOptions = {
-    ...(codexBinaryPath || settings.codexHomePath
+    ...(codexBinaryPath || settings.codexHomePath || activeCodexAccount
       ? {
           codex: {
             ...(codexBinaryPath ? { binaryPath: codexBinaryPath } : {}),
-            ...(settings.codexHomePath ? { homePath: settings.codexHomePath } : {}),
+            // The active account's home wins over the shared home so the
+            // session runs with that account's login; the account id rides
+            // along for display and per-thread stickiness.
+            ...(activeCodexAccount
+              ? { homePath: activeCodexAccount.homePath, accountId: activeCodexAccount.id }
+              : settings.codexHomePath
+                ? { homePath: settings.codexHomePath }
+                : {}),
           },
         }
       : {}),

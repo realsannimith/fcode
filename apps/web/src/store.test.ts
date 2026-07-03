@@ -293,7 +293,7 @@ describe("store pure functions", () => {
       makeState(initialThread),
       makeReadModel(
         makeReadModelThread({
-          branch: "ctcode/abc123ef",
+          branch: "fcode/abc123ef",
           updatedAt: "2026-02-27T00:05:00.000Z",
         }),
       ),
@@ -361,7 +361,7 @@ describe("store pure functions", () => {
     );
 
     const next = setThreadWorkspace(state, ThreadId.makeUnsafe("thread-1"), {
-      branch: "ctcode/abc123ef",
+      branch: "fcode/abc123ef",
     });
 
     expect(next.threads[0]?.branch).toBe("feature/semantic-branch");
@@ -3413,7 +3413,7 @@ describe("store read model sync", () => {
       freshStore.useStore.getState().renameProjectLocally(projectId, "dpcode");
 
       expect(setItem).toHaveBeenCalled();
-      expect(JSON.parse(storage.get("ctcode:renderer-state:v8") ?? "{}")).toMatchObject({
+      expect(JSON.parse(storage.get("fcode:renderer-state:v8") ?? "{}")).toMatchObject({
         projectNamesByCwd: {
           "/tmp/project": "dpcode",
         },

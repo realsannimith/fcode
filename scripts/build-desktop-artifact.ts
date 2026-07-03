@@ -39,6 +39,11 @@ const DesktopAfterPackHookSource = Effect.zipWith(
   Effect.service(Path.Path),
   (repoRoot, path) => path.join(repoRoot, "apps/desktop/scripts/electron-builder-after-pack.cjs"),
 );
+const DesktopAfterSignHookSource = Effect.zipWith(
+  RepoRoot,
+  Effect.service(Path.Path),
+  (repoRoot, path) => path.join(repoRoot, "apps/desktop/scripts/electron-builder-after-sign.cjs"),
+);
 const ProductionMacIconComposerSource = Effect.zipWith(
   RepoRoot,
   Effect.service(Path.Path),
@@ -531,7 +536,7 @@ const verifyStagedNodePty = Effect.fn("verifyStagedNodePty")(function* (
       cwd: stageAppDir,
       env: {
         ...process.env,
-        CTCODE_NODE_PTY_SMOKE_REQUIRE_ROOT: stageAppDir,
+        FCODE_NODE_PTY_SMOKE_REQUIRE_ROOT: stageAppDir,
       },
       ...commandOutputOptions(verbose),
       shell: process.platform === "win32",
@@ -549,9 +554,9 @@ const createBuildConfig = Effect.fn("createBuildConfig")(function* (
   hasMacIconComposer: boolean,
 ) {
   const buildConfig: Record<string, unknown> = {
-    appId: "com.t3tools.ctcode",
+    appId: "com.t3tools.fcode",
     productName,
-    artifactName: "CTCode-${version}-${arch}.${ext}",
+    artifactName: "FCode-${version}-${arch}.${ext}",
     directories: {
       buildResources: "apps/desktop/resources",
     },
@@ -756,22 +761,35 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
     );
   }
 
+  if (options.platform === "mac") {
+    const afterSignHookSource = yield* DesktopAfterSignHookSource;
+    if (!(yield* fs.exists(afterSignHookSource))) {
+      return yield* new BuildScriptError({
+        message: `Missing electron-builder afterSign hook at ${afterSignHookSource}`,
+      });
+    }
+    yield* fs.copyFile(
+      afterSignHookSource,
+      path.join(stageAppDir, "electron-builder-after-sign.cjs"),
+    );
+  }
+
   // electron-builder is filtering out stageResourcesDir directory in the AppImage for production
   yield* fs.copy(stageResourcesDir, path.join(stageAppDir, "apps/desktop/prod-resources"));
 
   const stagePackageJson: StagePackageJson = {
-    name: "ctcode-desktop",
+    name: "fcode-desktop",
     version: appVersion,
     buildVersion: appVersion,
     t3codeCommitHash: commitHash,
     private: true,
-    description: "CTCode desktop build",
+    description: "FCode desktop build",
     author: "Emanuele Di Pietro",
     main: "apps/desktop/dist-electron/main.js",
     build: yield* createBuildConfig(
       options.platform,
       options.target,
-      desktopPackageJson.productName ?? "CTCode",
+      desktopPackageJson.productName ?? "FCode",
       options.signed,
       options.mockUpdates,
       options.mockUpdateServerPort,
@@ -822,6 +840,12 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
     delete buildEnv.APPLE_API_KEY;
     delete buildEnv.APPLE_API_KEY_ID;
     delete buildEnv.APPLE_API_ISSUER;
+    if (options.platform === "mac") {
+      // Tells electron-builder-after-sign.cjs to replace electron-builder's own ad-hoc
+      // signature with a deep one, so Gatekeeper sees a well-formed (if unnotarized) app
+      // instead of one with an internally inconsistent signature ("app is damaged").
+      buildEnv.T3CODE_DESKTOP_UNSIGNED_DEEP_RESIGN = "true";
+    }
   }
 
   if (process.platform === "win32") {
@@ -953,7 +977,7 @@ const buildDesktopArtifactCli = Command.make("build-desktop-artifact", {
     Flag.optional,
   ),
 }).pipe(
-  Command.withDescription("Build a desktop artifact for CTCode."),
+  Command.withDescription("Build a desktop artifact for FCode."),
   Command.withHandler((input) => Effect.flatMap(resolveBuildOptions(input), buildDesktopArtifact)),
 );
 

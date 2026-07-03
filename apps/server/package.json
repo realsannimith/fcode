@@ -1,12 +1,7 @@
 {
   "name": "t3",
-  "version": "0.3.1",
+  "version": "0.0.1",
   "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/Emanuele-web04/Synara",
-    "directory": "apps/server"
-  },
   "bin": {
     "t3": "./dist/index.mjs"
   },
@@ -30,18 +25,22 @@
     "@earendil-works/pi-coding-agent": "^0.74.0",
     "@effect/platform-node": "catalog:",
     "@effect/sql-sqlite-bun": "catalog:",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "@opencode-ai/sdk": "^1.15.13",
     "@pierre/diffs": "^1.1.0-beta.16",
+    "@xterm/addon-serialize": "^0.14.0",
     "@xterm/headless": "^6.0.0",
     "effect": "catalog:",
     "node-pty": "^1.1.0",
     "open": "^10.1.0",
     "tree-kill": "^1.2.2",
-    "ws": "^8.18.0"
+    "ws": "^8.18.0",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@effect/language-service": "catalog:",
     "@effect/vitest": "catalog:",
+    "@page-agent/page-controller": "1.10.0",
     "@t3tools/contracts": "workspace:*",
     "@t3tools/shared": "workspace:*",
     "@t3tools/web": "workspace:*",

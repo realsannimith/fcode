@@ -27,7 +27,7 @@ function projectCreateCommand(
     projectId: ProjectId.makeUnsafe("project-chat"),
     kind: "chat",
     title: "Chat",
-    workspaceRoot: "/Users/tester/Documents/CTCode/2026-06-11/chat",
+    workspaceRoot: "/Users/tester/Documents/FCode/2026-06-11/chat",
     createWorkspaceRootIfMissing: true,
     createdAt: "2026-06-11T21:30:43.000Z",
     ...overrides,
@@ -39,7 +39,7 @@ describe("makeDispatchCommandNormalizer", () => {
     const preparedRoots: string[] = [];
     const normalizer = makeDispatchCommandNormalizer<Error>({
       attachmentsDir: "/tmp/attachments",
-      chatWorkspaceRoot: "/Users/tester/Documents/CTCode",
+      chatWorkspaceRoot: "/Users/tester/Documents/FCode",
       fileSystem: {} as FileSystem.FileSystem,
       path: {} as Path.Path,
       canonicalizeProjectWorkspaceRoot: (workspaceRoot) => Effect.succeed(workspaceRoot),
@@ -51,14 +51,14 @@ describe("makeDispatchCommandNormalizer", () => {
 
     await Effect.runPromise(normalizer({ command: projectCreateCommand() }));
 
-    expect(preparedRoots).toEqual(["/Users/tester/Documents/CTCode/2026-06-11/chat"]);
+    expect(preparedRoots).toEqual(["/Users/tester/Documents/FCode/2026-06-11/chat"]);
   });
 
   it("does not prepare ordinary projects or the chat workspace root itself", async () => {
     const preparedRoots: string[] = [];
     const normalizer = makeDispatchCommandNormalizer<Error>({
       attachmentsDir: "/tmp/attachments",
-      chatWorkspaceRoot: "/Users/tester/Documents/CTCode",
+      chatWorkspaceRoot: "/Users/tester/Documents/FCode",
       fileSystem: {} as FileSystem.FileSystem,
       path: {} as Path.Path,
       canonicalizeProjectWorkspaceRoot: (workspaceRoot) => Effect.succeed(workspaceRoot),
@@ -72,14 +72,14 @@ describe("makeDispatchCommandNormalizer", () => {
       normalizer({
         command: projectCreateCommand({
           kind: "project",
-          workspaceRoot: "/Users/tester/Documents/CTCode/2026-06-11/app",
+          workspaceRoot: "/Users/tester/Documents/FCode/2026-06-11/app",
         }),
       }),
     );
     await Effect.runPromise(
       normalizer({
         command: projectCreateCommand({
-          workspaceRoot: "/Users/tester/Documents/CTCode",
+          workspaceRoot: "/Users/tester/Documents/FCode",
         }),
       }),
     );

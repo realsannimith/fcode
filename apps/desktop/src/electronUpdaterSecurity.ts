@@ -30,7 +30,7 @@ type UpdaterModule = {
 
 type UpdaterPrototype = {
   spawnSyncLog?: (cmd: string, args?: string[], env?: Record<string, string>) => string;
-  __ctcodeSpawnSyncLogPatched?: boolean;
+  __fcodeSpawnSyncLogPatched?: boolean;
 };
 
 type UpdaterWithSignatureVerifier = {
@@ -393,7 +393,7 @@ export function hardenElectronUpdater(
     typeof updaterModule.BaseUpdater === "function"
       ? ((updaterModule.BaseUpdater as { prototype?: UpdaterPrototype }).prototype ?? null)
       : null;
-  if (prototype && !prototype.__ctcodeSpawnSyncLogPatched) {
+  if (prototype && !prototype.__fcodeSpawnSyncLogPatched) {
     prototype.spawnSyncLog = function spawnSyncLog(
       this: { _logger?: Logger },
       cmd: string,
@@ -420,7 +420,7 @@ export function hardenElectronUpdater(
       }
       return (stdout ?? "").trim();
     };
-    prototype.__ctcodeSpawnSyncLogPatched = true;
+    prototype.__fcodeSpawnSyncLogPatched = true;
   }
 
   const nsisUpdater = updater as UpdaterWithSignatureVerifier | null;

@@ -24,7 +24,7 @@ layer("GitHubCliLive", (it) => {
         stdout: JSON.stringify({
           number: 42,
           title: "Add PR thread creation",
-          url: "https://github.com/pingdotgg/codething-mvp/pull/42",
+          url: "https://github.com/example/codething-mvp/pull/42",
           baseRefName: "main",
           headRefName: "feature/pr-threads",
           state: "OPEN",
@@ -54,7 +54,7 @@ layer("GitHubCliLive", (it) => {
       assert.deepStrictEqual(result, {
         number: 42,
         title: "Add PR thread creation",
-        url: "https://github.com/pingdotgg/codething-mvp/pull/42",
+        url: "https://github.com/example/codething-mvp/pull/42",
         baseRefName: "main",
         headRefName: "feature/pr-threads",
         state: "open",

@@ -190,7 +190,7 @@ export const ComposerModelEffortPicker = memo(function ComposerModelEffortPicker
   const triggerButton = (
     <Button
       size="sm"
-      variant="chrome"
+      variant="chrome-outline"
       disabled={props.disabled ?? false}
       className={cn(
         "min-w-0 shrink-0 justify-start gap-1.5 whitespace-nowrap px-2 sm:px-2.5 [&_svg]:mx-0",

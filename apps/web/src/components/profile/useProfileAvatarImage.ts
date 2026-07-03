@@ -7,7 +7,7 @@ import { useCallback } from "react";
 import { Schema } from "effect";
 import { useLocalStorage } from "~/hooks/useLocalStorage";
 
-const PROFILE_AVATAR_IMAGE_STORAGE_KEY = "ctcode:profile:avatarImage:v1";
+const PROFILE_AVATAR_IMAGE_STORAGE_KEY = "fcode:profile:avatarImage:v1";
 
 // Empty string means "no photo".
 const StoredImageSchema = Schema.String;

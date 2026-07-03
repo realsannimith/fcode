@@ -10,9 +10,9 @@ import { fileURLToPath } from "node:url";
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "..");
 const requireRoot =
-  process.env.CTCODE_NODE_PTY_SMOKE_REQUIRE_ROOT?.trim() || resolve(repoRoot, "apps/server");
+  process.env.FCODE_NODE_PTY_SMOKE_REQUIRE_ROOT?.trim() || resolve(repoRoot, "apps/server");
 const requireFromTarget = createRequire(resolve(requireRoot, "package.json"));
-const expectedOutput = "ctcode-node-pty-smoke";
+const expectedOutput = "fcode-node-pty-smoke";
 
 function fail(message, detail) {
   console.error(`[node-pty-smoke] ${message}`);

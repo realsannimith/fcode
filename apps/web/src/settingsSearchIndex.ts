@@ -122,7 +122,7 @@ export const SETTINGS_SEARCH_ENTRIES: readonly SettingsSearchEntry[] = [
     id: "appearance:theme",
     section: "appearance",
     title: "Theme",
-    keywords: "Choose how CTCode looks across the app. dark light system color",
+    keywords: "Choose how FCode looks across the app. dark light system color",
   },
   {
     id: "appearance:ui-density",
@@ -196,13 +196,6 @@ export const SETTINGS_SEARCH_ENTRIES: readonly SettingsSearchEntry[] = [
     keywords: "Set the default wrap state when the diff panel opens. word wrap",
   },
   {
-    id: "behavior:prompt-suggestions",
-    section: "behavior",
-    title: "Prompt suggestions",
-    keywords:
-      "Show suggested prompts under the composer when starting a new thread. composer suggestions",
-  },
-  {
     id: "behavior:delete-confirmation",
     section: "behavior",
     title: "Delete confirmation",
@@ -226,7 +219,7 @@ export const SETTINGS_SEARCH_ENTRIES: readonly SettingsSearchEntry[] = [
     id: "worktrees:managed-worktrees",
     section: "worktrees",
     title: "Managed worktrees",
-    keywords: "Review and clean up the worktrees created by CTCode. git branch remove",
+    keywords: "Review and clean up the worktrees created by FCode. git branch remove",
     target: null,
   },
 
@@ -265,7 +258,7 @@ export const SETTINGS_SEARCH_ENTRIES: readonly SettingsSearchEntry[] = [
     id: "providers:provider-updates",
     section: "providers",
     title: "Provider updates",
-    keywords: "Update installed provider tools that CTCode can safely update. upgrade cli",
+    keywords: "Update installed provider tools that FCode can safely update. upgrade cli",
   },
   {
     id: "providers:installed-clis",

@@ -19,6 +19,8 @@ import {
   type RuntimeMode,
   type ServerConfigShape,
 } from "./config";
+import { materializeBrowserUseSkill } from "./browserUse/browserUseSkill.ts";
+import { materializePdfSkill } from "./provider/pdfSkill.ts";
 import { migrateLegacyHomeIfNeeded } from "./homeMigration";
 import { fixPath, resolveBaseDir } from "./os-jank";
 import { Open } from "./open";
@@ -109,6 +111,7 @@ const CliEnvConfig = Config.all({
   ),
   port: Config.port("T3CODE_PORT").pipe(Config.option, Config.map(Option.getOrUndefined)),
   host: Config.string("T3CODE_HOST").pipe(Config.option, Config.map(Option.getOrUndefined)),
+  fcodeHome: Config.string("FCODE_HOME").pipe(Config.option, Config.map(Option.getOrUndefined)),
   ctcodeHome: Config.string("CTCODE_HOME").pipe(Config.option, Config.map(Option.getOrUndefined)),
   t3Home: Config.string("T3CODE_HOME").pipe(Config.option, Config.map(Option.getOrUndefined)),
   dpcodeHome: Config.string("DPCODE_HOME").pipe(Config.option, Config.map(Option.getOrUndefined)),
@@ -168,10 +171,14 @@ const ServerConfigLive = (input: CliInput) =>
 
       const devUrl = Option.getOrElse(input.devUrl, () => env.devUrl);
       const configuredHome =
-        Option.getOrUndefined(input.t3Home) ?? env.ctcodeHome ?? env.t3Home ?? env.dpcodeHome;
+        Option.getOrUndefined(input.t3Home) ??
+        env.fcodeHome ??
+        env.ctcodeHome ??
+        env.t3Home ??
+        env.dpcodeHome;
       const userHomeDir = OS.homedir();
       const baseDir = yield* resolveBaseDir(configuredHome);
-      // Import legacy state before runtime paths are derived under ~/.ctcode.
+      // Import legacy state before runtime paths are derived under ~/.fcode.
       yield* migrateLegacyHomeIfNeeded({
         baseDir,
         homeDir: userHomeDir,
@@ -180,7 +187,7 @@ const ServerConfigLive = (input: CliInput) =>
         Effect.mapError(
           (cause) =>
             new StartupError({
-              message: "Failed to migrate legacy CTCode home directory",
+              message: "Failed to migrate legacy FCode home directory",
               cause,
             }),
         ),
@@ -307,13 +314,40 @@ const makeServerProgram = (input: CliInput) =>
     yield* startThreadRetentionJob(orchestrationEngine, projectionSnapshotQuery);
     yield* Effect.forkChild(recordStartupHeartbeat);
 
+    // Under the desktop app, publish the cross-provider in-app browser skill so
+    // every provider CLI can drive the browser panel through the HTTP bridge.
+    yield* Effect.forkChild(
+      Effect.promise(() =>
+        materializeBrowserUseSkill({
+          fcodeBaseDir: config.baseDir,
+          serverPort: config.port,
+          authToken: config.authToken,
+        }),
+      ).pipe(
+        Effect.catch((cause) =>
+          Effect.logWarning("failed to materialize the fcode-browser skill", { cause }),
+        ),
+      ),
+    );
+
+    // Publish the portable `pdf` skill so every provider agent can read, create,
+    // and edit PDFs by default. It is a plain SKILL.md with no runtime deps, so it
+    // is always materialized; users can turn it off in Settings → Skills.
+    yield* Effect.forkChild(
+      Effect.promise(() => materializePdfSkill({ fcodeBaseDir: config.baseDir })).pipe(
+        Effect.catch((cause) =>
+          Effect.logWarning("failed to materialize the pdf skill", { cause }),
+        ),
+      ),
+    );
+
     const localUrl = `http://localhost:${config.port}`;
     const bindUrl =
       config.host && !isWildcardHost(config.host)
         ? `http://${formatHostForUrl(config.host)}:${config.port}`
         : localUrl;
     const { authToken, devUrl, ...safeConfig } = config;
-    yield* Effect.logInfo("CTCode running", {
+    yield* Effect.logInfo("FCode running", {
       ...safeConfig,
       devUrl: devUrl?.toString(),
       authEnabled: Boolean(authToken),
@@ -351,7 +385,7 @@ const hostFlag = Flag.string("host").pipe(
   Flag.optional,
 );
 const t3HomeFlag = Flag.string("home-dir").pipe(
-  Flag.withDescription("Base directory for all CTCode data (equivalent to CTCODE_HOME)."),
+  Flag.withDescription("Base directory for all FCode data (equivalent to FCODE_HOME)."),
   Flag.optional,
 );
 const devUrlFlag = Flag.string("dev-url").pipe(
@@ -400,6 +434,6 @@ export const t3Cli = Command.make("t3", {
   logProviderEvents: logProviderEventsFlag,
   logWebSocketEvents: logWebSocketEventsFlag,
 }).pipe(
-  Command.withDescription("Run the CTCode server."),
+  Command.withDescription("Run the FCode server."),
   Command.withHandler((input) => Effect.scoped(makeServerProgram(input))),
 );

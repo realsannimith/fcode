@@ -349,7 +349,7 @@ describe("createHttpRequestHandler", () => {
   });
 
   it("serves cached native editor icons before dev/static fallback", async () => {
-    const homeDir = makeTempDir("ctcode-http-editor-icon-home-");
+    const homeDir = makeTempDir("fcode-http-editor-icon-home-");
     const fixture = writeNativeEditorIconFixture(homeDir);
     if (!fixture) return;
 

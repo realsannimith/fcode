@@ -145,6 +145,10 @@ export type ModelSelection = typeof ModelSelection.Type;
 export const CodexProviderStartOptions = Schema.Struct({
   binaryPath: Schema.optional(TrimmedNonEmptyString),
   homePath: Schema.optional(TrimmedNonEmptyString),
+  // Codex account this session runs as (see `CodexAccountSettings`). Carried
+  // alongside `homePath` (the account's resolved home) so persisted thread
+  // bindings keep a stable account identity for display and re-resolution.
+  accountId: Schema.optional(TrimmedNonEmptyString),
 });
 
 export const ClaudeProviderStartOptions = Schema.Struct({
@@ -240,6 +244,11 @@ export const ThreadHandoffBootstrapStatus = Schema.Literals(["pending", "complet
 export type ThreadHandoffBootstrapStatus = typeof ThreadHandoffBootstrapStatus.Type;
 export const ThreadEnvironmentMode = Schema.Literals(["local", "worktree"]);
 export type ThreadEnvironmentMode = typeof ThreadEnvironmentMode.Type;
+// Which primary surface a thread was created for. Terminal-first threads must
+// reopen as terminals on any client, so the marker lives on the thread record
+// instead of client-local storage.
+export const ThreadEntryPoint = Schema.Literals(["chat", "terminal"]);
+export type ThreadEntryPoint = typeof ThreadEntryPoint.Type;
 
 export const OrchestrationMessageSource = Schema.Literals([
   "native",
@@ -599,6 +608,7 @@ export const OrchestrationThread = Schema.Struct({
     Schema.withDecodingDefault(() => DEFAULT_PROVIDER_INTERACTION_MODE),
   ),
   envMode: Schema.optional(ThreadEnvironmentMode).pipe(Schema.withDecodingDefault(() => "local")),
+  entryPoint: Schema.optional(ThreadEntryPoint).pipe(Schema.withDecodingDefault(() => "chat")),
   branch: Schema.NullOr(TrimmedNonEmptyString),
   worktreePath: Schema.NullOr(TrimmedNonEmptyString),
   associatedWorktreePath: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)).pipe(
@@ -666,6 +676,7 @@ export const OrchestrationThreadShell = Schema.Struct({
     Schema.withDecodingDefault(() => DEFAULT_PROVIDER_INTERACTION_MODE),
   ),
   envMode: Schema.optional(ThreadEnvironmentMode).pipe(Schema.withDecodingDefault(() => "local")),
+  entryPoint: Schema.optional(ThreadEntryPoint).pipe(Schema.withDecodingDefault(() => "chat")),
   branch: Schema.NullOr(TrimmedNonEmptyString),
   worktreePath: Schema.NullOr(TrimmedNonEmptyString),
   associatedWorktreePath: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)).pipe(
@@ -812,6 +823,7 @@ const ThreadCreateCommand = Schema.Struct({
     Schema.withDecodingDefault(() => DEFAULT_PROVIDER_INTERACTION_MODE),
   ),
   envMode: Schema.optional(ThreadEnvironmentMode).pipe(Schema.withDecodingDefault(() => "local")),
+  entryPoint: Schema.optional(ThreadEntryPoint).pipe(Schema.withDecodingDefault(() => "chat")),
   branch: Schema.NullOr(TrimmedNonEmptyString),
   worktreePath: Schema.NullOr(TrimmedNonEmptyString),
   associatedWorktreePath: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
@@ -1414,6 +1426,7 @@ export const ThreadCreatedPayload = Schema.Struct({
     Schema.withDecodingDefault(() => DEFAULT_PROVIDER_INTERACTION_MODE),
   ),
   envMode: Schema.optional(ThreadEnvironmentMode).pipe(Schema.withDecodingDefault(() => "local")),
+  entryPoint: Schema.optional(ThreadEntryPoint).pipe(Schema.withDecodingDefault(() => "chat")),
   branch: Schema.NullOr(TrimmedNonEmptyString),
   worktreePath: Schema.NullOr(TrimmedNonEmptyString),
   associatedWorktreePath: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)).pipe(

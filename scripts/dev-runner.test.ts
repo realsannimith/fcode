@@ -46,7 +46,7 @@ it.layer(NodeServices.layer)("dev-runner", (it) => {
   });
 
   describe("createDevRunnerEnv", () => {
-    it.effect("defaults CTCODE_HOME to ~/.ctcode when not provided", () =>
+    it.effect("defaults FCODE_HOME to ~/.fcode when not provided", () =>
       Effect.gen(function* () {
         const env = yield* createDevRunnerEnv({
           mode: "dev",
@@ -63,8 +63,8 @@ it.layer(NodeServices.layer)("dev-runner", (it) => {
           devUrl: undefined,
         });
 
-        assert.equal(env.CTCODE_HOME, resolve(homedir(), ".ctcode"));
-        assert.equal(env.T3CODE_HOME, resolve(homedir(), ".ctcode"));
+        assert.equal(env.FCODE_HOME, resolve(homedir(), ".fcode"));
+        assert.equal(env.T3CODE_HOME, resolve(homedir(), ".fcode"));
       }),
     );
 
@@ -86,7 +86,7 @@ it.layer(NodeServices.layer)("dev-runner", (it) => {
         });
 
         assert.equal(env.T3CODE_HOME, resolve("/tmp/custom-t3"));
-        assert.equal(env.CTCODE_HOME, resolve("/tmp/custom-t3"));
+        assert.equal(env.FCODE_HOME, resolve("/tmp/custom-t3"));
         assert.equal(env.T3CODE_PORT, "4222");
         assert.equal(env.VITE_WS_URL, "ws://[::1]:4222");
         assert.equal(env.T3CODE_NO_BROWSER, "1");
@@ -161,7 +161,7 @@ it.layer(NodeServices.layer)("dev-runner", (it) => {
 
         assert.equal(env.T3CODE_HOME, resolve("/tmp/my-t3"));
         assert.equal(env.DPCODE_HOME, resolve("/tmp/my-t3"));
-        assert.equal(env.CTCODE_HOME, resolve("/tmp/my-t3"));
+        assert.equal(env.FCODE_HOME, resolve("/tmp/my-t3"));
       }),
     );
   });

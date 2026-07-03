@@ -6,35 +6,35 @@ import { describe, expect, it } from "vitest";
 import { isHomeChatContainerProject } from "./chatProjects";
 
 describe("isHomeChatContainerProject", () => {
-  it("matches the managed Documents/CTCode general-chat root used by older drafts", () => {
+  it("matches the managed Documents/FCode general-chat root used by older drafts", () => {
     expect(
       isHomeChatContainerProject(
         {
-          cwd: "/Users/tester/Documents/CTCode",
+          cwd: "/Users/tester/Documents/FCode",
           kind: "chat",
           name: "Home",
           remoteName: "Home",
         },
         {
           homeDir: "/Users/tester",
-          chatWorkspaceRoot: "/Users/tester/Documents/CTCode",
+          chatWorkspaceRoot: "/Users/tester/Documents/FCode",
         },
       ),
     ).toBe(true);
   });
 
-  it("matches Codex-style date/slug chat workspaces under Documents/CTCode", () => {
+  it("matches Codex-style date/slug chat workspaces under Documents/FCode", () => {
     expect(
       isHomeChatContainerProject(
         {
-          cwd: "/Users/tester/Documents/CTCode/2026-06-11/yes-it-takes-all-the-skills",
+          cwd: "/Users/tester/Documents/FCode/2026-06-11/yes-it-takes-all-the-skills",
           kind: "chat",
           name: "Yes it takes",
           remoteName: "Yes it takes",
         },
         {
           homeDir: "/Users/tester",
-          chatWorkspaceRoot: "/Users/tester/Documents/CTCode",
+          chatWorkspaceRoot: "/Users/tester/Documents/FCode",
         },
       ),
     ).toBe(true);
@@ -51,24 +51,24 @@ describe("isHomeChatContainerProject", () => {
         },
         {
           homeDir: "/Users/tester",
-          chatWorkspaceRoot: "/Users/tester/Documents/CTCode",
+          chatWorkspaceRoot: "/Users/tester/Documents/FCode",
         },
       ),
     ).toBe(true);
   });
 
-  it("does not classify ordinary projects under Documents/CTCode as home chat containers", () => {
+  it("does not classify ordinary projects under Documents/FCode as home chat containers", () => {
     expect(
       isHomeChatContainerProject(
         {
-          cwd: "/Users/tester/Documents/CTCode",
+          cwd: "/Users/tester/Documents/FCode",
           kind: "project",
-          name: "CTCode",
-          remoteName: "CTCode",
+          name: "FCode",
+          remoteName: "FCode",
         },
         {
           homeDir: "/Users/tester",
-          chatWorkspaceRoot: "/Users/tester/Documents/CTCode",
+          chatWorkspaceRoot: "/Users/tester/Documents/FCode",
         },
       ),
     ).toBe(false);
@@ -78,14 +78,14 @@ describe("isHomeChatContainerProject", () => {
     expect(
       isHomeChatContainerProject(
         {
-          cwd: "/Users/tester/Documents/CTCode/2026-06-11/yes-it-takes-all-the-skills",
+          cwd: "/Users/tester/Documents/FCode/2026-06-11/yes-it-takes-all-the-skills",
           kind: "project",
           name: "yes-it-takes-all-the-skills",
           remoteName: "yes-it-takes-all-the-skills",
         },
         {
           homeDir: "/Users/tester",
-          chatWorkspaceRoot: "/Users/tester/Documents/CTCode",
+          chatWorkspaceRoot: "/Users/tester/Documents/FCode",
         },
       ),
     ).toBe(false);

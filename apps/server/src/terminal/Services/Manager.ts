@@ -18,11 +18,14 @@ import {
   TerminalSessionStatus,
   TerminalWriteInput,
 } from "@t3tools/contracts";
-import type { TerminalActivityState, TerminalCliKind } from "@t3tools/shared/terminalThreads";
+import type {
+  TerminalActivityState,
+  TerminalCliKind,
+  TerminalCliSessionInfo,
+} from "@t3tools/shared/terminalThreads";
 import { PtyProcess } from "./PTY";
 import { Effect, Schema, ServiceMap } from "effect";
 import type { TerminalModeReplayTracker } from "../terminalModeReplay";
-import type { TerminalHistoryBuffer } from "../terminalHistory";
 
 export class TerminalError extends Schema.TaggedErrorClass<TerminalError>()("TerminalError", {
   message: Schema.String,
@@ -35,8 +38,12 @@ export interface TerminalSessionState {
   cwd: string;
   status: TerminalSessionStatus;
   pid: number | null;
-  /** Append-optimized scrollback buffer (sanitized visible text, capped on read). */
-  history: TerminalHistoryBuffer;
+  /**
+   * Best-known serialized replay buffer (screen + scrollback) for this session. Mirrors the
+   * live replay terminal's own buffer while a tracker exists; otherwise it's the last value
+   * captured before that tracker was torn down (see `TerminalManagerRuntime#resetModeReplayTracker`).
+   */
+  historySnapshot: string;
   pendingHistoryControlSequence: string;
   exitCode: number | null;
   exitSignal: number | null;
@@ -94,6 +101,19 @@ export interface TerminalSessionState {
   lastOutputAt: number | null;
   /** Normalized visible output used to ignore redraw-only PTY noise. */
   lastOutputSignature: string | null;
+  /**
+   * Underlying CLI session captured from the managed agent hooks (codex rollout id /
+   * claude session id), persisted so the exact conversation can be resumed after an app
+   * restart. Null until a session id is observed or once the CLI process exits.
+   */
+  capturedSession: TerminalCliSessionInfo | null;
+  /** True once the subprocess poller has seen the captured CLI's process alive. */
+  capturedSessionProcessSeen: boolean;
+  /**
+   * Resume command (e.g. `codex resume <id>`) to inject into a freshly reopened shell so a
+   * terminal that was running a CLI reconnects to its conversation. Written once, on first output.
+   */
+  pendingResumeCommand: string | null;
 }
 
 export interface ShellCandidate {

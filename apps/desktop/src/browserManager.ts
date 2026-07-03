@@ -45,7 +45,7 @@ import {
   resolveCopyableBrowserTabUrl,
 } from "@t3tools/shared/browserSession";
 
-const BROWSER_SESSION_PARTITION = "persist:ctcode-browser";
+const BROWSER_SESSION_PARTITION = "persist:fcode-browser";
 const BROWSER_INACTIVE_TAB_SUSPEND_DELAY_MS = 1_500;
 const BROWSER_INACTIVE_TAB_SUSPEND_DELAY_PRESSURED_MS = 400;
 const BROWSER_MAX_WARM_INACTIVE_RUNTIMES_PER_THREAD = 1;
@@ -241,6 +241,10 @@ export class DesktopBrowserManager {
   private activeThreadId: ThreadId | null = null;
   private activeBounds: BrowserPanelBounds | null = null;
   private activeBoundsThreadId: ThreadId | null = null;
+  // Threads whose panel is on screen per the renderer's `presented` reports.
+  // Tracked apart from bounds: a visible panel showing the local servers home
+  // reports null bounds (nothing native may paint) but is still presented.
+  private readonly presentedThreads = new Set<ThreadId>();
   private attachedRuntimeKey: string | null = null;
   private attachedBoundsSignature: string | null = null;
   private readonly states = new Map<ThreadId, ThreadBrowserState>();
@@ -579,6 +583,19 @@ export class DesktopBrowserManager {
   }
 
   getBrowserUseSnapshot(): BrowserUseSnapshot | null {
+    // A panel the user is looking at always wins over hidden-but-open
+    // workspaces left behind on other threads — agent work belongs where the
+    // user can watch it.
+    for (const threadId of this.presentedThreads) {
+      const presentedState = this.states.get(threadId);
+      if (presentedState?.open) {
+        return {
+          threadId,
+          state: this.snapshotThreadState(threadId, presentedState),
+        };
+      }
+    }
+
     if (this.activeThreadId) {
       const activeState = this.states.get(this.activeThreadId);
       if (activeState?.open) {
@@ -598,6 +615,14 @@ export class DesktopBrowserManager {
       }
     }
     return null;
+  }
+
+  // `state.open` survives the panel unmounting (tabs persist so the panel can
+  // reopen with its state), so browser-use needs this separate signal for "a
+  // panel is on screen for this thread" to know when an agent navigation
+  // should re-surface the panel.
+  isThreadVisiblyPresented(threadId: ThreadId): boolean {
+    return this.presentedThreads.has(threadId);
   }
 
   open(input: BrowserOpenInput): ThreadBrowserState {
@@ -642,6 +667,7 @@ export class DesktopBrowserManager {
       this.activeThreadId = null;
     }
     this.clearActiveBoundsForThread(input.threadId);
+    this.presentedThreads.delete(input.threadId);
     this.closePopupWindowsForThread(input.threadId);
 
     this.destroyThreadRuntimes(input.threadId);
@@ -663,6 +689,11 @@ export class DesktopBrowserManager {
       this.detachAttachedRuntime();
       this.activeThreadId = null;
     }
+    // The panel's bounds sync never sends a final null on unmount; hide() is
+    // the only unmount signal, so drop the bounds here or they linger as a
+    // stale "visibly presented" rectangle after the panel is gone.
+    this.clearActiveBoundsForThread(input.threadId);
+    this.presentedThreads.delete(input.threadId);
 
     if (!state?.open) {
       return;
@@ -679,6 +710,12 @@ export class DesktopBrowserManager {
     this.perfCounters.setPanelBoundsCalls += 1;
     const state = this.getOrCreateState(input.threadId);
     const nextBounds = normalizeBounds(input.bounds);
+    // Callers predating the `presented` flag imply presentation from bounds.
+    if (input.presented ?? nextBounds !== null) {
+      this.presentedThreads.add(input.threadId);
+    } else {
+      this.presentedThreads.delete(input.threadId);
+    }
     const nextBoundsSignature = browserBoundsSignature(nextBounds);
     const activeTabId = this.getActiveTab(state)?.id ?? null;
     const activeRuntimeKey = activeTabId ? buildRuntimeKey(input.threadId, activeTabId) : null;
@@ -882,7 +919,14 @@ export class DesktopBrowserManager {
     return this.getState({ threadId: input.threadId });
   }
 
-  newTab(input: BrowserNewTabInput): ThreadBrowserState {
+  // `options.suppressVisibleAttach` lets browser-use create a tab without showing
+  // a native WebContentsView. Emitting the new active-tab state makes the renderer
+  // mount its own <webview> and adopt the surface; showing a native view here would
+  // race that adoption and overlay the chat.
+  newTab(
+    input: BrowserNewTabInput,
+    options: { readonly suppressVisibleAttach?: boolean } = {},
+  ): ThreadBrowserState {
     const state = this.ensureWorkspace(input.threadId);
     const tab = createBrowserTab(normalizeUrlInput(input.url));
     state.tabs = [...state.tabs, tab];
@@ -890,7 +934,9 @@ export class DesktopBrowserManager {
       state.activeTabId = tab.id;
     }
 
-    if (this.activeThreadId === input.threadId) {
+    if (options.suppressVisibleAttach) {
+      tab.status = "suspended";
+    } else if (this.activeThreadId === input.threadId) {
       this.resumeThread(input.threadId);
       const bounds = this.getVisibleBoundsForThread(input.threadId);
       if (state.activeTabId === tab.id && bounds) {
@@ -1063,7 +1109,16 @@ export class DesktopBrowserManager {
 
   // Runs a Chrome DevTools Protocol command against the requested tab so higher-level
   // browser automation can reuse the native browser runtime instead of scripting React.
-  async executeCdp(input: BrowserExecuteCdpInput): Promise<unknown> {
+  //
+  // `options.present` controls whether the tab's runtime is made visibly active.
+  // The UI (sheet-mode / devtools) needs it; browser-use passes `false` so it
+  // never promotes its potentially-native runtime to a visible WebContentsView,
+  // which would composite over the chat until the renderer <webview> adopts.
+  async executeCdp(
+    input: BrowserExecuteCdpInput,
+    options: { readonly present?: boolean } = {},
+  ): Promise<unknown> {
+    const present = options.present ?? true;
     const state = this.ensureWorkspace(input.threadId);
     const tab = this.resolveTab(state, input.tabId);
     if (state.activeTabId !== tab.id) {
@@ -1077,9 +1132,11 @@ export class DesktopBrowserManager {
     const wasSuspended = tab.status === SUSPENDED_TAB_STATUS;
     const runtime = this.ensureLiveRuntime(input.threadId, tab.id);
     const webContents = runtime.webContents;
-    const bounds = this.getVisibleBoundsForThread(input.threadId);
-    if (bounds) {
-      this.attachActiveTab(input.threadId, bounds);
+    if (present) {
+      const bounds = this.getVisibleBoundsForThread(input.threadId);
+      if (bounds) {
+        this.attachActiveTab(input.threadId, bounds);
+      }
     }
 
     if (wasSuspended) {
@@ -1114,10 +1171,13 @@ export class DesktopBrowserManager {
 
     this.resumeThread(input.threadId);
     const wasSuspended = tab.status === SUSPENDED_TAB_STATUS;
+    // Ensure the tab has a live runtime for CDP, but do NOT visually attach it.
+    // Browser-use owns only the CDP session; the renderer-owned <webview> is the
+    // sole visible surface (see attachWebview). Showing this potentially native
+    // WebContentsView here races renderer adoption and briefly overlays the chat
+    // (a native view composites above all renderer DOM), which is the overlay
+    // users saw when an agent opened the browser on a busy thread.
     const runtime = this.ensureLiveRuntime(input.threadId, tab.id);
-    if (this.activeBounds && this.activeBoundsThreadId === input.threadId) {
-      this.activateThread(input.threadId, this.activeBounds);
-    }
 
     if (wasSuspended) {
       await this.loadTab(input.threadId, tab.id, { force: true, runtime });

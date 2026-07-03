@@ -1,8 +1,10 @@
 // FILE: SidebarProviderUsageFooter.tsx
 // Purpose: Always-visible "provider usage" display rendered inline in the sidebar
-// footer. Shows one compact row per usage-capable provider (icon, name, remaining
-// quota, and a thin tone-colored meter) so users can see each provider's usage at
-// a glance without opening Settings → Usage or any popover.
+// footer. Shows one compact chip per usage-capable provider (icon + the two key
+// window percentages, Session over Weekly) so users can see each provider's usage
+// at a glance — the OpenUsage menu-bar strip style. Hovering a chip shows a labeled
+// tooltip; clicking opens the OpenUsage-style detail card (every window's meter plus
+// the local spend lines).
 // Reuses the same data + presentation layer as Settings → Usage and the chat-header
 // usage chip (useProviderUsageSummary + providerUsageDisplay helpers).
 
@@ -17,8 +19,9 @@ import { RefreshCwIcon } from "~/lib/icons";
 import { openUsageQueryKeys } from "~/lib/openUsageReactQuery";
 import {
   deriveProviderUsageDisplayRows,
-  providerUsageToneClassName,
   selectPrimaryProviderUsageDisplayRow,
+  type ProviderUsageDisplayRow,
+  type ProviderUsageTone,
 } from "~/lib/providerUsageDisplay";
 import { deriveAccountRateLimits, type ProviderRateLimit } from "~/lib/rateLimits";
 import { serverAllProviderUsageQueryOptions, serverQueryKeys } from "~/lib/serverReactQuery";
@@ -29,7 +32,21 @@ import { createAllThreadsSelector } from "~/storeSelectors";
 import { ProviderIcon } from "./ProviderIcon";
 import { ProviderUsageMenuPopup, type ProviderUsageMenuModel } from "./ProviderUsageMenuControl";
 import { MenuTrigger } from "./ui/menu";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 import { SIDEBAR_SECTION_LABEL_CLASS_NAME } from "../sidebarRowStyles";
+
+// Chip percentages read in the provider's tone: healthy stays neutral (like the
+// OpenUsage strip), warning/danger tint so a nearly-exhausted quota stands out.
+const CHIP_TONE_TEXT: Record<ProviderUsageTone, string> = {
+  healthy: "text-foreground",
+  warning: "text-amber-500",
+  danger: "text-red-500",
+};
+
+// The 5h window is branded "Session" in OpenUsage; everything else keeps its label.
+function displayWindowLabel(label: string): string {
+  return label === "5h" ? "Session" : label;
+}
 
 function statusLabel(snapshot: ServerProviderUsageSnapshot | undefined): string {
   switch (snapshot?.status) {
@@ -44,7 +61,7 @@ function statusLabel(snapshot: ServerProviderUsageSnapshot | undefined): string 
   }
 }
 
-function SidebarProviderUsageRow({
+function SidebarProviderUsageChip({
   provider,
   snapshot,
   threadRateLimits,
@@ -65,76 +82,100 @@ function SidebarProviderUsageRow({
     () => deriveProviderUsageDisplayRows(usageSummary.rateLimits),
     [usageSummary.rateLimits],
   );
+  // The chip surfaces the two headline windows (Session, then Weekly); the detail
+  // card behind the click shows every window.
+  const chipRows = useMemo<ReadonlyArray<ProviderUsageDisplayRow>>(
+    () => meterRows.slice(0, 2),
+    [meterRows],
+  );
   const primaryRow = useMemo(() => selectPrimaryProviderUsageDisplayRow(meterRows), [meterRows]);
-  const title = primaryRow
-    ? `${providerUsageDisplayName(provider)} · ${primaryRow.leftText}${
-        primaryRow.resetText ? ` · ${primaryRow.resetText}` : ""
-      }`
-    : `${providerUsageDisplayName(provider)} · ${statusLabel(snapshot)}`;
+  const displayName = providerUsageDisplayName(provider);
 
-  const rowInner = (
-    <>
-      <div className="flex items-center gap-1.5">
-        <ProviderIcon provider={provider} className="size-3.5 shrink-0" />
-        <span className="min-w-0 flex-1 truncate text-[length:var(--app-font-size-ui-meta,11px)] text-muted-foreground/85">
-          {providerUsageDisplayName(provider)}
+  const chipInner = (
+    <div className="flex items-center gap-2">
+      <span className="flex size-6 shrink-0 items-center justify-center rounded-md border border-[color:var(--color-border)] bg-background/50">
+        <ProviderIcon provider={provider} className="size-3.5" />
+      </span>
+      {chipRows.length > 0 ? (
+        <span className="flex min-w-0 flex-col leading-tight">
+          {chipRows.map((row) => (
+            <span
+              key={row.id}
+              className={cn(
+                "text-[length:var(--app-font-size-ui,12px)] font-semibold tabular-nums",
+                CHIP_TONE_TEXT[row.remainingTone],
+              )}
+            >
+              {row.remainingLabel}
+            </span>
+          ))}
         </span>
-        <span
-          className={cn(
-            "shrink-0 text-[length:var(--app-font-size-ui-meta,11px)] tabular-nums",
-            primaryRow ? "text-foreground" : "text-muted-foreground/55",
-          )}
-        >
-          {primaryRow ? primaryRow.remainingLabel : statusLabel(snapshot)}
+      ) : (
+        <span className="min-w-0 truncate text-[length:var(--app-font-size-ui-meta,11px)] text-muted-foreground/60">
+          {statusLabel(snapshot)}
         </span>
-      </div>
-      {primaryRow ? (
-        <div className="mt-1 h-1 w-full overflow-hidden rounded-full bg-muted/70">
-          <div
-            className={cn(
-              "h-full rounded-full",
-              providerUsageToneClassName(primaryRow.remainingTone),
-            )}
-            style={{ width: `${primaryRow.remainingPercent}%` }}
-          />
-        </div>
-      ) : null}
-    </>
+      )}
+    </div>
   );
 
-  // No live data → nothing to expand, so keep the row static (non-interactive).
-  if (!primaryRow) {
+  // No live data → nothing to expand, so keep the chip static (non-interactive).
+  // (chipRows is non-empty exactly when meterRows is, i.e. when primaryRow exists,
+  // but narrow explicitly so the menu model's non-null primaryRow typechecks.)
+  if (chipRows.length === 0 || !primaryRow) {
     return (
-      <div className="px-2 py-1" title={title}>
-        {rowInner}
+      <div className="rounded-md px-2 py-1.5" title={`${displayName} · ${statusLabel(snapshot)}`}>
+        {chipInner}
       </div>
     );
   }
 
-  // With data, the whole row becomes a menu trigger that opens the same detailed
-  // usage breakdown (every rate-limit window) shown in the chat header and Settings → Usage.
+  const tooltipContent = (
+    <div className="flex flex-col gap-0.5">
+      <span className="font-medium text-foreground">{displayName}</span>
+      {chipRows.map((row) => (
+        <span key={row.id} className="tabular-nums text-muted-foreground">
+          {displayWindowLabel(row.label)} {row.leftText}
+          {row.resetText ? ` · ${row.resetText}` : ""}
+        </span>
+      ))}
+    </div>
+  );
+
   const menuModel: ProviderUsageMenuModel = {
-    menuTitle: `${providerUsageDisplayName(provider)} usage`,
+    menuTitle: `${displayName} usage`,
     primaryRow,
     rateLimits: usageSummary.rateLimits,
     usageLines: usageSummary.usageLines,
     isLoading: usageSummary.isLoading,
+    learnMoreHref: usageSummary.learnMoreHref,
   };
 
   return (
-    <ProviderUsageMenuPopup provider={provider} model={menuModel} align="start" side="right">
-      <MenuTrigger
-        render={
-          <button
-            type="button"
-            title={title}
-            aria-label={menuModel.menuTitle}
-            className="block w-full rounded-md px-2 py-1 text-left transition hover:bg-sidebar-accent/60 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-          />
-        }
-      >
-        {rowInner}
-      </MenuTrigger>
+    <ProviderUsageMenuPopup
+      provider={provider}
+      model={menuModel}
+      variant="card"
+      align="start"
+      side="right"
+    >
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <MenuTrigger
+              render={
+                <button
+                  type="button"
+                  aria-label={menuModel.menuTitle}
+                  className="block w-full rounded-md px-2 py-1.5 text-left transition hover:bg-sidebar-accent/60 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                />
+              }
+            >
+              {chipInner}
+            </MenuTrigger>
+          }
+        />
+        <TooltipPopup side="right">{tooltipContent}</TooltipPopup>
+      </Tooltip>
     </ProviderUsageMenuPopup>
   );
 }
@@ -142,8 +183,13 @@ function SidebarProviderUsageRow({
 export function SidebarProviderUsageFooter() {
   const { settings } = useAppSettings();
   const codexHomePath = settings.codexHomePath || null;
+  const usageHiddenProviders = settings.usageHiddenProviders;
+  const visibleProviders = useMemo(
+    () => PROVIDER_USAGE_PROVIDERS.filter((provider) => !usageHiddenProviders.includes(provider)),
+    [usageHiddenProviders],
+  );
   const threads = useStore(useMemo(() => createAllThreadsSelector(), []));
-  // Account/thread fallback rows are shared across every provider row; derive once.
+  // Account/thread fallback rows are shared across every provider chip; derive once.
   const threadRateLimits = useMemo(() => deriveAccountRateLimits(threads), [threads]);
   const usageQuery = useQuery(serverAllProviderUsageQueryOptions());
   const snapshotByProvider = useMemo(() => {
@@ -156,7 +202,7 @@ export function SidebarProviderUsageFooter() {
 
   const queryClient = useQueryClient();
   const [isRefreshing, setIsRefreshing] = useState(false);
-  // Refresh re-pulls every query the rows read: the all-provider snapshot, each
+  // Refresh re-pulls every query the chips read: the all-provider snapshot, each
   // per-provider snapshot, and the OpenUsage snapshots. Polling already runs on an
   // interval; this lets the user force an immediate update.
   const handleRefresh = useCallback(() => {
@@ -184,15 +230,23 @@ export function SidebarProviderUsageFooter() {
           <RefreshCwIcon className={cn("size-3.5", spinning && "motion-safe:animate-spin")} />
         </button>
       </div>
-      {PROVIDER_USAGE_PROVIDERS.map((provider) => (
-        <SidebarProviderUsageRow
-          key={provider}
-          provider={provider}
-          snapshot={snapshotByProvider.get(provider)}
-          threadRateLimits={threadRateLimits}
-          codexHomePath={codexHomePath}
-        />
-      ))}
+      {visibleProviders.length === 0 ? (
+        <p className="px-2 py-1 text-[length:var(--app-font-size-ui-meta,11px)] text-muted-foreground/70">
+          No providers selected. Choose which to show in Settings → Usage.
+        </p>
+      ) : (
+        <div className="grid grid-cols-2 gap-0.5">
+          {visibleProviders.map((provider) => (
+            <SidebarProviderUsageChip
+              key={provider}
+              provider={provider}
+              snapshot={snapshotByProvider.get(provider)}
+              threadRateLimits={threadRateLimits}
+              codexHomePath={codexHomePath}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }

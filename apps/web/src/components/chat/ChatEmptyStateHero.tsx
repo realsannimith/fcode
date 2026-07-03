@@ -4,7 +4,6 @@
 // Depends on: the caller-supplied project display name.
 
 import { memo } from "react";
-import { CTCodeLogo } from "~/components/CTCodeLogo";
 
 export const ChatEmptyStateHero = memo(function ChatEmptyStateHero({
   projectName,
@@ -13,7 +12,7 @@ export const ChatEmptyStateHero = memo(function ChatEmptyStateHero({
 }) {
   return (
     <div className="flex flex-col items-center gap-5 select-none">
-      <CTCodeLogo aria-label="CTCode logo" className="size-10" />
+      <img src="/fcode-ghost.png" alt="FCode logo" className="size-10" />
 
       <div className="flex flex-col items-center gap-0.5">
         <h1 className="text-2xl font-semibold text-foreground/90">Let's build</h1>

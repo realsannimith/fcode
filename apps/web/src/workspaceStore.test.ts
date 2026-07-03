@@ -60,10 +60,10 @@ describe("workspaceStore", () => {
 
     const { useWorkspaceStore } = await import("./workspaceStore");
 
-    useWorkspaceStore.getState().setChatWorkspaceRoot("/Users/tester/Documents/CTCode");
+    useWorkspaceStore.getState().setChatWorkspaceRoot("/Users/tester/Documents/FCode");
     useWorkspaceStore.getState().setChatWorkspaceRoot(undefined);
 
-    expect(useWorkspaceStore.getState().chatWorkspaceRoot).toBe("/Users/tester/Documents/CTCode");
+    expect(useWorkspaceStore.getState().chatWorkspaceRoot).toBe("/Users/tester/Documents/FCode");
   });
 
   it("updates home and chat workspace roots together from server paths", async () => {
@@ -74,11 +74,11 @@ describe("workspaceStore", () => {
 
     useWorkspaceStore.getState().setServerWorkspacePaths({
       homeDir: "/Users/tester",
-      chatWorkspaceRoot: "/Users/tester/Documents/CTCode",
+      chatWorkspaceRoot: "/Users/tester/Documents/FCode",
     });
 
     expect(useWorkspaceStore.getState().homeDir).toBe("/Users/tester");
-    expect(useWorkspaceStore.getState().chatWorkspaceRoot).toBe("/Users/tester/Documents/CTCode");
+    expect(useWorkspaceStore.getState().chatWorkspaceRoot).toBe("/Users/tester/Documents/FCode");
   });
 
   it("persists the chat workspace root with the home directory", async () => {
@@ -88,7 +88,7 @@ describe("workspaceStore", () => {
     let workspaceModule = await import("./workspaceStore");
     workspaceModule.useWorkspaceStore.getState().setServerWorkspacePaths({
       homeDir: "/Users/tester",
-      chatWorkspaceRoot: "/Users/tester/Documents/CTCode",
+      chatWorkspaceRoot: "/Users/tester/Documents/FCode",
     });
 
     vi.resetModules();
@@ -96,7 +96,7 @@ describe("workspaceStore", () => {
 
     expect(workspaceModule.useWorkspaceStore.getState().homeDir).toBe("/Users/tester");
     expect(workspaceModule.useWorkspaceStore.getState().chatWorkspaceRoot).toBe(
-      "/Users/tester/Documents/CTCode",
+      "/Users/tester/Documents/FCode",
     );
   });
 });

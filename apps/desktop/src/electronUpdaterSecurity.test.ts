@@ -30,9 +30,9 @@ describe("electronUpdaterSecurity", () => {
   });
 
   it("parses distinguished names the same way as builder-util-runtime", () => {
-    const parsed = parseDistinguishedName('CN=CTCode, O="Acme, Inc.", OU=Tools\\2C Desktop');
+    const parsed = parseDistinguishedName('CN=FCode, O="Acme, Inc.", OU=Tools\\2C Desktop');
 
-    expect(parsed.get("CN")).toBe("CTCode");
+    expect(parsed.get("CN")).toBe("FCode");
     expect(parsed.get("O")).toBe("Acme, Inc.");
     expect(parsed.get("OU")).toBe("Tools, Desktop");
   });
@@ -43,9 +43,9 @@ describe("electronUpdaterSecurity", () => {
         null,
         JSON.stringify({
           Status: 0,
-          Path: "C:\\Users\\test\\AppData\\Local\\Temp\\CTCodeSetup.exe",
+          Path: "C:\\Users\\test\\AppData\\Local\\Temp\\FCodeSetup.exe",
           SignerCertificate: {
-            Subject: "CN=CTCode, O=Acme Tools",
+            Subject: "CN=FCode, O=Acme Tools",
           },
         }),
         "",
@@ -53,8 +53,8 @@ describe("electronUpdaterSecurity", () => {
     });
 
     const result = await verifyWindowsUpdateCodeSignature(
-      ["CN=CTCode, O=Acme Tools"],
-      "C:\\Users\\test\\AppData\\Local\\Temp\\CTCodeSetup.exe",
+      ["CN=FCode, O=Acme Tools"],
+      "C:\\Users\\test\\AppData\\Local\\Temp\\FCodeSetup.exe",
       { info: vi.fn(), warn: vi.fn() },
       {
         env: { SystemRoot: "C:\\Windows" },
@@ -79,8 +79,8 @@ describe("electronUpdaterSecurity", () => {
   it("keeps the upstream CN-only fallback warning", async () => {
     const logger = { info: vi.fn(), warn: vi.fn() };
     const result = await verifyWindowsUpdateCodeSignature(
-      ["CTCode"],
-      "C:\\Temp\\CTCodeSetup.exe",
+      ["FCode"],
+      "C:\\Temp\\FCodeSetup.exe",
       logger,
       {
         env: { SystemRoot: "C:\\Windows" },
@@ -89,8 +89,8 @@ describe("electronUpdaterSecurity", () => {
             null,
             JSON.stringify({
               Status: 0,
-              Path: "C:\\Temp\\CTCodeSetup.exe",
-              SignerCertificate: { Subject: "CN=CTCode, O=Acme Tools" },
+              Path: "C:\\Temp\\FCodeSetup.exe",
+              SignerCertificate: { Subject: "CN=FCode, O=Acme Tools" },
             }),
             "",
           );
@@ -100,14 +100,14 @@ describe("electronUpdaterSecurity", () => {
 
     expect(result).toBeNull();
     expect(logger.warn).toHaveBeenCalledWith(
-      expect.stringContaining("Signature validated using only CN CTCode"),
+      expect.stringContaining("Signature validated using only CN FCode"),
     );
   });
 
   it("returns a mismatch summary for an unexpected publisher", async () => {
     const result = await verifyWindowsUpdateCodeSignature(
-      ["CN=CTCode, O=Acme Tools"],
-      "C:\\Temp\\CTCodeSetup.exe",
+      ["CN=FCode, O=Acme Tools"],
+      "C:\\Temp\\FCodeSetup.exe",
       { info: vi.fn(), warn: vi.fn() },
       {
         env: { SystemRoot: "C:\\Windows" },
@@ -116,7 +116,7 @@ describe("electronUpdaterSecurity", () => {
             null,
             JSON.stringify({
               Status: 0,
-              Path: "C:\\Temp\\CTCodeSetup.exe",
+              Path: "C:\\Temp\\FCodeSetup.exe",
               SignerCertificate: { Subject: "CN=Someone Else, O=Acme Tools" },
             }),
             "",
@@ -125,7 +125,7 @@ describe("electronUpdaterSecurity", () => {
       },
     );
 
-    expect(result).toContain("publisherNames: CN=CTCode, O=Acme Tools");
+    expect(result).toContain("publisherNames: CN=FCode, O=Acme Tools");
     expect(result).toContain("Someone Else");
   });
 
@@ -134,7 +134,7 @@ describe("electronUpdaterSecurity", () => {
     const updaterModule = { BaseUpdater: FakeBaseUpdater };
     const prototype = FakeBaseUpdater.prototype as {
       spawnSyncLog?: (cmd: string, args?: string[]) => string;
-      __ctcodeSpawnSyncLogPatched?: boolean;
+      __fcodeSpawnSyncLogPatched?: boolean;
     };
 
     hardenElectronUpdater(updaterModule, {}, "darwin");
@@ -147,7 +147,7 @@ describe("electronUpdaterSecurity", () => {
     const output = prototype.spawnSyncLog?.call(instance, process.execPath, ["--version"]);
 
     expect(output).toMatch(/^v\d+\.\d+\.\d+/);
-    expect(prototype.__ctcodeSpawnSyncLogPatched).toBe(true);
+    expect(prototype.__fcodeSpawnSyncLogPatched).toBe(true);
   });
 
   it("replaces the NSIS signature verifier on Windows", async () => {

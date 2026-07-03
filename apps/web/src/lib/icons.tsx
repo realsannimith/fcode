@@ -35,6 +35,7 @@ import {
   IconDownload,
   IconExternalLink,
   IconEye,
+  IconEyeOff,
   IconFile,
   IconFlag,
   IconFlame,
@@ -160,6 +161,7 @@ export const HashIcon = adaptIcon(IconHash);
 export const EllipsisIcon = adaptIcon(IconDots);
 export const ExternalLinkIcon = adaptIcon(IconExternalLink);
 export const EyeIcon = adaptIcon(IconEye);
+export const EyeOffIcon = adaptIcon(IconEyeOff);
 export const PaletteIcon = adaptIcon(IconPalette);
 export const PaperclipIcon = adaptIcon(IconPaperclip);
 export const AdjustmentsIcon = adaptIcon(IconAdjustments);

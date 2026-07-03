@@ -4,16 +4,18 @@
 // Depends on: Desktop packaging policy and electron-builder config shape.
 
 export const MICROPHONE_USAGE_DESCRIPTION =
-  "CTCode needs microphone access so you can record voice notes and transcribe them into the chat composer.";
+  "FCode needs microphone access so you can record voice notes and transcribe them into the chat composer.";
 export const MAC_ENTITLEMENTS_PATH = "apps/desktop/resources/entitlements.mac.plist";
 export const MAC_INHERITED_ENTITLEMENTS_PATH =
   "apps/desktop/resources/entitlements.mac.inherit.plist";
 const MAC_AFTER_PACK_HOOK_PATH = "./electron-builder-after-pack.cjs";
+const MAC_AFTER_SIGN_HOOK_PATH = "./electron-builder-after-sign.cjs";
 const MAC_DMG_ICON_PATH = "icon.icns";
 export const NODE_PTY_ASAR_UNPACK_GLOBS = ["node_modules/node-pty/**"] as const;
 
 export interface DesktopPlatformBuildConfig {
   readonly afterPack?: string;
+  readonly afterSign?: string;
   readonly asarUnpack?: ReadonlyArray<string>;
   readonly dmg?: {
     readonly icon: string;
@@ -71,13 +73,14 @@ export function createDesktopPlatformBuildConfig(
     } satisfies Record<string, unknown>;
 
     if (!input.hasMacIconComposer) {
-      return { ...nativePackaging, mac };
+      return { ...nativePackaging, mac, afterSign: MAC_AFTER_SIGN_HOOK_PATH };
     }
 
     return {
       ...nativePackaging,
       mac,
       afterPack: MAC_AFTER_PACK_HOOK_PATH,
+      afterSign: MAC_AFTER_SIGN_HOOK_PATH,
       dmg: {
         icon: MAC_DMG_ICON_PATH,
       },
@@ -89,12 +92,12 @@ export function createDesktopPlatformBuildConfig(
       ...nativePackaging,
       linux: {
         target: [input.target],
-        executableName: "ctcode",
+        executableName: "fcode",
         icon: "icon.png",
         category: "Development",
         desktop: {
           entry: {
-            StartupWMClass: "ctcode",
+            StartupWMClass: "fcode",
           },
         },
       },

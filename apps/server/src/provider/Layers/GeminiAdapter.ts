@@ -6,7 +6,7 @@
  *
  * @module GeminiAdapterLive
  */
-import { type ChildProcessWithoutNullStreams, spawn, spawnSync } from "node:child_process";
+import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -54,10 +54,20 @@ import {
   type ProviderAdapterError,
 } from "../Errors.ts";
 import { probeGeminiCapabilities } from "../geminiAcpProbe.ts";
+import {
+  ANTIGRAVITY_CLI_BINARY,
+  geminiCliNotInstalledMessage,
+  resolveGeminiCli,
+} from "../geminiCli.ts";
 import { GeminiAdapter, type GeminiAdapterShape } from "../Services/GeminiAdapter.ts";
 import { asArray, asNumber, asRecord, asString, trimToUndefined } from "../geminiValue.ts";
 import { extractProposedPlanMarkdown, withProviderPlanModePrompt } from "../planMode.ts";
+import { killChildProcess } from "../processControl.ts";
 import { type EventNdjsonLogger, makeEventNdjsonLogger } from "./EventNdjsonLogger.ts";
+import {
+  makeGeminiAntigravityRuntime,
+  readAntigravityResumeCursor,
+} from "./GeminiAntigravityRuntime.ts";
 
 const PROVIDER = "gemini" as const;
 const GEMINI_ACP_REQUEST_TIMEOUT_MS = 60_000;
@@ -65,7 +75,7 @@ const GEMINI_ACP_PROMPT_TIMEOUT_MS = 30 * 60_000;
 const GEMINI_TMP_DIR = path.join(os.homedir(), ".gemini", "tmp");
 const GEMINI_CHAT_DIR_NAME = "chats";
 const GEMINI_SESSION_FILE_PREFIX = "session-";
-const CTCODE_GEMINI_SETTINGS_DIR = path.join(os.tmpdir(), "ctcode", "gemini");
+const FCODE_GEMINI_SETTINGS_DIR = path.join(os.tmpdir(), "fcode", "gemini");
 const GEMINI_3_THINKING_LEVELS: ReadonlyArray<GeminiThinkingLevel> = ["HIGH", "LOW"];
 const GEMINI_2_5_THINKING_BUDGETS: ReadonlyArray<GeminiThinkingBudget> = [-1, 512, 0];
 
@@ -625,19 +635,6 @@ function makeApprovalOutcome(
   };
 }
 
-function killChildProcess(child: ChildProcessWithoutNullStreams): void {
-  if (process.platform === "win32" && child.pid !== undefined) {
-    try {
-      spawnSync("taskkill", ["/pid", String(child.pid), "/T", "/F"], { stdio: "ignore" });
-      return;
-    } catch {
-      // Fall back to direct kill below.
-    }
-  }
-
-  child.kill("SIGTERM");
-}
-
 function releaseProcessResources(context: GeminiSessionContext): void {
   context.stdout.removeAllListeners();
   context.stderr.removeAllListeners();
@@ -739,12 +736,12 @@ const makeGeminiAdapter = Effect.fn("makeGeminiAdapter")(function* (
     }
 
     const systemSettingsPath = path.join(
-      CTCODE_GEMINI_SETTINGS_DIR,
+      FCODE_GEMINI_SETTINGS_DIR,
       `${input.threadId}-${crypto.randomUUID()}.json`,
     );
     yield* Effect.tryPromise({
       try: async () => {
-        await fs.mkdir(CTCODE_GEMINI_SETTINGS_DIR, { recursive: true });
+        await fs.mkdir(FCODE_GEMINI_SETTINGS_DIR, { recursive: true });
         await fs.writeFile(
           systemSettingsPath,
           JSON.stringify(
@@ -869,6 +866,14 @@ const makeGeminiAdapter = Effect.fn("makeGeminiAdapter")(function* (
 
   const offerRuntimeEvent = Effect.fn("offerRuntimeEvent")(function* (event: ProviderRuntimeEvent) {
     yield* Queue.offer(runtimeEventQueue, event);
+  });
+
+  // Antigravity CLI (`agy`) sessions share the same runtime event queue but
+  // run turn-by-turn in print mode instead of over a long-lived ACP process.
+  const antigravityRuntime = makeGeminiAntigravityRuntime({
+    attachmentsDir: serverConfig.attachmentsDir,
+    emitEvent: offerRuntimeEvent,
+    writeNativeRecord,
   });
 
   const requireSession = Effect.fn("requireSession")(function* (threadId: ThreadId) {
@@ -1886,8 +1891,8 @@ const makeGeminiAdapter = Effect.fn("makeGeminiAdapter")(function* (
       yield* sendRequest(context, "initialize", {
         protocolVersion: 1,
         clientInfo: {
-          name: "ctcode",
-          title: "CTCode",
+          name: "fcode",
+          title: "FCode",
           version: "0.1.0",
         },
         clientCapabilities: {
@@ -2115,8 +2120,35 @@ const makeGeminiAdapter = Effect.fn("makeGeminiAdapter")(function* (
         });
       }
 
+      const configuredBinaryPath = trimToUndefined(input.providerOptions?.gemini?.binaryPath);
+      const resolvedCli = resolveGeminiCli(configuredBinaryPath);
+
+      // Threads started on the Antigravity runtime stay on it: their resume
+      // cursor holds an agy conversation id that the ACP runtime cannot load.
+      if (readAntigravityResumeCursor(input.resumeCursor)) {
+        const antigravityCli =
+          resolvedCli?.flavor === "antigravity"
+            ? resolvedCli
+            : resolveGeminiCli(ANTIGRAVITY_CLI_BINARY);
+        if (antigravityCli) {
+          return yield* antigravityRuntime.startSession(input, antigravityCli.binaryPath);
+        }
+      }
+
+      if (!resolvedCli) {
+        return yield* new ProviderAdapterProcessError({
+          provider: PROVIDER,
+          threadId: input.threadId,
+          detail: geminiCliNotInstalledMessage(configuredBinaryPath),
+        });
+      }
+
+      if (resolvedCli.flavor === "antigravity") {
+        return yield* antigravityRuntime.startSession(input, resolvedCli.binaryPath);
+      }
+
       const cwd = input.cwd ?? process.cwd();
-      const binaryPath = trimToUndefined(input.providerOptions?.gemini?.binaryPath) ?? "gemini";
+      const binaryPath = resolvedCli.binaryPath;
       const runtimeModeId = runtimeModeToGeminiModeId(input.runtimeMode);
       const selectedGeminiModel =
         input.modelSelection?.provider === PROVIDER ? input.modelSelection.model : undefined;
@@ -2210,6 +2242,10 @@ const makeGeminiAdapter = Effect.fn("makeGeminiAdapter")(function* (
   );
 
   const sendTurn: GeminiAdapterShape["sendTurn"] = Effect.fn("sendTurn")(function* (input) {
+    if (yield* antigravityRuntime.hasSession(input.threadId)) {
+      return yield* antigravityRuntime.sendTurn(input);
+    }
+
     const context = yield* requireSession(input.threadId);
     if (context.turnState) {
       return yield* new ProviderAdapterValidationError({
@@ -2282,6 +2318,10 @@ const makeGeminiAdapter = Effect.fn("makeGeminiAdapter")(function* (
 
   const interruptTurn: GeminiAdapterShape["interruptTurn"] = (threadId, turnId) =>
     Effect.gen(function* () {
+      if (yield* antigravityRuntime.hasSession(threadId)) {
+        return yield* antigravityRuntime.interruptTurn(threadId, turnId);
+      }
+
       const context = yield* requireSession(threadId);
       if (turnId && context.turnState && context.turnState.turnId !== turnId) {
         return yield* new ProviderAdapterValidationError({
@@ -2304,6 +2344,10 @@ const makeGeminiAdapter = Effect.fn("makeGeminiAdapter")(function* (
     decision,
   ) =>
     Effect.gen(function* () {
+      if (yield* antigravityRuntime.hasSession(threadId)) {
+        return yield* antigravityRuntime.respondToRequest(threadId);
+      }
+
       const context = yield* requireSession(threadId);
       const pending = context.pendingApprovals.get(requestId);
       if (!pending) {
@@ -2362,29 +2406,45 @@ const makeGeminiAdapter = Effect.fn("makeGeminiAdapter")(function* (
 
   const stopSession: GeminiAdapterShape["stopSession"] = (threadId) =>
     Effect.gen(function* () {
+      if (yield* antigravityRuntime.hasSession(threadId)) {
+        return yield* antigravityRuntime.stopSession(threadId);
+      }
+
       const context = yield* requireSession(threadId);
       context.stopped = true;
       killChildProcess(context.child);
     });
 
   const listSessions: GeminiAdapterShape["listSessions"] = () =>
-    Effect.succeed(
-      Array.from(sessions.values())
+    Effect.map(antigravityRuntime.listSessions(), (antigravitySessions) => [
+      ...antigravitySessions,
+      ...Array.from(sessions.values())
         .filter((context) => !context.stopped)
         .map((context) => context.session),
-    );
+    ]);
 
   const hasSession: GeminiAdapterShape["hasSession"] = (threadId) =>
-    Effect.succeed(Boolean(sessions.get(threadId) && !sessions.get(threadId)?.stopped));
+    Effect.map(
+      antigravityRuntime.hasSession(threadId),
+      (owned) => owned || Boolean(sessions.get(threadId) && !sessions.get(threadId)?.stopped),
+    );
 
   const readThread: GeminiAdapterShape["readThread"] = (threadId) =>
     Effect.gen(function* () {
+      if (yield* antigravityRuntime.hasSession(threadId)) {
+        return yield* antigravityRuntime.readThread(threadId);
+      }
+
       const context = yield* requireSession(threadId);
       return snapshotThread(context);
     });
 
   const rollbackThread: GeminiAdapterShape["rollbackThread"] = Effect.fn("rollbackThread")(
     function* (threadId, numTurns) {
+      if (yield* antigravityRuntime.hasSession(threadId)) {
+        return yield* antigravityRuntime.rollbackThread(threadId);
+      }
+
       const context = yield* requireSession(threadId);
       if (context.turnState) {
         return yield* new ProviderAdapterValidationError({
@@ -2519,11 +2579,16 @@ const makeGeminiAdapter = Effect.fn("makeGeminiAdapter")(function* (
     Effect.forEach(Array.from(sessions.keys()), (threadId) => stopSession(threadId), {
       concurrency: "unbounded",
       discard: true,
-    }).pipe(Effect.asVoid);
+    }).pipe(Effect.andThen(antigravityRuntime.stopAll()), Effect.asVoid);
 
-  const listModels: NonNullable<GeminiAdapterShape["listModels"]> = (input) =>
-    probeGeminiCapabilities({
-      binaryPath: trimToUndefined(input.binaryPath) ?? "gemini",
+  const listModels: NonNullable<GeminiAdapterShape["listModels"]> = (input) => {
+    const resolvedCli = resolveGeminiCli(trimToUndefined(input.binaryPath));
+    if (resolvedCli?.flavor === "antigravity") {
+      return antigravityRuntime.listModels(resolvedCli.binaryPath);
+    }
+
+    return probeGeminiCapabilities({
+      binaryPath: resolvedCli?.binaryPath ?? trimToUndefined(input.binaryPath) ?? "gemini",
       cwd: os.homedir(),
     }).pipe(
       Effect.map(
@@ -2544,6 +2609,7 @@ const makeGeminiAdapter = Effect.fn("makeGeminiAdapter")(function* (
           }),
       ),
     );
+  };
 
   const getComposerCapabilities: NonNullable<GeminiAdapterShape["getComposerCapabilities"]> = () =>
     Effect.succeed({
@@ -2565,6 +2631,7 @@ const makeGeminiAdapter = Effect.fn("makeGeminiAdapter")(function* (
           removeFromSessions: true,
         });
       }
+      antigravityRuntime.disposeAll();
     }).pipe(Effect.ignore, Effect.andThen(Queue.shutdown(runtimeEventQueue))),
   );
 

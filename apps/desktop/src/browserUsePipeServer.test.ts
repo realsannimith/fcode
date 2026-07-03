@@ -4,36 +4,38 @@
 // Depends on: Vitest and browserUsePipeServer path resolution exports
 
 import { basename, dirname } from "node:path";
-import { tmpdir } from "node:os";
 import { describe, expect, it } from "vitest";
 
 import {
   DPCODE_BROWSER_USE_PIPE_ENV,
   resolveConfiguredBrowserUsePipePath,
   resolveDefaultBrowserUsePipePath,
-  CTCODE_BROWSER_USE_PIPE_ENV,
+  FCODE_BROWSER_USE_PIPE_ENV,
   T3CODE_BROWSER_USE_PIPE_ENV,
 } from "./browserUsePipeServer";
 
 describe("browser-use pipe path resolution", () => {
-  it("creates a discoverable unix socket path under the Codex browser-use directory", () => {
+  it("creates the unix socket inside the fixed directory the Codex plugin scans", () => {
     const pipePath = resolveDefaultBrowserUsePipePath("darwin");
 
-    expect(dirname(pipePath)).toBe(`${tmpdir()}/codex-browser-use`);
-    expect(basename(pipePath)).toMatch(/^ctcode-iab-\d+\.sock$/);
+    // Must be the literal /tmp root (not os.tmpdir(), which is /var/folders/…
+    // on macOS) — the Codex control-in-app-browser plugin readdir-scans exactly
+    // this path to discover in-app browsers.
+    expect(dirname(pipePath)).toBe("/tmp/codex-browser-use");
+    expect(basename(pipePath)).toMatch(/^fcode-iab-\d+\.sock$/);
   });
 
-  it("prefers an explicit CTCode pipe path from the environment", () => {
+  it("prefers an explicit FCode pipe path from the environment", () => {
     expect(
       resolveConfiguredBrowserUsePipePath(
         {
-          [CTCODE_BROWSER_USE_PIPE_ENV]: "/tmp/codex-browser-use/ctcode.sock",
+          [FCODE_BROWSER_USE_PIPE_ENV]: "/tmp/codex-browser-use/fcode.sock",
           [DPCODE_BROWSER_USE_PIPE_ENV]: "/tmp/codex-browser-use/custom.sock",
           [T3CODE_BROWSER_USE_PIPE_ENV]: "/tmp/codex-browser-use/legacy.sock",
         },
         "darwin",
       ),
-    ).toBe("/tmp/codex-browser-use/ctcode.sock");
+    ).toBe("/tmp/codex-browser-use/fcode.sock");
   });
 
   it("falls back to legacy desktop pipe environment names", () => {

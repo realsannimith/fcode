@@ -112,14 +112,14 @@ describe("toOpenCodeFileParts", () => {
     expect(
       toOpenCodeFileParts({
         attachments: [attachment],
-        resolveAttachmentPath: () => "/tmp/ctcode-attachments/notes.txt",
+        resolveAttachmentPath: () => "/tmp/fcode-attachments/notes.txt",
       }),
     ).toEqual([
       {
         type: "file",
         mime: "text/plain",
         filename: "notes.txt",
-        url: "file:///tmp/ctcode-attachments/notes.txt",
+        url: "file:///tmp/fcode-attachments/notes.txt",
       },
     ]);
   });

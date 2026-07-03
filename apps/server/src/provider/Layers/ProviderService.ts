@@ -48,7 +48,7 @@ export interface ProviderServiceLiveOptions {
 
 const DEFAULT_PROVIDER_RUNTIME_IDLE_STOP_MS = 10 * 60 * 1000;
 const configuredProviderRuntimeIdleStopMs =
-  process.env.CTCODE_PROVIDER_RUNTIME_IDLE_STOP_MS ??
+  process.env.FCODE_PROVIDER_RUNTIME_IDLE_STOP_MS ??
   process.env.DPCODE_PROVIDER_RUNTIME_IDLE_STOP_MS;
 const PROVIDER_RUNTIME_IDLE_STOP_MS = Number.isFinite(Number(configuredProviderRuntimeIdleStopMs))
   ? Math.max(0, Number(configuredProviderRuntimeIdleStopMs))

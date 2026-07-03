@@ -29,7 +29,7 @@ const viewNames = (sql: SqlClient.SqlClient) =>
   `.pipe(Effect.map((rows) => rows.map((row) => row.name)));
 
 layer("automation migration", (it) => {
-  it.effect("registers automation backlog migration in the CTCode lineage", () =>
+  it.effect("registers automation backlog migration in the FCode lineage", () =>
     Effect.sync(() => {
       assert.deepStrictEqual(migrationEntries[migrationEntries.length - 1]?.slice(0, 2), [
         48,

@@ -73,13 +73,44 @@ function hasContainsMethod(value: unknown): value is { contains: (target: unknow
   );
 }
 
+// Regions marked with this attribute (e.g. terminal panes, which paste dropped
+// file paths into the PTY) handle file drags themselves. The composer dropzone
+// must treat a drag moving into such a region as leaving the dropzone, or its
+// "attach to composer" overlay stays latched on while — and after — the drop
+// is handled elsewhere.
+export const COMPOSER_DROP_IGNORE_ATTRIBUTE = "data-composer-drop-ignore";
+
+function hasClosestMethod(value: unknown): value is { closest: (selector: string) => unknown } {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "closest" in value &&
+    typeof (value as { closest?: unknown }).closest === "function"
+  );
+}
+
+export function isInsideIgnoredComposerDropRegion(target: unknown): boolean {
+  if (!hasClosestMethod(target)) {
+    return false;
+  }
+  try {
+    return target.closest(`[${COMPOSER_DROP_IGNORE_ATTRIBUTE}]`) !== null;
+  } catch {
+    return false;
+  }
+}
+
 // Drag events bubble through every child under the bound dropzone. Treat only
-// transitions across the dropzone boundary as state changes.
+// transitions across the dropzone boundary as state changes — where opted-out
+// regions inside the dropzone count as "outside" it.
 export function isComposerDropzoneInternalDragTransition(
   currentTarget: unknown,
   relatedTarget: unknown,
 ): boolean {
   if (!relatedTarget || !hasContainsMethod(currentTarget)) {
+    return false;
+  }
+  if (isInsideIgnoredComposerDropRegion(relatedTarget)) {
     return false;
   }
   try {

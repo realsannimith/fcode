@@ -16,7 +16,14 @@ import {
   EnvironmentRowChevron,
 } from "./EnvironmentRow";
 
-export function EnvironmentLocalServersSection({ enabled }: { enabled: boolean }) {
+export function EnvironmentLocalServersSection({
+  enabled,
+  onOpenServerUrl,
+}: {
+  enabled: boolean;
+  /** Opens a local server's URL in the in-app browser panel. */
+  onOpenServerUrl?: ((url: string) => void) | undefined;
+}) {
   const renderTrigger = ({ serverCount, isBusy }: LocalServersTriggerState) => {
     const trailing = (
       <>
@@ -49,6 +56,12 @@ export function EnvironmentLocalServersSection({ enabled }: { enabled: boolean }
 
   // Keep the scan live while the panel section is expanded so the row badge stays current.
   return (
-    <LocalServersMenu enabled={enabled} align="start" side="bottom" renderTrigger={renderTrigger} />
+    <LocalServersMenu
+      enabled={enabled}
+      align="start"
+      side="bottom"
+      renderTrigger={renderTrigger}
+      onOpenServer={onOpenServerUrl ? (_server, url) => onOpenServerUrl(url) : undefined}
+    />
   );
 }

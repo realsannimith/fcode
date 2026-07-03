@@ -7,7 +7,7 @@
 
 import { forwardRef } from "react";
 import type { ProfileStats, ProfileTokenStats } from "@t3tools/contracts";
-import { CTCodeLogo } from "~/components/CTCodeLogo";
+import { FCodeLogo } from "~/components/FCodeLogo";
 import { ActivityHeatmap, CARD_HEATMAP_INTENSITY_CLASSES } from "./ActivityHeatmap";
 import { ProfileAvatar } from "./ProfileAvatar";
 import { formatCompact, formatDays } from "./profileFormatting";
@@ -70,8 +70,8 @@ export const ShareCard = forwardRef<HTMLDivElement, ShareCardProps>(function Sha
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2 text-slate-600">
-          <CTCodeLogo className="size-6 text-slate-700" />
-          <span className="text-xl font-normal tracking-tight">CTCode</span>
+          <FCodeLogo className="size-6 text-slate-700" />
+          <span className="text-xl font-normal tracking-tight">FCode</span>
         </div>
       </div>
 

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, it } from "vitest";
+import { afterEach, describe, it, vi } from "vitest";
 
 import { resolveAllowedLocalPreviewFile } from "./localImageFiles.ts";
 
@@ -61,10 +61,10 @@ describe("resolveAllowedLocalPreviewFile", () => {
     }
   });
 
-  it("allows images written to the CTCODE_HOME codex-home-overlay generated_images root", async () => {
-    // Codex app-server is launched with CODEX_HOME pointing at a CTCode overlay
+  it("allows images written to the FCODE_HOME codex-home-overlay generated_images root", async () => {
+    // Codex app-server is launched with CODEX_HOME pointing at a FCode overlay
     // directory (see resolveDpCodeCodexHomeOverlayPath). Generated images therefore
-    // live under <CTCODE_HOME>/codex-home-overlay/generated_images/<thread>/<call>.png,
+    // live under <FCODE_HOME>/codex-home-overlay/generated_images/<thread>/<call>.png,
     // which sits outside both the user's `~/.codex` source home and any workspace
     // root. The allowlist must still serve them.
     //
@@ -73,9 +73,9 @@ describe("resolveAllowedLocalPreviewFile", () => {
     // way only the overlay candidate can satisfy the allowlist.
     const fakeRoot = path.join(process.cwd(), `.test-codex-overlay-${process.pid}-${Date.now()}`);
     const sourceHome = path.join(fakeRoot, "source", ".codex");
-    const ctcodeHome = path.join(fakeRoot, "ctcode", "runtime");
+    const fcodeHome = path.join(fakeRoot, "fcode", "runtime");
     const overlayImageDir = path.join(
-      ctcodeHome,
+      fcodeHome,
       "codex-home-overlay",
       "generated_images",
       "thread-overlay",
@@ -84,8 +84,8 @@ describe("resolveAllowedLocalPreviewFile", () => {
     mkdirSync(overlayImageDir, { recursive: true });
     writeFileSync(imagePath, Buffer.from([0x89, 0x50, 0x4e, 0x47]));
 
-    const previousCTCodeHome = process.env.CTCODE_HOME;
-    process.env.CTCODE_HOME = ctcodeHome;
+    const previousFCodeHome = process.env.FCODE_HOME;
+    process.env.FCODE_HOME = fcodeHome;
     try {
       const result = await resolveAllowedLocalPreviewFile({
         requestedPath: imagePath,
@@ -95,10 +95,10 @@ describe("resolveAllowedLocalPreviewFile", () => {
 
       assert.equal(result?.path, realpathSync(imagePath));
     } finally {
-      if (previousCTCodeHome === undefined) {
-        delete process.env.CTCODE_HOME;
+      if (previousFCodeHome === undefined) {
+        delete process.env.FCODE_HOME;
       } else {
-        process.env.CTCODE_HOME = previousCTCodeHome;
+        process.env.FCODE_HOME = previousFCodeHome;
       }
       rmSync(fakeRoot, { recursive: true, force: true });
     }
@@ -123,9 +123,9 @@ describe("resolveAllowedLocalPreviewFile", () => {
 
   it("allows PDFs inside a per-thread scratch workspace without a cwd", async () => {
     // Sessions that start before a project workspace exists run in
-    // <tmpdir>/ctcode-codex-workspaces/<threadId>; files agents create there
+    // <tmpdir>/fcode-codex-workspaces/<threadId>; files agents create there
     // are workspace-equivalent, so documents must be servable from that root.
-    const scratchRoot = path.join(os.tmpdir(), "ctcode-codex-workspaces");
+    const scratchRoot = path.join(os.tmpdir(), "fcode-codex-workspaces");
     const threadDir = path.join(scratchRoot, `test-thread-${process.pid}-${Date.now()}`);
     const pdfPath = path.join(threadDir, "viewer-test.pdf");
     mkdirSync(threadDir, { recursive: true });
@@ -172,6 +172,56 @@ describe("resolveAllowedLocalPreviewFile", () => {
     });
 
     assert.equal(result?.path, realpathSync(imagePath));
+  });
+
+  it("allows images inside the user's Downloads folder", async () => {
+    // Agents save user-requested images to ~/Downloads, outside every
+    // workspace root; the chat preview must still render them. Anchor the
+    // fake home inside the worktree so it does not fall under os.tmpdir(),
+    // which is already an allowed image root and would mask this check.
+    const fakeHome = path.join(process.cwd(), `.test-home-downloads-${process.pid}-${Date.now()}`);
+    const downloadsDir = path.join(fakeHome, "Downloads");
+    const imagePath = path.join(downloadsDir, "cat-image.png");
+    mkdirSync(downloadsDir, { recursive: true });
+    writeFileSync(imagePath, Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+    const homedirSpy = vi.spyOn(os, "homedir").mockReturnValue(fakeHome);
+    try {
+      const result = await resolveAllowedLocalPreviewFile({
+        requestedPath: imagePath,
+        cwd: null,
+      });
+
+      assert.equal(result?.path, realpathSync(imagePath));
+      assert.equal(result?.fileName, "cat-image.png");
+    } finally {
+      homedirSpy.mockRestore();
+      rmSync(fakeHome, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects documents inside the user's Downloads folder", async () => {
+    // The Downloads root is image-only, same as the generated-image and
+    // temp-dir roots: it must never serve PDFs or other documents.
+    const fakeHome = path.join(
+      process.cwd(),
+      `.test-home-downloads-pdf-${process.pid}-${Date.now()}`,
+    );
+    const downloadsDir = path.join(fakeHome, "Downloads");
+    const pdfPath = path.join(downloadsDir, "statement.pdf");
+    mkdirSync(downloadsDir, { recursive: true });
+    writeFileSync(pdfPath, Buffer.from("%PDF-1.4"));
+    const homedirSpy = vi.spyOn(os, "homedir").mockReturnValue(fakeHome);
+    try {
+      const result = await resolveAllowedLocalPreviewFile({
+        requestedPath: pdfPath,
+        cwd: null,
+      });
+
+      assert.equal(result, null);
+    } finally {
+      homedirSpy.mockRestore();
+      rmSync(fakeHome, { recursive: true, force: true });
+    }
   });
 
   it("rejects unsupported paths", async () => {

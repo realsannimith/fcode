@@ -1370,32 +1370,32 @@ describe("resolveAutoFeatureBranchName", () => {
 });
 
 describe("resolveDefaultCreateBranchName", () => {
-  it("uses CTCode as the default namespace", () => {
+  it("uses FCode as the default namespace", () => {
     const branch = resolveDefaultCreateBranchName(["main"], "fix toast copy");
-    assert.equal(branch, "ctcode/fix-toast-copy");
+    assert.equal(branch, "fcode/fix-toast-copy");
   });
 
   it("normalizes an existing legacy dpcode namespace", () => {
     const branch = resolveDefaultCreateBranchName(["main"], "dpcode/refine-toolbar-actions");
-    assert.equal(branch, "ctcode/refine-toolbar-actions");
+    assert.equal(branch, "fcode/refine-toolbar-actions");
   });
 
-  it("preserves nested namespaces under CTCode", () => {
+  it("preserves nested namespaces under FCode", () => {
     const branch = resolveDefaultCreateBranchName(["main"], "feature/refine-toolbar-actions");
-    assert.equal(branch, "ctcode/feature/refine-toolbar-actions");
+    assert.equal(branch, "fcode/feature/refine-toolbar-actions");
   });
 
-  it("increments suffix when the CTCode branch already exists", () => {
+  it("increments suffix when the FCode branch already exists", () => {
     const branch = resolveDefaultCreateBranchName(
-      ["main", "ctcode/fix-toast-copy", "ctcode/fix-toast-copy-2"],
+      ["main", "fcode/fix-toast-copy", "fcode/fix-toast-copy-2"],
       "fix toast copy",
     );
-    assert.equal(branch, "ctcode/fix-toast-copy-3");
+    assert.equal(branch, "fcode/fix-toast-copy-3");
   });
 
-  it("falls back to ctcode/update when no preferred name is provided", () => {
+  it("falls back to fcode/update when no preferred name is provided", () => {
     const branch = resolveDefaultCreateBranchName(["main"]);
-    assert.equal(branch, "ctcode/update");
+    assert.equal(branch, "fcode/update");
   });
 });
 
@@ -1403,7 +1403,7 @@ describe("resolveLiveThreadBranchUpdate", () => {
   it("does not regress a semantic thread branch back to a temporary worktree branch", () => {
     const update = resolveLiveThreadBranchUpdate({
       threadBranch: "feature/semantic-branch",
-      gitStatus: status({ branch: "ctcode/deadbeef" }),
+      gitStatus: status({ branch: "fcode/deadbeef" }),
     });
 
     assert.equal(update, null);
@@ -1420,7 +1420,7 @@ describe("resolveLiveThreadBranchUpdate", () => {
 });
 
 describe("shouldOfferCreateBranchPrompt", () => {
-  const temporaryBranch = "ctcode/deadbeef";
+  const temporaryBranch = "fcode/deadbeef";
 
   it("shows the create-branch prompt for temporary worktree branches without upstream", () => {
     assert.isTrue(

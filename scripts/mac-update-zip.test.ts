@@ -37,29 +37,29 @@ describe("mac-update-zip", () => {
   });
 
   it("builds Electron framework symlink paths for the top-level app bundle", () => {
-    assert.deepStrictEqual(buildMacUpdateZipSymlinkEntries("CTCode.app"), [
-      "CTCode.app/Contents/Frameworks/Electron Framework.framework/Electron Framework",
-      "CTCode.app/Contents/Frameworks/Electron Framework.framework/Helpers",
-      "CTCode.app/Contents/Frameworks/Electron Framework.framework/Libraries",
-      "CTCode.app/Contents/Frameworks/Electron Framework.framework/Resources",
-      "CTCode.app/Contents/Frameworks/Electron Framework.framework/Versions/Current",
+    assert.deepStrictEqual(buildMacUpdateZipSymlinkEntries("FCode.app"), [
+      "FCode.app/Contents/Frameworks/Electron Framework.framework/Electron Framework",
+      "FCode.app/Contents/Frameworks/Electron Framework.framework/Helpers",
+      "FCode.app/Contents/Frameworks/Electron Framework.framework/Libraries",
+      "FCode.app/Contents/Frameworks/Electron Framework.framework/Resources",
+      "FCode.app/Contents/Frameworks/Electron Framework.framework/Versions/Current",
     ]);
   });
 
   it("resolves exactly one top-level .app from update zip entries", () => {
     assert.equal(
       resolveSingleTopLevelMacAppBundle([
-        "__MACOSX/CTCode.app/Contents/Info.plist",
-        "CTCode.app/Contents/Info.plist",
-        "CTCode.app/Contents/MacOS/CTCode",
+        "__MACOSX/FCode.app/Contents/Info.plist",
+        "FCode.app/Contents/Info.plist",
+        "FCode.app/Contents/MacOS/FCode",
       ]),
-      "CTCode.app",
+      "FCode.app",
     );
 
     assert.throws(
       () =>
         resolveSingleTopLevelMacAppBundle([
-          "CTCode.app/Contents/Info.plist",
+          "FCode.app/Contents/Info.plist",
           "Other.app/Contents/Info.plist",
         ]),
       /Expected one top-level \.app bundle/,
@@ -69,15 +69,15 @@ describe("mac-update-zip", () => {
   it("resolves exactly one macOS update zip artifact", () => {
     assert.equal(
       resolveSingleMacUpdateZipFileName([
-        "CTCode-0.1.5-arm64.dmg",
-        "CTCode-0.1.5-arm64.zip",
+        "FCode-0.1.5-arm64.dmg",
+        "FCode-0.1.5-arm64.zip",
         "latest-mac.yml",
       ]),
-      "CTCode-0.1.5-arm64.zip",
+      "FCode-0.1.5-arm64.zip",
     );
 
     assert.throws(
-      () => resolveSingleMacUpdateZipFileName(["CTCode-0.1.5-arm64.zip", "CTCode-0.1.5-x64.zip"]),
+      () => resolveSingleMacUpdateZipFileName(["FCode-0.1.5-arm64.zip", "FCode-0.1.5-x64.zip"]),
       /Expected one macOS update zip artifact/,
     );
   });
@@ -85,15 +85,15 @@ describe("mac-update-zip", () => {
   it("requires at least one macOS update manifest", () => {
     assert.deepStrictEqual(
       resolveMacUpdateManifestFileNames([
-        "CTCode-0.1.5-arm64.dmg",
-        "CTCode-0.1.5-arm64.zip",
+        "FCode-0.1.5-arm64.dmg",
+        "FCode-0.1.5-arm64.zip",
         "latest-mac.yml",
       ]),
       ["latest-mac.yml"],
     );
 
     assert.throws(
-      () => resolveMacUpdateManifestFileNames(["CTCode-0.1.5-arm64.dmg"]),
+      () => resolveMacUpdateManifestFileNames(["FCode-0.1.5-arm64.dmg"]),
       /Expected at least one macOS update manifest/,
     );
   });
@@ -101,18 +101,18 @@ describe("mac-update-zip", () => {
   it("updates the macOS zip file entry and matching top-level sha", () => {
     const manifest = `version: 0.1.4
 files:
-  - url: CTCode-0.1.4-arm64.zip
+  - url: FCode-0.1.4-arm64.zip
     sha512: oldzip
     size: 100
-  - url: CTCode-0.1.4-arm64.dmg
+  - url: FCode-0.1.4-arm64.dmg
     sha512: olddmg
     size: 200
-path: 'CTCode-0.1.4-arm64.zip'
+path: 'FCode-0.1.4-arm64.zip'
 sha512: oldzip
 releaseDate: '2026-06-07T12:00:00.000Z'
 `;
 
-    const updated = updateMacUpdateManifestZipEntry(manifest, "CTCode-0.1.4-arm64.zip", {
+    const updated = updateMacUpdateManifestZipEntry(manifest, "FCode-0.1.4-arm64.zip", {
       sha512: "newzip",
       size: 12345,
     });
@@ -121,13 +121,13 @@ releaseDate: '2026-06-07T12:00:00.000Z'
       updated,
       `version: 0.1.4
 files:
-  - url: CTCode-0.1.4-arm64.zip
+  - url: FCode-0.1.4-arm64.zip
     sha512: newzip
     size: 12345
-  - url: CTCode-0.1.4-arm64.dmg
+  - url: FCode-0.1.4-arm64.dmg
     sha512: olddmg
     size: 200
-path: 'CTCode-0.1.4-arm64.zip'
+path: 'FCode-0.1.4-arm64.zip'
 sha512: newzip
 releaseDate: '2026-06-07T12:00:00.000Z'
 `,
@@ -137,20 +137,20 @@ releaseDate: '2026-06-07T12:00:00.000Z'
   it("drops the stale blockMapSize from the repacked zip entry but keeps the dmg blockMapSize", () => {
     const manifest = `version: 0.1.4
 files:
-  - url: CTCode-0.1.4-arm64.zip
+  - url: FCode-0.1.4-arm64.zip
     sha512: oldzip
     size: 100
     blockMapSize: 50
-  - url: CTCode-0.1.4-arm64.dmg
+  - url: FCode-0.1.4-arm64.dmg
     sha512: olddmg
     size: 200
     blockMapSize: 75
-path: 'CTCode-0.1.4-arm64.zip'
+path: 'FCode-0.1.4-arm64.zip'
 sha512: oldzip
 releaseDate: '2026-06-07T12:00:00.000Z'
 `;
 
-    const updated = updateMacUpdateManifestZipEntry(manifest, "CTCode-0.1.4-arm64.zip", {
+    const updated = updateMacUpdateManifestZipEntry(manifest, "FCode-0.1.4-arm64.zip", {
       sha512: "newzip",
       size: 12345,
     });
@@ -159,14 +159,14 @@ releaseDate: '2026-06-07T12:00:00.000Z'
       updated,
       `version: 0.1.4
 files:
-  - url: CTCode-0.1.4-arm64.zip
+  - url: FCode-0.1.4-arm64.zip
     sha512: newzip
     size: 12345
-  - url: CTCode-0.1.4-arm64.dmg
+  - url: FCode-0.1.4-arm64.dmg
     sha512: olddmg
     size: 200
     blockMapSize: 75
-path: 'CTCode-0.1.4-arm64.zip'
+path: 'FCode-0.1.4-arm64.zip'
 sha512: newzip
 releaseDate: '2026-06-07T12:00:00.000Z'
 `,
@@ -179,35 +179,35 @@ releaseDate: '2026-06-07T12:00:00.000Z'
         updateMacUpdateManifestZipEntry(
           `version: 0.1.4
 files:
-  - url: CTCode-0.1.4-arm64.dmg
+  - url: FCode-0.1.4-arm64.dmg
     sha512: olddmg
     size: 200
 releaseDate: '2026-06-07T12:00:00.000Z'
 `,
-          "CTCode-0.1.4-arm64.zip",
+          "FCode-0.1.4-arm64.zip",
           {
             sha512: "newzip",
             size: 12345,
           },
         ),
-      /Could not update CTCode-0.1.4-arm64.zip entry/,
+      /Could not update FCode-0.1.4-arm64.zip entry/,
     );
   });
 
   it("validates manifest metadata after zip repack", () => {
     const manifest = `version: 0.1.5
 files:
-  - url: CTCode-0.1.5-arm64.zip
+  - url: FCode-0.1.5-arm64.zip
     sha512: newzip
     size: 12345
-path: CTCode-0.1.5-arm64.zip
+path: FCode-0.1.5-arm64.zip
 sha512: newzip
 releaseDate: '2026-06-07T12:00:00.000Z'
 `;
     const metadata = { sha512: "newzip", size: 12345 };
 
     assert.deepStrictEqual(
-      validateMacUpdateManifestZipMetadata(manifest, "CTCode-0.1.5-arm64.zip", metadata),
+      validateMacUpdateManifestZipMetadata(manifest, "FCode-0.1.5-arm64.zip", metadata),
       {
         manifestHasZipPath: true,
         manifestHasZipSha: true,
@@ -215,7 +215,7 @@ releaseDate: '2026-06-07T12:00:00.000Z'
       },
     );
     assert.deepStrictEqual(
-      assertMacUpdateManifestZipMetadata(manifest, "CTCode-0.1.5-arm64.zip", metadata),
+      assertMacUpdateManifestZipMetadata(manifest, "FCode-0.1.5-arm64.zip", metadata),
       {
         manifestHasZipPath: true,
         manifestHasZipSha: true,

@@ -24,6 +24,7 @@ export const gitQueryKeys = {
   all: ["git"] as const,
   githubRepository: (cwd: string | null) => ["git", "github-repository", cwd] as const,
   status: (cwd: string | null) => ["git", "status", cwd] as const,
+  discoverRepositories: (cwd: string | null) => ["git", "discover-repositories", cwd] as const,
   branches: (cwd: string | null) => ["git", "branches", cwd] as const,
   workingTreeDiff: (
     cwd: string | null,
@@ -96,6 +97,25 @@ export function gitStatusQueryOptions(cwd: string | null) {
     refetchOnWindowFocus: true,
     refetchOnReconnect: "always",
     refetchInterval: GIT_STATUS_REFETCH_INTERVAL_MS,
+  });
+}
+
+// Nested-repo layout only changes when repos are created/removed on disk (not on
+// commit), so this can be cached longer than status and refreshed on focus.
+const GIT_DISCOVER_REPOSITORIES_STALE_TIME_MS = 60_000;
+
+export function gitDiscoverRepositoriesQueryOptions(cwd: string | null, enabled = true) {
+  return queryOptions({
+    queryKey: gitQueryKeys.discoverRepositories(cwd),
+    queryFn: async () => {
+      const api = ensureNativeApi();
+      if (!cwd) throw new Error("Repository discovery is unavailable.");
+      return api.git.discoverRepositories({ cwd });
+    },
+    enabled: enabled && cwd !== null,
+    staleTime: GIT_DISCOVER_REPOSITORIES_STALE_TIME_MS,
+    refetchOnWindowFocus: true,
+    refetchOnReconnect: "always",
   });
 }
 

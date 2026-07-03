@@ -218,7 +218,9 @@ const publishCmd = Command.make(
           const version = Option.getOrElse(config.appVersion, () => serverPackageJson.version);
           const pkg = {
             name: serverPackageJson.name,
-            repository: serverPackageJson.repository,
+            // `repository` is optional in package.json and may be absent during the
+            // WIP rebrand; forward it only when present (JSON.stringify drops undefined).
+            repository: (serverPackageJson as { readonly repository?: unknown }).repository,
             bin: serverPackageJson.bin,
             type: serverPackageJson.type,
             version,

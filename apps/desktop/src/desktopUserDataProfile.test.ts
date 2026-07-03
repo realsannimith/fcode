@@ -11,14 +11,14 @@ import {
 } from "./desktopUserDataProfile";
 
 describe("desktopUserDataProfile", () => {
-  it("resolves CTCode profile names without reusing legacy profile paths", () => {
+  it("resolves FCode profile names without reusing legacy profile paths", () => {
     const appDataBase = "/Users/tester/Library/Application Support";
 
     expect(resolveDesktopUserDataPath({ appDataBase, isDevelopment: true })).toBe(
-      "/Users/tester/Library/Application Support/ctcode-dev",
+      "/Users/tester/Library/Application Support/fcode-dev",
     );
     expect(resolveDesktopUserDataPath({ appDataBase, isDevelopment: false })).toBe(
-      "/Users/tester/Library/Application Support/ctcode",
+      "/Users/tester/Library/Application Support/fcode",
     );
     expect(resolveLegacyDesktopUserDataPaths({ appDataBase, isDevelopment: true })).toEqual([
       "/Users/tester/Library/Application Support/dpcode-dev",
@@ -37,11 +37,11 @@ describe("desktopUserDataProfile", () => {
     ).toBe("/tmp/xdg");
   });
 
-  it("seeds local persistent renderer data into the new CTCode profile once", () => {
-    const tempDir = FS.mkdtempSync(Path.join(OS.tmpdir(), "ctcode-userdata-profile-"));
+  it("seeds local persistent renderer data into the new FCode profile once", () => {
+    const tempDir = FS.mkdtempSync(Path.join(OS.tmpdir(), "fcode-userdata-profile-"));
     try {
       const legacyPath = Path.join(tempDir, "t3code-dev");
-      const targetPath = Path.join(tempDir, "ctcode-dev");
+      const targetPath = Path.join(tempDir, "fcode-dev");
       FS.mkdirSync(Path.join(legacyPath, "Local Storage", "leveldb"), { recursive: true });
       FS.writeFileSync(
         Path.join(legacyPath, "Local Storage", "leveldb", "000003.log"),

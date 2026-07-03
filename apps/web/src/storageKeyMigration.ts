@@ -1,7 +1,7 @@
 // FILE: storageKeyMigration.ts
-// Purpose: Migrates legacy browser storage keys to the CTCode namespace.
+// Purpose: Migrates legacy browser storage keys to the FCode namespace.
 // Layer: Web bootstrap utility
-// Exports: migrateCTCodeLocalStorageKeys
+// Exports: migrateFCodeLocalStorageKeys
 
 // Canonical storage keys (namespace prefix stripped) that must survive an app rename.
 const STORAGE_KEYS = [
@@ -33,9 +33,9 @@ const STORAGE_KEYS = [
 ] as const;
 
 // Past app namespaces, newest first, so the freshest legacy value wins when more than one exists.
-const LEGACY_NAMESPACES = ["kcode", "synara", "dpcode", "t3code"] as const;
+const LEGACY_NAMESPACES = ["ctcode", "kcode", "synara", "dpcode", "t3code"] as const;
 
-export function migrateCTCodeLocalStorageKeys(): void {
+export function migrateFCodeLocalStorageKeys(): void {
   // Prefer globalThis.localStorage so this works identically in browsers (where
   // globalThis === window) and in node-based unit tests that stub the global.
   let storage: Storage | null = null;
@@ -50,7 +50,7 @@ export function migrateCTCodeLocalStorageKeys(): void {
 
   try {
     for (const key of STORAGE_KEYS) {
-      const nextKey = `ctcode:${key}`;
+      const nextKey = `fcode:${key}`;
       if (storage.getItem(nextKey) !== null) {
         continue;
       }
@@ -68,4 +68,4 @@ export function migrateCTCodeLocalStorageKeys(): void {
 }
 
 // Run during bootstrap before stores hydrate from localStorage.
-migrateCTCodeLocalStorageKeys();
+migrateFCodeLocalStorageKeys();

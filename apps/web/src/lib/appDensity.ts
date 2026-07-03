@@ -15,7 +15,9 @@ const BASE_ROW_GAP_REM = 0.5;
 const BASE_SETTINGS_ROW_PADDING_Y_REM = 0.625;
 const BASE_CHAT_GUTTER_X_REM = 0.75;
 const BASE_CHAT_GUTTER_X_LG_REM = 1.25;
-const BASE_COMPOSER_EDITOR_PADDING_TOP_REM = 0.75;
+// Symmetric top/bottom so the single-row composer (input + inline controls) sits
+// vertically centered in the shell.
+const BASE_COMPOSER_EDITOR_PADDING_TOP_REM = 0.5;
 const BASE_COMPOSER_EDITOR_PADDING_BOTTOM_REM = 0.5;
 const BASE_COMPOSER_EDITOR_PADDING_X_REM = 0.75;
 const BASE_COMPOSER_EDITOR_PADDING_X_END_REM = 0.875;
@@ -49,7 +51,7 @@ export function getDensityCssVariables(mode: UiDensity = DEFAULT_UI_DENSITY) {
     "--app-density-settings-row-padding-y": scaleRem(BASE_SETTINGS_ROW_PADDING_Y_REM, scale),
     "--app-density-chat-gutter-x": scaleRem(BASE_CHAT_GUTTER_X_REM, scale),
     "--app-density-chat-gutter-x-lg": scaleRem(BASE_CHAT_GUTTER_X_LG_REM, scale),
-    "--app-density-composer-editor-min-height": `calc(2lh * ${scale})`,
+    "--app-density-composer-editor-min-height": `calc(1lh * ${scale})`,
     "--app-density-composer-editor-padding-top": scaleRem(
       BASE_COMPOSER_EDITOR_PADDING_TOP_REM,
       scale,

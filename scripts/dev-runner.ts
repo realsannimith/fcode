@@ -15,7 +15,7 @@ const MAX_HASH_OFFSET = 3000;
 const MAX_PORT = 65535;
 
 export const DEFAULT_T3_HOME = Effect.map(Effect.service(Path.Path), (path) =>
-  path.join(homedir(), ".ctcode"),
+  path.join(homedir(), ".fcode"),
 );
 
 const MODE_ARGS = {
@@ -74,10 +74,10 @@ const OffsetConfig = Config.all({
   devInstance: optionalStringConfig("T3CODE_DEV_INSTANCE"),
 });
 const HomeConfig = Config.all({
-  ctcodeHome: optionalStringConfig("CTCODE_HOME"),
+  fcodeHome: optionalStringConfig("FCODE_HOME"),
   t3Home: optionalStringConfig("T3CODE_HOME"),
   dpcodeHome: optionalStringConfig("DPCODE_HOME"),
-}).pipe(Config.map(({ ctcodeHome, t3Home, dpcodeHome }) => ctcodeHome ?? t3Home ?? dpcodeHome));
+}).pipe(Config.map(({ fcodeHome, t3Home, dpcodeHome }) => fcodeHome ?? t3Home ?? dpcodeHome));
 
 export function resolveOffset(config: {
   readonly portOffset: number | undefined;
@@ -160,7 +160,7 @@ export function createDevRunnerEnv({
       ELECTRON_RENDERER_PORT: String(webPort),
       VITE_WS_URL: `ws://[::1]:${serverPort}`,
       VITE_DEV_SERVER_URL: devUrl?.toString() ?? `http://localhost:${webPort}`,
-      CTCODE_HOME: resolvedBaseDir,
+      FCODE_HOME: resolvedBaseDir,
       DPCODE_HOME: resolvedBaseDir,
       T3CODE_HOME: resolvedBaseDir,
     };
@@ -443,7 +443,7 @@ export function runDevRunnerWithInput(input: DevRunnerCliInput) {
         : "";
 
     yield* Effect.logInfo(
-      `[dev-runner] mode=${input.mode} source=${source}${selectionSuffix} serverPort=${String(env.T3CODE_PORT)} webPort=${String(env.PORT)} baseDir=${String(env.CTCODE_HOME)}`,
+      `[dev-runner] mode=${input.mode} source=${source}${selectionSuffix} serverPort=${String(env.T3CODE_PORT)} webPort=${String(env.PORT)} baseDir=${String(env.FCODE_HOME)}`,
     );
 
     if (input.dryRun) {
@@ -492,7 +492,7 @@ const devRunnerCli = Command.make("dev-runner", {
     Argument.withDescription("Development mode to run."),
   ),
   t3Home: Flag.string("home-dir").pipe(
-    Flag.withDescription("Base directory for all CTCode data (equivalent to CTCODE_HOME)."),
+    Flag.withDescription("Base directory for all FCode data (equivalent to FCODE_HOME)."),
     Flag.withFallbackConfig(HomeConfig),
   ),
   authToken: Flag.string("auth-token").pipe(

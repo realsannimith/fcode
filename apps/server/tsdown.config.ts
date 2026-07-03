@@ -1,11 +1,11 @@
 // FILE: tsdown.config.ts
-// Purpose: Builds the CTCode server CLI and controls diagnostic source maps.
+// Purpose: Builds the FCode server CLI and controls diagnostic source maps.
 // Layer: Server build config
 // Depends on: tsdown.
 
 import { defineConfig } from "tsdown";
 
-const sourcemapEnv = process.env.CTCODE_SERVER_SOURCEMAP?.trim().toLowerCase();
+const sourcemapEnv = process.env.FCODE_SERVER_SOURCEMAP?.trim().toLowerCase();
 const buildSourcemap = sourcemapEnv === "1" || sourcemapEnv === "true";
 
 export default defineConfig({

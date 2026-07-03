@@ -6,6 +6,7 @@
 import { memo } from "react";
 import { getAttachmentIconName, getFileIconName } from "../../file-icons";
 import { CentralIcon } from "~/lib/central-icons";
+import { resolveRealFileTypeIconSrc } from "~/lib/realFileTypeIcons";
 import { cn } from "~/lib/utils";
 import { FolderClosed, FolderOpen } from "../FolderClosed";
 
@@ -62,6 +63,11 @@ export const FileEntryIcon = memo(function FileEntryIcon(props: {
   // up extension-specific colors.
   colorMode?: "file" | "inherit" | undefined;
   expanded?: boolean | undefined;
+  // Opt in to the real, colorful per-extension icon set (vscode-icons) instead
+  // of the monochrome Central glyph — used where a file's real type should read
+  // at a glance (e.g. the edited-file header in tool call details). Falls back
+  // to the Central glyph for extensions without a dedicated real icon.
+  realIcon?: boolean;
 }) {
   // Match the look of the local filepath picker: directories always render the
   // outlined Central folder glyph.
@@ -72,6 +78,20 @@ export const FileEntryIcon = memo(function FileEntryIcon(props: {
         className={cn("size-4 shrink-0", props.className, FOLDER_ICON_COLOR_CLASS_NAME)}
       />
     );
+  }
+
+  if (props.realIcon) {
+    const realIconSrc = resolveRealFileTypeIconSrc(props.pathValue);
+    if (realIconSrc) {
+      return (
+        <img
+          src={realIconSrc}
+          alt=""
+          aria-hidden="true"
+          className={cn("size-4 shrink-0 object-contain", props.className)}
+        />
+      );
+    }
   }
 
   const iconName =

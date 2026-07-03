@@ -20,12 +20,16 @@ import { describeErrorMessage } from "@t3tools/shared/errorMessages";
 import {
   consumeTerminalIdentityInput,
   deriveTerminalProcessIdentity,
+  parseTerminalSessionOsc,
   terminalCliKindFromValue,
+  terminalCliResumeArgs,
   T3CODE_TERMINAL_HOOK_OSC_PREFIX,
+  T3CODE_TERMINAL_SESSION_OSC_PREFIX,
   T3CODE_TERMINAL_CLI_KIND_ENV_KEY,
   type TerminalActivityState,
   type TerminalAgentHookEventType,
   type TerminalCliKind,
+  type TerminalCliSessionInfo,
 } from "@t3tools/shared/terminalThreads";
 import { Effect, Encoding, Layer, Schema } from "effect";
 
@@ -45,14 +49,13 @@ import {
   TerminalSessionState,
   TerminalStartInput,
 } from "../Services/Manager";
-import {
-  capHistoryByLimits,
-  DEFAULT_HISTORY_BYTE_LIMIT,
-  TerminalHistoryBuffer,
-  type HistoryLimits,
-} from "../terminalHistory";
 import { createTerminalModeReplayTracker } from "../terminalModeReplay";
 
+/**
+ * Extra scrollback rows retained beyond the terminal's own viewport height. Backs the headless
+ * terminal each session replays through, so this bounds memory the same way the old byte/line cap
+ * did, but as native terminal rows rather than a capped flat string.
+ */
 const DEFAULT_HISTORY_LINE_LIMIT = 5_000;
 const DEFAULT_PERSIST_DEBOUNCE_MS = 250;
 const DEFAULT_SUBPROCESS_POLL_INTERVAL_MS = 1_000;
@@ -625,7 +628,9 @@ function shouldStripCsiSequence(body: string, finalByte: string): boolean {
 
 function shouldStripOscSequence(content: string): boolean {
   return (
-    /^(10|11|12);(?:\?|rgb:)/.test(content) || content.startsWith(T3CODE_TERMINAL_HOOK_OSC_PREFIX)
+    /^(10|11|12);(?:\?|rgb:)/.test(content) ||
+    content.startsWith(T3CODE_TERMINAL_HOOK_OSC_PREFIX) ||
+    content.startsWith(T3CODE_TERMINAL_SESSION_OSC_PREFIX)
   );
 }
 
@@ -698,12 +703,14 @@ function sanitizeTerminalHistoryChunk(
   pendingControlSequence: string;
   titleSignals: string[];
   hookEvents: TerminalAgentHookEventType[];
+  sessionInfos: TerminalCliSessionInfo[];
 } {
   const input = `${pendingControlSequence}${data}`;
   let visibleText = "";
   let index = 0;
   const titleSignals: string[] = [];
   const hookEvents: TerminalAgentHookEventType[] = [];
+  const sessionInfos: TerminalCliSessionInfo[] = [];
 
   const append = (value: string) => {
     visibleText += value;
@@ -720,6 +727,7 @@ function sanitizeTerminalHistoryChunk(
           pendingControlSequence: input.slice(index),
           titleSignals,
           hookEvents,
+          sessionInfos,
         };
       }
 
@@ -743,6 +751,7 @@ function sanitizeTerminalHistoryChunk(
             pendingControlSequence: input.slice(index),
             titleSignals,
             hookEvents,
+            sessionInfos,
           };
         }
         continue;
@@ -761,6 +770,7 @@ function sanitizeTerminalHistoryChunk(
             pendingControlSequence: input.slice(index),
             titleSignals,
             hookEvents,
+            sessionInfos,
           };
         }
         const sequence = input.slice(index, terminatorIndex);
@@ -768,6 +778,10 @@ function sanitizeTerminalHistoryChunk(
         const hookEvent = extractOscHookEvent(content);
         if (hookEvent) {
           hookEvents.push(hookEvent);
+        }
+        const sessionInfo = parseTerminalSessionOsc(content);
+        if (sessionInfo) {
+          sessionInfos.push(sessionInfo);
         }
         if (nextCodePoint === 0x5d) {
           const titleSignal = extractOscTitle(content);
@@ -789,6 +803,7 @@ function sanitizeTerminalHistoryChunk(
           pendingControlSequence: input.slice(index),
           titleSignals,
           hookEvents,
+          sessionInfos,
         };
       }
       const sequence = input.slice(index, escapeSequenceEndIndex);
@@ -819,6 +834,7 @@ function sanitizeTerminalHistoryChunk(
           pendingControlSequence: input.slice(index),
           titleSignals,
           hookEvents,
+          sessionInfos,
         };
       }
       continue;
@@ -832,6 +848,7 @@ function sanitizeTerminalHistoryChunk(
           pendingControlSequence: input.slice(index),
           titleSignals,
           hookEvents,
+          sessionInfos,
         };
       }
       const sequence = input.slice(index, terminatorIndex);
@@ -839,6 +856,10 @@ function sanitizeTerminalHistoryChunk(
       const hookEvent = extractOscHookEvent(content);
       if (hookEvent) {
         hookEvents.push(hookEvent);
+      }
+      const sessionInfo = parseTerminalSessionOsc(content);
+      if (sessionInfo) {
+        sessionInfos.push(sessionInfo);
       }
       if (codePoint === 0x9d) {
         const titleSignal = extractOscTitle(content);
@@ -857,7 +878,7 @@ function sanitizeTerminalHistoryChunk(
     index += 1;
   }
 
-  return { visibleText, pendingControlSequence: "", titleSignals, hookEvents };
+  return { visibleText, pendingControlSequence: "", titleSignals, hookEvents, sessionInfos };
 }
 
 function legacySafeThreadId(threadId: string): string {
@@ -929,17 +950,6 @@ function cliKindFromRuntimeEnv(
   return terminalCliKindFromValue(runtimeEnv?.[T3CODE_TERMINAL_CLI_KIND_ENV_KEY]);
 }
 
-function resetSessionHistory(session: TerminalSessionState): void {
-  session.history.reset();
-  session.pendingHistoryControlSequence = "";
-  session.pendingInputBuffer = "";
-  session.managedAgentRunning = false;
-  session.managedAgentState = null;
-  session.managedAgentStateUpdatedAt = null;
-  session.managedAgentObserved = false;
-  session.providerDescendantObserved = false;
-}
-
 function deriveActivityAgentState(session: TerminalSessionState): TerminalActivityState | null {
   return session.managedAgentState;
 }
@@ -957,11 +967,6 @@ function agentStateFromHookEvent(
   }
 }
 
-function sanitizePersistedTerminalHistory(history: string): string {
-  if (history.length === 0) return history;
-  return sanitizeTerminalHistoryChunk("", history).visibleText;
-}
-
 interface TerminalManagerEvents {
   event: [event: TerminalEvent];
 }
@@ -969,7 +974,6 @@ interface TerminalManagerEvents {
 interface TerminalManagerOptions {
   logsDir?: string;
   historyLineLimit?: number;
-  historyByteLimit?: number;
   ptyAdapter: PtyAdapterShape;
   shellResolver?: () => string;
   subprocessChecker?: TerminalSubprocessChecker;
@@ -989,7 +993,6 @@ export class TerminalManagerRuntime extends EventEmitter<TerminalManagerEvents> 
   private managedWrapperBinDir: string | null;
   private managedWrapperZshDir: string | null;
   private readonly historyLineLimit: number;
-  private readonly historyByteLimit: number;
   private readonly ptyAdapter: PtyAdapterShape;
   private readonly shellResolver: () => string;
   private readonly persistQueues = new Map<string, Promise<void>>();
@@ -1026,7 +1029,6 @@ export class TerminalManagerRuntime extends EventEmitter<TerminalManagerEvents> 
     this.managedWrapperZshDir =
       process.platform === "win32" ? null : path.join(this.logsDir, MANAGED_TERMINAL_ZSH_DIRNAME);
     this.historyLineLimit = options.historyLineLimit ?? DEFAULT_HISTORY_LINE_LIMIT;
-    this.historyByteLimit = options.historyByteLimit ?? DEFAULT_HISTORY_BYTE_LIMIT;
     this.ptyAdapter = options.ptyAdapter;
     this.shellResolver = options.shellResolver ?? defaultShellResolver;
     this.persistDebounceMs = DEFAULT_PERSIST_DEBOUNCE_MS;
@@ -1062,10 +1064,6 @@ export class TerminalManagerRuntime extends EventEmitter<TerminalManagerEvents> 
     }
   }
 
-  private historyLimits(): HistoryLimits {
-    return { maxLines: this.historyLineLimit, maxBytes: this.historyByteLimit };
-  }
-
   async open(raw: TerminalOpenInput): Promise<TerminalSessionSnapshot> {
     const input = decodeTerminalOpenInput(raw);
     return this.runWithThreadLock(input.threadId, async () => {
@@ -1084,7 +1082,7 @@ export class TerminalManagerRuntime extends EventEmitter<TerminalManagerEvents> 
           cwd: input.cwd,
           status: "starting",
           pid: null,
-          history: TerminalHistoryBuffer.fromString(history, this.historyLimits()),
+          historySnapshot: history,
           pendingHistoryControlSequence: "",
           exitCode: null,
           exitSignal: null,
@@ -1117,9 +1115,19 @@ export class TerminalManagerRuntime extends EventEmitter<TerminalManagerEvents> 
           lastInputAt: null,
           lastOutputAt: null,
           lastOutputSignature: null,
+          capturedSession: null,
+          capturedSessionProcessSeen: false,
+          pendingResumeCommand: null,
         };
         this.sessions.set(sessionKey, session);
         this.evictInactiveSessionsIfNeeded();
+        // Reopening after an app restart: if this terminal held a live CLI conversation, arm an
+        // auto-resume so the fresh shell reconnects to it instead of coming back empty.
+        const resumeInfo = await this.readSessionMeta(input.threadId, input.terminalId);
+        if (resumeInfo) {
+          session.capturedSession = resumeInfo;
+          session.pendingResumeCommand = this.buildResumeCommand(resumeInfo);
+        }
         await this.startSession(session, { ...input, cols, rows }, "started");
         return this.snapshot(session);
       }
@@ -1152,19 +1160,19 @@ export class TerminalManagerRuntime extends EventEmitter<TerminalManagerEvents> 
         this.stopProcess(existing);
         existing.cwd = input.cwd;
         existing.runtimeEnv = nextRuntimeEnv;
-        resetSessionHistory(existing);
+        this.resetSessionHistory(existing);
         await this.persistHistory(
           existing.threadId,
           existing.terminalId,
-          existing.history.toString(),
+          this.currentHistoryText(existing),
         );
       } else if (existing.status === "exited" || existing.status === "error") {
         existing.runtimeEnv = nextRuntimeEnv;
-        resetSessionHistory(existing);
+        this.resetSessionHistory(existing);
         await this.persistHistory(
           existing.threadId,
           existing.terminalId,
-          existing.history.toString(),
+          this.currentHistoryText(existing),
         );
       } else if (runtimeEnvChanged) {
         existing.runtimeEnv = nextRuntimeEnv;
@@ -1266,9 +1274,9 @@ export class TerminalManagerRuntime extends EventEmitter<TerminalManagerEvents> 
     const input = decodeTerminalClearInput(raw);
     await this.runWithThreadLock(input.threadId, async () => {
       const session = this.requireSession(input.threadId, input.terminalId);
-      resetSessionHistory(session);
+      this.resetSessionHistory(session);
       session.updatedAt = new Date().toISOString();
-      await this.persistHistory(input.threadId, input.terminalId, session.history.toString());
+      await this.persistHistory(input.threadId, input.terminalId, this.currentHistoryText(session));
       this.emitEvent({
         type: "cleared",
         threadId: input.threadId,
@@ -1294,7 +1302,7 @@ export class TerminalManagerRuntime extends EventEmitter<TerminalManagerEvents> 
           cwd: input.cwd,
           status: "starting",
           pid: null,
-          history: new TerminalHistoryBuffer(this.historyLimits()),
+          historySnapshot: "",
           pendingHistoryControlSequence: "",
           exitCode: null,
           exitSignal: null,
@@ -1329,6 +1337,9 @@ export class TerminalManagerRuntime extends EventEmitter<TerminalManagerEvents> 
           lastOutputSignature: null,
           lastInputAt: null,
           lastOutputAt: null,
+          capturedSession: null,
+          capturedSessionProcessSeen: false,
+          pendingResumeCommand: null,
         } satisfies TerminalSessionState;
         this.sessions.set(sessionKey, session);
         this.evictInactiveSessionsIfNeeded();
@@ -1347,8 +1358,14 @@ export class TerminalManagerRuntime extends EventEmitter<TerminalManagerEvents> 
       const cols = input.cols ?? session.cols;
       const rows = input.rows ?? session.rows;
 
-      resetSessionHistory(session);
-      await this.persistHistory(input.threadId, input.terminalId, session.history.toString());
+      this.resetSessionHistory(session);
+      // An explicit restart abandons the prior CLI conversation; drop any resume so the next
+      // reopen comes back to a clean shell rather than re-attaching a stale session.
+      session.capturedSession = null;
+      session.capturedSessionProcessSeen = false;
+      session.pendingResumeCommand = null;
+      await this.deleteSessionMeta(input.threadId, input.terminalId);
+      await this.persistHistory(input.threadId, input.terminalId, this.currentHistoryText(session));
       await this.startSession(session, { ...input, cols, rows }, "restarted");
       return this.snapshot(session);
     });
@@ -1380,7 +1397,7 @@ export class TerminalManagerRuntime extends EventEmitter<TerminalManagerEvents> 
     });
   }
 
-  dispose(): void {
+  async dispose(): Promise<void> {
     this.stopSubprocessPolling();
     const sessions = [...this.sessions.values()];
     this.sessions.clear();
@@ -1398,8 +1415,15 @@ export class TerminalManagerRuntime extends EventEmitter<TerminalManagerEvents> 
       handle.unsubscribeExit?.();
     }
     this.killEscalationTimers.clear();
+    // Flush any history still waiting out its debounce window so a shutdown mid-window
+    // (e.g. a graceful app quit) never drops the terminal's most recent on-screen state.
+    const pendingWrites = [...this.pendingPersistHistory.entries()].map(([key, materialize]) => {
+      const [threadId, terminalId] = key.split("\u0000");
+      return this.enqueuePersistWrite(threadId ?? "", terminalId ?? "", materialize());
+    });
     this.pendingPersistHistory.clear();
     this.threadLocks.clear();
+    await Promise.all(pendingWrites);
     this.persistQueues.clear();
   }
 
@@ -1576,17 +1600,21 @@ export class TerminalManagerRuntime extends EventEmitter<TerminalManagerEvents> 
   }
 
   /**
-   * Parse a coalesced output batch: feed the mode-replay mirror, sanitize into
-   * scrollback, detect CLI/hook activity, and schedule persistence. Operating on
-   * the joined batch is equivalent to processing each raw chunk in order:
-   * sanitize/replay thread their state across the pending-control carryover, and
-   * history capping only ever trims from the front, so per-chunk and per-batch
-   * processing yield identical observable state.
+   * Parse a coalesced output batch: feed the replay terminal (the actual scrollback of
+   * record), sanitize a parallel visible-text view for CLI/hook detection and the busy
+   * heuristic, and schedule persistence. Operating on the joined batch is equivalent to
+   * processing each raw chunk in order — both the terminal parser and the sanitizer
+   * thread their state across chunk boundaries (pending-control carryover for the
+   * latter) — so per-chunk and per-batch processing yield identical observable state.
    */
   private processOutputBatch(session: TerminalSessionState, data: string): void {
     this.feedModeReplayTracker(session, data);
     const sanitized = sanitizeTerminalHistoryChunk(session.pendingHistoryControlSequence, data);
     session.pendingHistoryControlSequence = sanitized.pendingControlSequence;
+    const latestSessionInfo = sanitized.sessionInfos.at(-1) ?? null;
+    if (latestSessionInfo) {
+      this.recordCliSession(session, latestSessionInfo);
+    }
     const latestHookEvent = sanitized.hookEvents.at(-1) ?? null;
     if (latestHookEvent) {
       session.managedAgentObserved = true;
@@ -1615,7 +1643,6 @@ export class TerminalManagerRuntime extends EventEmitter<TerminalManagerEvents> 
       }
     }
     if (sanitized.visibleText.length > 0) {
-      session.history.append(sanitized.visibleText);
       this.queuePersist(session);
       const normalizedSignature = normalizeProviderOutputSignature(sanitized.visibleText);
       if (normalizedSignature.length > 0 && normalizedSignature !== session.lastOutputSignature) {
@@ -1628,6 +1655,9 @@ export class TerminalManagerRuntime extends EventEmitter<TerminalManagerEvents> 
         // Fresh output can mean a subprocess started; recover fast polling.
         this.bumpSubprocessPolling();
       }
+      // The shell has printed (its prompt is ready); now safe to type the resume command
+      // so a reopened terminal reconnects to the CLI conversation it held before restart.
+      this.flushPendingResumeCommand(session);
     }
     session.updatedAt = new Date().toISOString();
   }
@@ -1748,9 +1778,20 @@ export class TerminalManagerRuntime extends EventEmitter<TerminalManagerEvents> 
     session.outputPaused = false;
   }
 
+  // Creates the per-generation replay terminal and seeds it with the best-known prior
+  // content (disk-loaded history on a cold start, or whatever the last live generation
+  // captured) so scrollback survives across PTY (re)starts within the same session.
   private ensureModeReplayTracker(session: TerminalSessionState): void {
     try {
-      session.modeReplayTracker = createTerminalModeReplayTracker(session.cols, session.rows);
+      const tracker = createTerminalModeReplayTracker(
+        session.cols,
+        session.rows,
+        this.historyLineLimit,
+      );
+      if (session.historySnapshot.length > 0) {
+        tracker.feed(session.historySnapshot);
+      }
+      session.modeReplayTracker = tracker;
     } catch (error) {
       session.modeReplayTracker = null;
       this.logger.warn("terminal mode replay tracker unavailable", {
@@ -1761,9 +1802,55 @@ export class TerminalManagerRuntime extends EventEmitter<TerminalManagerEvents> 
     }
   }
 
+  // Single teardown chokepoint for the tracker: always captures its live buffer into
+  // `historySnapshot` first, so content survives even a defensive/error-path reset.
   private resetModeReplayTracker(session: TerminalSessionState): void {
-    session.modeReplayTracker?.dispose();
+    const tracker = session.modeReplayTracker;
+    if (tracker) {
+      try {
+        session.historySnapshot = tracker.serialize();
+      } catch (error) {
+        this.logger.warn("terminal history serialize failed before teardown", {
+          threadId: session.threadId,
+          terminalId: session.terminalId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+      tracker.dispose();
+    }
     session.modeReplayTracker = null;
+  }
+
+  // Source of truth for "what does this terminal's scrollback look like right now" —
+  // the live replay terminal's serialized buffer when running, else the last snapshot
+  // captured before its tracker was torn down.
+  private currentHistoryText(session: TerminalSessionState): string {
+    const tracker = session.modeReplayTracker;
+    if (!tracker) return session.historySnapshot;
+    try {
+      return tracker.serialize();
+    } catch (error) {
+      this.logger.warn("terminal history serialize failed", {
+        threadId: session.threadId,
+        terminalId: session.terminalId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      tracker.dispose();
+      session.modeReplayTracker = null;
+      return session.historySnapshot;
+    }
+  }
+
+  private resetSessionHistory(session: TerminalSessionState): void {
+    session.modeReplayTracker?.clear();
+    session.historySnapshot = "";
+    session.pendingHistoryControlSequence = "";
+    session.pendingInputBuffer = "";
+    session.managedAgentRunning = false;
+    session.managedAgentState = null;
+    session.managedAgentStateUpdatedAt = null;
+    session.managedAgentObserved = false;
+    session.providerDescendantObserved = false;
   }
 
   private feedModeReplayTracker(session: TerminalSessionState, data: string): void {
@@ -1966,11 +2053,11 @@ export class TerminalManagerRuntime extends EventEmitter<TerminalManagerEvents> 
       this.pendingPersistHistory.delete(key);
       // Release the cached history reference once the final write lands (the write
       // re-populates it on completion). The session is gone, so retaining it would
-      // leak up to historyByteLimit per evicted key for the server's lifetime.
+      // leak the serialized buffer per evicted key for the server's lifetime.
       void this.enqueuePersistWrite(
         session.threadId,
         session.terminalId,
-        session.history.toString(),
+        this.currentHistoryText(session),
       ).finally(() => {
         this.persistedHistoryByKey.delete(key);
       });
@@ -1980,13 +2067,13 @@ export class TerminalManagerRuntime extends EventEmitter<TerminalManagerEvents> 
 
   /**
    * Mark a session's history dirty for a debounced persist. The history string is
-   * materialized lazily (in the debounce timer / flush), so the hot output path
-   * never pays the cap cost. The thunk reads `session.history` at write time so it
-   * always persists the latest content, even after the session is removed.
+   * materialized lazily (in the debounce timer / flush), so the hot output path never
+   * pays the serialize cost. The thunk reads live state at write time so it always
+   * persists the latest content, even after the session is removed.
    */
   private queuePersist(session: TerminalSessionState): void {
     const persistenceKey = toSessionKey(session.threadId, session.terminalId);
-    this.pendingPersistHistory.set(persistenceKey, () => session.history.toString());
+    this.pendingPersistHistory.set(persistenceKey, () => this.currentHistoryText(session));
     this.schedulePersist(session.threadId, session.terminalId);
   }
 
@@ -2012,8 +2099,9 @@ export class TerminalManagerRuntime extends EventEmitter<TerminalManagerEvents> 
         return;
       }
       // Atomic replace: write a temp file then rename, so a crash mid-write can
-      // never leave a torn history file. History is byte-capped, so this writes
-      // at most ~historyByteLimit bytes regardless of total output volume.
+      // never leave a torn history file. The serialized buffer is bounded by the
+      // replay terminal's own scrollback (historyLineLimit rows), independent of
+      // total output volume.
       const finalPath = this.historyPath(threadId, terminalId);
       const tempPath = `${finalPath}.tmp-${process.pid}-${(this.persistTempCounter += 1)}`;
       try {
@@ -2074,20 +2162,17 @@ export class TerminalManagerRuntime extends EventEmitter<TerminalManagerEvents> 
     this.persistTimers.delete(persistenceKey);
   }
 
+  // Returns the on-disk replay buffer as-is: whatever's stored is either an
+  // addon-serialized buffer (current format) or, right after an upgrade, a
+  // plain-text legacy transcript — both feed cleanly into a fresh replay
+  // terminal, so no format migration is needed here.
   private async readHistory(threadId: string, terminalId: string): Promise<string> {
     const nextPath = this.historyPath(threadId, terminalId);
     const persistenceKey = toSessionKey(threadId, terminalId);
     try {
       const raw = await fs.promises.readFile(nextPath, "utf8");
-      const capped = capHistoryByLimits(sanitizePersistedTerminalHistory(raw), {
-        maxLines: this.historyLineLimit,
-        maxBytes: this.historyByteLimit,
-      });
-      if (capped !== raw) {
-        await fs.promises.writeFile(nextPath, capped, "utf8");
-      }
-      this.persistedHistoryByKey.set(persistenceKey, capped);
-      return capped;
+      this.persistedHistoryByKey.set(persistenceKey, raw);
+      return raw;
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
         throw error;
@@ -2101,14 +2186,10 @@ export class TerminalManagerRuntime extends EventEmitter<TerminalManagerEvents> 
     const legacyPath = this.legacyHistoryPath(threadId);
     try {
       const raw = await fs.promises.readFile(legacyPath, "utf8");
-      const capped = capHistoryByLimits(sanitizePersistedTerminalHistory(raw), {
-        maxLines: this.historyLineLimit,
-        maxBytes: this.historyByteLimit,
-      });
 
       // Migrate legacy transcript filename to the terminal-scoped path.
-      await fs.promises.writeFile(nextPath, capped, "utf8");
-      this.persistedHistoryByKey.set(persistenceKey, capped);
+      await fs.promises.writeFile(nextPath, raw, "utf8");
+      this.persistedHistoryByKey.set(persistenceKey, raw);
       try {
         await fs.promises.rm(legacyPath, { force: true });
       } catch (cleanupError) {
@@ -2118,7 +2199,7 @@ export class TerminalManagerRuntime extends EventEmitter<TerminalManagerEvents> 
         });
       }
 
-      return capped;
+      return raw;
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") {
         this.persistedHistoryByKey.set(persistenceKey, "");
@@ -2130,7 +2211,10 @@ export class TerminalManagerRuntime extends EventEmitter<TerminalManagerEvents> 
 
   private async deleteHistory(threadId: string, terminalId: string): Promise<void> {
     this.persistedHistoryByKey.delete(toSessionKey(threadId, terminalId));
-    const deletions = [fs.promises.rm(this.historyPath(threadId, terminalId), { force: true })];
+    const deletions = [
+      fs.promises.rm(this.historyPath(threadId, terminalId), { force: true }),
+      fs.promises.rm(this.sessionMetaPath(threadId, terminalId), { force: true }),
+    ];
     if (terminalId === DEFAULT_TERMINAL_ID) {
       deletions.push(fs.promises.rm(this.legacyHistoryPath(threadId), { force: true }));
     }
@@ -2274,12 +2358,14 @@ export class TerminalManagerRuntime extends EventEmitter<TerminalManagerEvents> 
           let hasRunningSubprocess = false;
           let shouldClearDetectedCliKind = false;
           let hasNonProviderSubprocess = false;
+          let providerDescendantNow = false;
           try {
             const subprocessActivity =
               sharedChildrenMap !== null
                 ? inspectSubprocessActivity(terminalPid, sharedChildrenMap)
                 : normalizeSubprocessActivity(await this.subprocessChecker(terminalPid));
             hasNonProviderSubprocess = subprocessActivity.hasNonProviderSubprocess;
+            providerDescendantNow = subprocessActivity.hasProviderDescendant;
             const providerDescendantObserved =
               session.providerDescendantObserved ||
               (session.detectedCliKind !== null && subprocessActivity.hasProviderDescendant);
@@ -2321,6 +2407,17 @@ export class TerminalManagerRuntime extends EventEmitter<TerminalManagerEvents> 
           const liveSession = this.sessions.get(toSessionKey(session.threadId, session.terminalId));
           if (!liveSession || liveSession.status !== "running" || liveSession.pid !== terminalPid) {
             return;
+          }
+          // Auto-resume lifecycle: keep the persisted session while the CLI process is alive, and
+          // drop it once that process exits so a deliberately-quit agent is not resumed next launch.
+          if (liveSession.capturedSession) {
+            if (providerDescendantNow) {
+              liveSession.capturedSessionProcessSeen = true;
+            } else if (liveSession.capturedSessionProcessSeen) {
+              liveSession.capturedSession = null;
+              liveSession.capturedSessionProcessSeen = false;
+              void this.deleteSessionMeta(liveSession.threadId, liveSession.terminalId);
+            }
           }
           // Interrupt backstop: a managed agent whose Start hook never got a Stop (e.g. the
           // turn was interrupted) stays stuck "running". Once its output has been quiet past
@@ -2403,7 +2500,7 @@ export class TerminalManagerRuntime extends EventEmitter<TerminalManagerEvents> 
   }
 
   private async deleteAllHistoryForThread(threadId: string): Promise<void> {
-    const threadPrefix = `${toSafeThreadId(threadId)}_`;
+    const threadPart = toSafeThreadId(threadId);
     for (const key of [...this.persistedHistoryByKey.keys()]) {
       if (key.startsWith(`${threadId}\u0000`)) {
         this.persistedHistoryByKey.delete(key);
@@ -2411,14 +2508,18 @@ export class TerminalManagerRuntime extends EventEmitter<TerminalManagerEvents> 
     }
     try {
       const entries = await fs.promises.readdir(this.logsDir, { withFileTypes: true });
+      // Match every per-terminal sidecar for the thread: the default terminal's
+      // `<threadPart>.log` / `.session.json` / `.log.tmp-*` and each named terminal's
+      // `<threadPart>_<terminalPart>.*`. Base64url never contains ".", so the dot
+      // prefix cannot bleed into another thread's files.
       const removals = entries
         .filter((entry) => entry.isFile())
         .map((entry) => entry.name)
         .filter(
           (name) =>
-            name === `${toSafeThreadId(threadId)}.log` ||
-            name === `${legacySafeThreadId(threadId)}.log` ||
-            name.startsWith(threadPrefix),
+            name.startsWith(`${threadPart}.`) ||
+            name.startsWith(`${threadPart}_`) ||
+            name === `${legacySafeThreadId(threadId)}.log`,
         )
         .map((name) => fs.promises.rm(path.join(this.logsDir, name), { force: true }));
       await Promise.all(removals);
@@ -2446,7 +2547,7 @@ export class TerminalManagerRuntime extends EventEmitter<TerminalManagerEvents> 
       cwd: session.cwd,
       status: session.status,
       pid: session.pid,
-      history: session.history.toString(),
+      history: this.currentHistoryText(session),
       ...(replayPreamble.length > 0 ? { replayPreamble } : {}),
       exitCode: session.exitCode,
       exitSignal: session.exitSignal,
@@ -2482,6 +2583,88 @@ export class TerminalManagerRuntime extends EventEmitter<TerminalManagerEvents> 
     return path.join(this.logsDir, `${legacySafeThreadId(threadId)}.log`);
   }
 
+  private sessionMetaPath(threadId: string, terminalId: string): string {
+    return this.historyPath(threadId, terminalId).replace(/\.log$/, ".session.json");
+  }
+
+  // Capture the live CLI session and persist it so a reopened terminal can resume the exact
+  // conversation. Persistence is fire-and-forget: a miss just means no auto-resume, never a crash.
+  private recordCliSession(session: TerminalSessionState, info: TerminalCliSessionInfo): void {
+    if (
+      session.capturedSession?.cliKind === info.cliKind &&
+      session.capturedSession?.sessionId === info.sessionId
+    ) {
+      return;
+    }
+    session.capturedSession = info;
+    void this.writeSessionMeta(session.threadId, session.terminalId, info);
+  }
+
+  private flushPendingResumeCommand(session: TerminalSessionState): void {
+    const command = session.pendingResumeCommand;
+    if (!command || !session.process || session.status !== "running") {
+      return;
+    }
+    session.pendingResumeCommand = null;
+    session.process.write(command);
+  }
+
+  private buildResumeCommand(info: TerminalCliSessionInfo): string {
+    // Managed shell exposes `codex`/`claude` functions on PATH, so the bare command resolves to
+    // the wrapped agent (which re-emits the session id on resume, keeping the sidecar fresh).
+    return `${info.cliKind} ${terminalCliResumeArgs(info).join(" ")}\r`;
+  }
+
+  private async writeSessionMeta(
+    threadId: string,
+    terminalId: string,
+    info: TerminalCliSessionInfo,
+  ): Promise<void> {
+    try {
+      await fs.promises.writeFile(
+        this.sessionMetaPath(threadId, terminalId),
+        JSON.stringify(info),
+        "utf8",
+      );
+    } catch (error) {
+      this.logger.warn("failed to persist terminal CLI session", {
+        threadId,
+        terminalId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  private async readSessionMeta(
+    threadId: string,
+    terminalId: string,
+  ): Promise<TerminalCliSessionInfo | null> {
+    try {
+      const raw = await fs.promises.readFile(this.sessionMetaPath(threadId, terminalId), "utf8");
+      const parsed = JSON.parse(raw) as Partial<TerminalCliSessionInfo>;
+      const cliKind = terminalCliKindFromValue(parsed.cliKind);
+      const sessionId = typeof parsed.sessionId === "string" ? parsed.sessionId : "";
+      if (cliKind && sessionId.length > 0) {
+        return { cliKind, sessionId };
+      }
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+        this.logger.warn("failed to read terminal CLI session", {
+          threadId,
+          terminalId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+    return null;
+  }
+
+  private async deleteSessionMeta(threadId: string, terminalId: string): Promise<void> {
+    await fs.promises
+      .rm(this.sessionMetaPath(threadId, terminalId), { force: true })
+      .catch(() => undefined);
+  }
+
   private async runWithThreadLock<T>(threadId: string, task: () => Promise<T>): Promise<T> {
     const previous = this.threadLocks.get(threadId) ?? Promise.resolve();
     let release!: () => void;
@@ -2509,7 +2692,7 @@ export const TerminalManagerLive = Layer.effect(
     const ptyAdapter = yield* PtyAdapter;
     const runtime = yield* Effect.acquireRelease(
       Effect.sync(() => new TerminalManagerRuntime({ logsDir: terminalLogsDir, ptyAdapter })),
-      (r) => Effect.sync(() => r.dispose()),
+      (r) => Effect.promise(() => r.dispose()),
     );
 
     return {
@@ -2555,7 +2738,7 @@ export const TerminalManagerLive = Layer.effect(
             runtime.off("event", listener);
           };
         }),
-      dispose: Effect.sync(() => runtime.dispose()),
+      dispose: Effect.promise(() => runtime.dispose()),
     } satisfies TerminalManagerShape;
   }),
 );

@@ -114,7 +114,7 @@ export function buildAutomationDraftWarnings(input: {
         input.worktreeMode === "auto" ? "Auto fallback may use local checkout" : "Local checkout",
       detail:
         input.worktreeMode === "auto"
-          ? "If CTCode cannot create a worktree, runs may fall back to editing the active project checkout."
+          ? "If FCode cannot create a worktree, runs may fall back to editing the active project checkout."
           : "Runs may edit files in the active project checkout.",
       requiresAcknowledgement: true,
     });
@@ -137,7 +137,7 @@ export function buildAutomationDraftWarnings(input: {
     warnings.push({
       id: "generated-low-confidence",
       title: "Review generated fields",
-      detail: "CTCode was not fully confident about the parsed automation fields.",
+      detail: "FCode was not fully confident about the parsed automation fields.",
       requiresAcknowledgement: false,
     });
   }

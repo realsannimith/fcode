@@ -85,7 +85,7 @@ export function ThreadWorktreeHandoffDialog({
                     onOpenChange(false);
                   }
                 }}
-                placeholder="ctcode/feature-name"
+                placeholder="fcode/feature-name"
               />
             </label>
           </form>

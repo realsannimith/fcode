@@ -1,5 +1,5 @@
 // FILE: profileStats.ts
-// Purpose: Compute Profile-page stats from CTCode's local projection DB only.
+// Purpose: Compute Profile-page stats from FCode's local projection DB only.
 // The share card never reads provider archives or cloud services for metrics.
 // Layer: server stats query service (SqlClient + ServerConfig).
 
@@ -232,7 +232,7 @@ function extractTextSkillNames(text: string | null): string[] {
   return names;
 }
 
-// Builds profile skill rows from every stored CTCode user message. Structured
+// Builds profile skill rows from every stored FCode user message. Structured
 // references stay authoritative, while text tokens backfill older or partial rows.
 export function aggregateProfileSkillUsageRows(
   rows: ReadonlyArray<SkillUsageMessageRow>,
@@ -369,7 +369,7 @@ function deriveInitials(name: string): string {
 
 function sanitizeHandle(basename: string): string {
   const slug = basename.toLowerCase().replace(/[^a-z0-9_]/gu, "");
-  return `@${slug || "ctcode"}`;
+  return `@${slug || "fcode"}`;
 }
 
 function formatHour(hour: number): string {
@@ -505,7 +505,7 @@ export interface ProfileStatsQueryShape {
 export class ProfileStatsQuery extends ServiceMap.Service<
   ProfileStatsQuery,
   ProfileStatsQueryShape
->()("ctcode/profileStats/ProfileStatsQuery") {}
+>()("fcode/profileStats/ProfileStatsQuery") {}
 
 const makeProfileStatsQuery = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
@@ -539,7 +539,7 @@ const makeProfileStatsQuery = Effect.gen(function* () {
   // their rows for profile history. Manual deletes and deleted projects stay out.
   // ── SQL helpers ──────────────────────────────────────────────────────
 
-  // Activity = days/hours the user actually sent a CTCode prompt. One day-hour
+  // Activity = days/hours the user actually sent a FCode prompt. One day-hour
   // grouping gives day totals, hour totals, and lifetime prompt count in TS.
   const queryPromptActivity = (tz: string) =>
     legacyCompatibleQuery(
@@ -570,7 +570,7 @@ const makeProfileStatsQuery = Effect.gen(function* () {
       `,
     );
 
-  // Token usage for EVERY provider, straight from CTCode's own DB (no external
+  // Token usage for EVERY provider, straight from FCode's own DB (no external
   // ~/.codex/~/.claude archives, so it is provider-agnostic AND per-instance). Each
   // `context-window.updated` activity carries the running `totalProcessedTokens`; the
   // positive per-thread delta is the tokens processed in that step, bucketed by the
@@ -978,7 +978,7 @@ const makeProfileStatsQuery = Effect.gen(function* () {
       const totalSkillsUsed = allSkillUsages.reduce((sum, row) => sum + row.runCount, 0);
 
       // ── Identity ──
-      const homeDirBasename = nodePath.basename(config.homeDir) || "ctcode";
+      const homeDirBasename = nodePath.basename(config.homeDir) || "fcode";
 
       return {
         generatedAt: new Date().toISOString(),

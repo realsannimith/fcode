@@ -320,6 +320,7 @@ export function projectEvent(
             runtimeMode: payload.runtimeMode,
             interactionMode: payload.interactionMode,
             envMode: payload.envMode,
+            entryPoint: payload.entryPoint,
             branch: payload.branch,
             worktreePath: payload.worktreePath,
             associatedWorktreePath: payload.associatedWorktreePath,

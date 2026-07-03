@@ -172,12 +172,12 @@ export function getArm64IntelBuildWarningDescription(state: DesktopUpdateState):
 
   const action = resolveDesktopUpdateButtonAction(state);
   if (action === "download") {
-    return "This Mac has Apple Silicon, but CTCode is still running the Intel build under Rosetta. CTCode is preparing the native Apple Silicon update.";
+    return "This Mac has Apple Silicon, but FCode is still running the Intel build under Rosetta. FCode is preparing the native Apple Silicon update.";
   }
   if (action === "install") {
-    return "This Mac has Apple Silicon, but CTCode is still running the Intel build under Rosetta. Click Update to restart into the native Apple Silicon build.";
+    return "This Mac has Apple Silicon, but FCode is still running the Intel build under Rosetta. Click Update to restart into the native Apple Silicon build.";
   }
-  return "This Mac has Apple Silicon, but CTCode is still running the Intel build under Rosetta. The next app update will replace it with the native Apple Silicon build.";
+  return "This Mac has Apple Silicon, but FCode is still running the Intel build under Rosetta. The next app update will replace it with the native Apple Silicon build.";
 }
 
 export function getDesktopUpdateButtonTooltip(

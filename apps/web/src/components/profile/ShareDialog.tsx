@@ -109,7 +109,7 @@ export function ShareDialog({
     try {
       const blob = await renderNodeToPngBlob(node, CARD_EXPORT_SIZE);
       if (blob) {
-        downloadBlob(blob, `ctcode-stats-${stats.timezone.today}.png`);
+        downloadBlob(blob, `fcode-stats-${stats.timezone.today}.png`);
         setStatus("Saved PNG to your downloads.");
       } else {
         setStatus("Could not render the image.");

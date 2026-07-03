@@ -90,7 +90,7 @@ type ThreadUserInputResponseRequestedEvent = Extract<
   { type: "thread.user-input-response-requested" }
 >;
 
-const PERSISTED_STATE_KEY = "ctcode:renderer-state:v8";
+const PERSISTED_STATE_KEY = "fcode:renderer-state:v8";
 const LEGACY_PERSISTED_STATE_KEYS = [
   "dpcode:renderer-state:v8",
   "t3code:renderer-state:v8",
@@ -382,6 +382,7 @@ function threadShellsEqual(left: ThreadShell | undefined, right: ThreadShell): b
     left.modelSelection === right.modelSelection &&
     left.runtimeMode === right.runtimeMode &&
     left.interactionMode === right.interactionMode &&
+    (left.entryPoint ?? "chat") === (right.entryPoint ?? "chat") &&
     left.error === right.error &&
     left.createdAt === right.createdAt &&
     (left.archivedAt ?? null) === (right.archivedAt ?? null) &&
@@ -430,6 +431,7 @@ function toThreadShell(thread: Thread): ThreadShell {
     modelSelection: thread.modelSelection,
     runtimeMode: thread.runtimeMode,
     interactionMode: thread.interactionMode,
+    entryPoint: thread.entryPoint ?? "chat",
     error: thread.error,
     createdAt: thread.createdAt,
     archivedAt: thread.archivedAt ?? null,
@@ -1695,6 +1697,7 @@ function normalizeThreadFromReadModel(
     previous.modelSelection === modelSelection &&
     previous.runtimeMode === incoming.runtimeMode &&
     previous.interactionMode === incoming.interactionMode &&
+    (previous.entryPoint ?? "chat") === (incoming.entryPoint ?? "chat") &&
     previous.session === session &&
     previous.messages === messages &&
     previous.proposedPlans === proposedPlans &&
@@ -1742,6 +1745,7 @@ function normalizeThreadFromReadModel(
     modelSelection,
     runtimeMode: incoming.runtimeMode,
     interactionMode: incoming.interactionMode,
+    entryPoint: incoming.entryPoint ?? "chat",
     session,
     messages,
     proposedPlans,
@@ -1841,6 +1845,7 @@ function normalizeThreadShellSnapshot(
     modelSelection,
     runtimeMode: incoming.runtimeMode,
     interactionMode: incoming.interactionMode,
+    entryPoint: incoming.entryPoint ?? "chat",
     error,
     createdAt: incoming.createdAt,
     archivedAt: incoming.archivedAt ?? null,

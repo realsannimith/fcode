@@ -49,8 +49,8 @@ describe("localServerAddressLabel", () => {
 
 describe("localServerPrimaryLabel", () => {
   it("prefers the live page title when one was resolved", () => {
-    expect(localServerPrimaryLabel(makeServer({ pageTitle: "CTCode", displayName: "Vite" }))).toBe(
-      "CTCode",
+    expect(localServerPrimaryLabel(makeServer({ pageTitle: "FCode", displayName: "Vite" }))).toBe(
+      "FCode",
     );
   });
 
@@ -67,9 +67,7 @@ describe("localServerFolderLabel", () => {
   });
 
   it("ignores a trailing separator", () => {
-    expect(localServerFolderLabel(makeServer({ cwd: "/Users/me/Developer/ctcode/" }))).toBe(
-      "ctcode",
-    );
+    expect(localServerFolderLabel(makeServer({ cwd: "/Users/me/Developer/fcode/" }))).toBe("fcode");
   });
 
   it("tolerates Windows separators", () => {

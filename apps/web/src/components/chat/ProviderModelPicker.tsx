@@ -3,10 +3,16 @@
 // Layer: Chat composer presentation
 // Depends on: provider availability metadata, shared menu primitives, and picker trigger styling.
 
-import { type ModelSlug, type ProviderKind, type ServerProviderStatus } from "@t3tools/contracts";
+import {
+  type ModelSlug,
+  type ProviderKind,
+  type ServerCodexAccountStatus,
+  type ServerProviderStatus,
+} from "@t3tools/contracts";
 import { resolveSelectableModel } from "@t3tools/shared/model";
 import * as Schema from "effect/Schema";
 import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import { useAppSettings } from "~/appSettings";
 import { type ProviderPickerKind, PROVIDER_OPTIONS } from "../../session-logic";
 import { formatProviderModelOptionName } from "../../providerModelOptions";
 import { compareProvidersByOrder } from "../../providerOrdering";
@@ -14,6 +20,7 @@ import {
   Menu,
   MenuItem,
   MenuRadioGroup,
+  MenuRadioItem,
   MenuSeparator,
   MenuSub,
   MenuSubTrigger,
@@ -112,10 +119,10 @@ function providerIconClassName(
 
 const SEARCHABLE_MODEL_PICKER_THRESHOLD = 15;
 const FAVORITE_MODEL_STORAGE_KEYS = {
-  cursor: "ctcode:cursor-favourite-models:v1",
-  kilo: "ctcode:kilo-favourite-models:v1",
-  opencode: "ctcode:opencode-favourite-models:v1",
-  pi: "ctcode:pi-favourite-models:v1",
+  cursor: "fcode:cursor-favourite-models:v1",
+  kilo: "fcode:kilo-favourite-models:v1",
+  opencode: "fcode:opencode-favourite-models:v1",
+  pi: "fcode:pi-favourite-models:v1",
 } as const;
 const FavoriteModelSlugs = Schema.Array(Schema.String);
 type FavoriteModelProvider = keyof typeof FAVORITE_MODEL_STORAGE_KEYS;
@@ -136,6 +143,27 @@ function toggleFavoriteModelSlug(current: ReadonlyArray<string>, slug: string): 
 
 function stripParameterizedModelSuffix(model: string): string {
   return model.trim().replace(/\[[^\]]*\]$/u, "");
+}
+
+// Short status hint rendered next to a Codex account entry ("Sign in", plan
+// label, …). Mirrors the provider-level availability hints.
+function codexAccountHint(
+  authStatus: ServerCodexAccountStatus["authStatus"] | undefined,
+  authLabel: string | undefined,
+): string | null {
+  if (authStatus === "unauthenticated") {
+    return "Sign in";
+  }
+  return authLabel ?? null;
+}
+
+function CodexAccountHintLabel({ hint }: { hint: string | null }) {
+  if (!hint) {
+    return null;
+  }
+  return (
+    <span className="ms-auto text-[11px] text-muted-foreground/80 whitespace-nowrap">{hint}</span>
+  );
 }
 
 function resolveSelectedModelLabel(input: {
@@ -193,6 +221,7 @@ export const ProviderModelMenuItems = memo(function ProviderModelMenuItems(
 ) {
   const { onAfterSelection } = props;
   const [modelSearchQuery, setModelSearchQuery] = useState("");
+  const { settings: appSettings, updateSettings: updateAppSettings } = useAppSettings();
   const [kiloFavoriteModelSlugs, setKiloFavoriteModelSlugs] = useLocalStorage(
     FAVORITE_MODEL_STORAGE_KEYS.kilo,
     [],
@@ -312,6 +341,53 @@ export const ProviderModelMenuItems = memo(function ProviderModelMenuItems(
     ],
   );
 
+  // Codex can run as multiple accounts (shared session history, separate
+  // logins). This group picks the account used for new sessions; it keeps the
+  // menu open so a model can be chosen right after switching.
+  const renderCodexAccountsSection = () => {
+    const accounts = appSettings.codexAccounts;
+    if (accounts.length === 0) {
+      return null;
+    }
+    const codexStatus = props.providers?.find((entry) => entry.provider === "codex");
+    const statusById = new Map((codexStatus?.accounts ?? []).map((entry) => [entry.id, entry]));
+    const activeId = appSettings.codexActiveAccountId.trim();
+    const selectedId = accounts.some((entry) => entry.id === activeId) ? activeId : "";
+    return (
+      <>
+        <div className="px-2.5 pt-1.5 pb-0.5 text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
+          Account
+        </div>
+        <MenuRadioGroup
+          value={selectedId}
+          onValueChange={(value) => {
+            if (props.disabled) return;
+            updateAppSettings({ codexActiveAccountId: typeof value === "string" ? value : "" });
+          }}
+        >
+          <MenuRadioItem value="" closeOnClick={false}>
+            <span className="min-w-0 truncate">Default</span>
+            <CodexAccountHintLabel
+              hint={codexAccountHint(codexStatus?.authStatus, codexStatus?.authLabel)}
+            />
+          </MenuRadioItem>
+          {accounts.map((account) => {
+            const accountStatus = statusById.get(account.id);
+            return (
+              <MenuRadioItem key={account.id} value={account.id} closeOnClick={false}>
+                <span className="min-w-0 truncate">{account.label.trim() || account.id}</span>
+                <CodexAccountHintLabel
+                  hint={codexAccountHint(accountStatus?.authStatus, accountStatus?.authLabel)}
+                />
+              </MenuRadioItem>
+            );
+          })}
+        </MenuRadioGroup>
+        <MenuSeparator />
+      </>
+    );
+  };
+
   const renderModelRadioGroup = (provider: ProviderKind) => {
     if (props.loadingModelProviders?.[provider]) {
       return (
@@ -377,6 +453,15 @@ export const ProviderModelMenuItems = memo(function ProviderModelMenuItems(
       );
 
     if (!shouldShowSearch) {
+      const accountsSection = provider === "codex" ? renderCodexAccountsSection() : null;
+      const composedContent = accountsSection ? (
+        <>
+          {accountsSection}
+          {content}
+        </>
+      ) : (
+        content
+      );
       const needsScrollContainer =
         filteredOptions.length >= SEARCHABLE_MODEL_PICKER_THRESHOLD ||
         shouldUseCollapsibleModelGroups(groupedOptions.length, false);
@@ -389,11 +474,11 @@ export const ProviderModelMenuItems = memo(function ProviderModelMenuItems(
               COMPOSER_PICKER_MODEL_LIST_MAX_HEIGHT_CLASS_NAME,
             )}
           >
-            {content}
+            {composedContent}
           </div>
         );
       }
-      return content;
+      return composedContent;
     }
 
     return (
@@ -574,6 +659,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(
 
   const triggerButton = (
     <PickerTriggerButton
+      variant="chrome-outline"
       disabled={props.disabled ?? false}
       compact={props.compact ?? false}
       hideLabel={props.hideLabel ?? false}

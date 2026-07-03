@@ -5,7 +5,7 @@
 
 export type WsTransportState = "connecting" | "open" | "closed" | "disposed";
 
-export const CTCODE_WS_TRANSPORT_STATE_EVENT = "ctcode:ws-transport-state";
+export const FCODE_WS_TRANSPORT_STATE_EVENT = "fcode:ws-transport-state";
 
 export interface WsTransportStateEventDetail {
   state: WsTransportState;
@@ -22,7 +22,7 @@ export function emitWsTransportState(state: WsTransportState): void {
   }
 
   window.dispatchEvent(
-    new CustomEvent<WsTransportStateEventDetail>(CTCODE_WS_TRANSPORT_STATE_EVENT, {
+    new CustomEvent<WsTransportStateEventDetail>(FCODE_WS_TRANSPORT_STATE_EVENT, {
       detail: { state },
     }),
   );
@@ -42,8 +42,8 @@ export function addWsTransportStateListener(
     listener(detail.state);
   };
 
-  window.addEventListener(CTCODE_WS_TRANSPORT_STATE_EVENT, handleStateChange);
+  window.addEventListener(FCODE_WS_TRANSPORT_STATE_EVENT, handleStateChange);
   return () => {
-    window.removeEventListener(CTCODE_WS_TRANSPORT_STATE_EVENT, handleStateChange);
+    window.removeEventListener(FCODE_WS_TRANSPORT_STATE_EVENT, handleStateChange);
   };
 }

@@ -1,6 +1,6 @@
 /**
  * Repairs imported legacy DBs whose migration tracker already used ID 36 for
- * a pre-CTCode migration, causing CTCode's pinned thread column migration to
+ * a pre-FCode migration, causing FCode's pinned thread column migration to
  * be skipped even though read-model queries now require the column.
  */
 import * as SqlClient from "effect/unstable/sql/SqlClient";

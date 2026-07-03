@@ -106,9 +106,9 @@ const CURSOR_RESUME_VERSION = 1 as const;
 const CURSOR_MODEL_DISCOVERY_TIMEOUT_MS = 15_000;
 // Backstop for an alive-but-silent cursor-agent child: if a turn produces no
 // ACP activity for this long, force-fail it instead of showing "Working"
-// forever. Generous by design; override with CTCODE_CURSOR_TURN_IDLE_TIMEOUT_MS.
+// forever. Generous by design; override with FCODE_CURSOR_TURN_IDLE_TIMEOUT_MS.
 const CURSOR_TURN_IDLE_TIMEOUT_MS = resolveAcpTurnIdleTimeoutMs({
-  envVar: "CTCODE_CURSOR_TURN_IDLE_TIMEOUT_MS",
+  envVar: "FCODE_CURSOR_TURN_IDLE_TIMEOUT_MS",
   defaultMs: 600_000,
 });
 const CURSOR_TURN_WATCHDOG_INTERVAL_MS = 15_000;
@@ -116,7 +116,7 @@ const ACP_PLAN_MODE_ALIASES = ["plan", "architect"];
 const ACP_IMPLEMENT_MODE_ALIASES = ["code", "agent", "default", "chat", "implement"];
 const ACP_APPROVAL_MODE_ALIASES = ["ask"];
 const CURSOR_PLAN_MODE_PROMPT_PREFIX = [
-  "CTCode Cursor plan mode is active.",
+  "FCode Cursor plan mode is active.",
   "Do not implement or mutate files in this turn.",
   "Do not ask follow-up questions or wait for confirmation; if scope is ambiguous, choose a reasonable default and state the assumption in the plan.",
   "When ready, create the final implementation plan.",
@@ -711,7 +711,7 @@ export function makeCursorAdapter(
             childProcessSpawner,
             cwd,
             ...(resumeSessionId ? { resumeSessionId } : {}),
-            clientInfo: { name: "CTCode", version: "0.0.0" },
+            clientInfo: { name: "FCode", version: "0.0.0" },
             ...acpNativeLoggers,
           }).pipe(
             Effect.provideService(Scope.Scope, sessionScope),
@@ -1545,7 +1545,7 @@ export function makeCursorAdapter(
           cursorSettings: effectiveAcpSettings,
           childProcessSpawner,
           cwd: process.cwd(),
-          clientInfo: { name: "CTCode", version: "0.0.0" },
+          clientInfo: { name: "FCode", version: "0.0.0" },
         });
         const started = yield* runtime.start();
         const models = yield* fetchCursorAcpModelDescriptors(runtime, started.sessionId);

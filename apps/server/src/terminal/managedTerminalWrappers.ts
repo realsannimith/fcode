@@ -9,10 +9,13 @@ import {
   defaultTerminalTitleForCliKind,
   managedTerminalCommandNameForCliKind,
   T3CODE_TERMINAL_HOOK_OSC_PREFIX,
+  T3CODE_TERMINAL_SESSION_OSC_PREFIX,
   T3CODE_TERMINAL_CLI_KIND_ENV_KEY,
   type TerminalAgentHookEventType,
   type TerminalCliKind,
 } from "@t3tools/shared/terminalThreads";
+
+import { envPathKeyFor, resolveExecutableOnPath } from "../executableLookup.ts";
 
 export interface ManagedTerminalWrapperState {
   binDir: string | null;
@@ -25,61 +28,6 @@ export interface ManagedTerminalWrapperState {
 
 function shellQuote(value: string): string {
   return `'${value.replaceAll("'", `'\"'\"'`)}'`;
-}
-
-function envPathKeyFor(env: NodeJS.ProcessEnv): "PATH" | "Path" | "path" {
-  if ("PATH" in env) return "PATH";
-  if ("Path" in env) return "Path";
-  return "path";
-}
-
-function isExecutableFile(filePath: string): boolean {
-  try {
-    const stats = fs.statSync(filePath);
-    if (!stats.isFile()) {
-      return false;
-    }
-    fs.accessSync(filePath, fs.constants.X_OK);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function executableCandidates(commandName: string): string[] {
-  if (process.platform !== "win32") {
-    return [commandName];
-  }
-
-  const pathExt = process.env.PATHEXT?.split(";").filter(Boolean) ?? [".EXE", ".CMD", ".BAT"];
-  const lowerCommandName = commandName.toLowerCase();
-  const hasExtension = pathExt.some((extension) =>
-    lowerCommandName.endsWith(extension.toLowerCase()),
-  );
-  return hasExtension ? [commandName] : pathExt.map((extension) => `${commandName}${extension}`);
-}
-
-function resolveExecutableOnPath(commandName: string, env: NodeJS.ProcessEnv): string | null {
-  const envPathKey = envPathKeyFor(env);
-  const envPath = env[envPathKey]?.trim();
-  if (!envPath) {
-    return null;
-  }
-
-  for (const entry of envPath.split(path.delimiter)) {
-    const directory = entry.trim();
-    if (!directory) {
-      continue;
-    }
-    for (const candidateName of executableCandidates(commandName)) {
-      const candidatePath = path.join(directory, candidateName);
-      if (isExecutableFile(candidatePath)) {
-        return candidatePath;
-      }
-    }
-  }
-
-  return null;
 }
 
 function buildHookOscSequence(eventType: TerminalAgentHookEventType): string {
@@ -117,9 +65,17 @@ fi
 
 _t3code_emit_osc() {
   _t3code_sequence="$1"
-  if [ -w /dev/tty ]; then
-    printf '%b' "$_t3code_sequence" > /dev/tty 2>/dev/null || printf '%b' "$_t3code_sequence"
+  # Agent CLIs (claude/codex) detach hook processes from the controlling terminal, so
+  # \`[ -w /dev/tty ]\` passes while opening /dev/tty fails with ENXIO. Attempt the real
+  # write, then fall back to the parent process's tty device, then to stdout.
+  if printf '%b' "$_t3code_sequence" > /dev/tty 2>/dev/null; then
     return
+  fi
+  _t3code_parent_tty="$(ps -o tty= -p "\${PPID:-0}" 2>/dev/null | tr -d '[:space:]')"
+  if [ -n "$_t3code_parent_tty" ] && [ "$_t3code_parent_tty" != "??" ] && [ "$_t3code_parent_tty" != "-" ]; then
+    if printf '%b' "$_t3code_sequence" > "/dev/$_t3code_parent_tty" 2>/dev/null; then
+      return
+    fi
   fi
   printf '%b' "$_t3code_sequence"
 }
@@ -138,6 +94,13 @@ case "$_t3code_event" in
     _t3code_emit_osc '${buildHookOscSequence("Idle")}'
     ;;
 esac
+
+# Surface the CLI session id so the server can resume this exact conversation after a restart.
+# Claude hook payloads carry "session_id"; codex session ids are captured in the codex wrapper.
+_t3code_session_id="$(_t3code_extract_event session_id)"
+if [ -n "$_t3code_session_id" ] && [ -n "\${T3CODE_TERMINAL_CLI_KIND:-}" ]; then
+  _t3code_emit_osc "\\033]${T3CODE_TERMINAL_SESSION_OSC_PREFIX}\${T3CODE_TERMINAL_CLI_KIND}:\${_t3code_session_id}\\007"
+fi
 `;
 }
 
@@ -193,6 +156,16 @@ function buildCodexWrapperScript(input: {
     '    _t3code_last_approval_id=""',
     '    _t3code_last_exec_call_id=""',
     "    _t3code_approval_fallback_seq=0",
+    '    _t3code_session_emitted=""',
+    "",
+    "    _t3code_emit_session() {",
+    `      _t3code_seq="\\033]${T3CODE_TERMINAL_SESSION_OSC_PREFIX}codex:$1\\007"`,
+    "      if [ -w /dev/tty ]; then",
+    `        printf '%b' "$_t3code_seq" > /dev/tty 2>/dev/null || printf '%b' "$_t3code_seq"`,
+    "      else",
+    `        printf '%b' "$_t3code_seq"`,
+    "      fi",
+    "    }",
     "",
     "    _t3code_emit_event() {",
     '      _t3code_event="$1"',
@@ -210,6 +183,17 @@ function buildCodexWrapperScript(input: {
     "    fi",
     "",
     '    tail -n 0 -F "$_t3code_log" 2>/dev/null | while IFS= read -r _t3code_line; do',
+    '      if [ -z "$_t3code_session_emitted" ]; then',
+    '        case "$_t3code_line" in',
+    `          *'"session_id":"'*)`,
+    `            _t3code_session_id=$(printf '%s\n' "$_t3code_line" | awk -F'"session_id":"' 'NF > 1 { sub(/".*/, "", $2); print $2; exit }')`,
+    '            if [ -n "$_t3code_session_id" ]; then',
+    "              _t3code_session_emitted=1",
+    '              _t3code_emit_session "$_t3code_session_id"',
+    "            fi",
+    "            ;;",
+    "        esac",
+    "      fi",
     '      case "$_t3code_line" in',
     `        *'"dir":"to_tui"'*'"kind":"codex_event"'*'"msg":{"type":"task_started"'*)`,
     `          _t3code_turn_id=$(printf '%s\n' "$_t3code_line" | awk -F'"turn_id":"' 'NF > 1 { sub(/".*/, "", $2); print $2; exit }')`,
@@ -295,7 +279,7 @@ function writeFileIfChanged(filePath: string, content: string, mode: number): vo
 }
 
 function buildManagedZshRc(quotedZshDir: string): string {
-  return `# CTCode zsh rc wrapper
+  return `# FCode zsh rc wrapper
 _t3code_home="\${T3CODE_ORIGINAL_ZDOTDIR:-$HOME}"
 export ZDOTDIR="$_t3code_home"
 [[ -f "$_t3code_home/.zshrc" ]] && source "$_t3code_home/.zshrc"
@@ -340,7 +324,7 @@ function ensureManagedZshWrappers(zshDir: string): void {
   const quotedZshDir = shellQuote(zshDir);
   writeFileIfChanged(
     path.join(zshDir, ".zshenv"),
-    `# CTCode zsh env wrapper
+    `# FCode zsh env wrapper
 _t3code_home="\${T3CODE_ORIGINAL_ZDOTDIR:-$HOME}"
 export ZDOTDIR="$_t3code_home"
 [[ -f "$_t3code_home/.zshenv" ]] && source "$_t3code_home/.zshenv"
@@ -350,7 +334,7 @@ export ZDOTDIR=${quotedZshDir}
   );
   writeFileIfChanged(
     path.join(zshDir, ".zprofile"),
-    `# CTCode zsh profile wrapper
+    `# FCode zsh profile wrapper
 _t3code_home="\${T3CODE_ORIGINAL_ZDOTDIR:-$HOME}"
 export ZDOTDIR="$_t3code_home"
 [[ -f "$_t3code_home/.zprofile" ]] && source "$_t3code_home/.zprofile"

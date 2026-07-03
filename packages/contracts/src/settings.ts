@@ -14,10 +14,40 @@ const ProviderSettingsBase = {
   customModels: CustomModels,
 };
 
+// Account ids share the slug rules used for provider routing keys: they show
+// up in filesystem paths (shadow home directories) and per-thread provider
+// options, so they must stay path- and identifier-safe.
+const CodexAccountIdSetting = TrimmedString.check(
+  Schema.isNonEmpty(),
+  Schema.isMaxLength(64),
+  Schema.isPattern(/^[a-zA-Z][a-zA-Z0-9_-]*$/),
+);
+
+/**
+ * One additional Codex account. Accounts share the provider's CODEX_HOME
+ * (sessions, config, caches) but keep a private "shadow home" directory that
+ * holds only account-specific state — most importantly `auth.json` — so each
+ * account has an independent login. The primary account is not listed here;
+ * it is the provider's own `homePath` (default `~/.codex`).
+ */
+export const CodexAccountSettings = Schema.Struct({
+  id: CodexAccountIdSetting,
+  label: StringSetting.pipe(Schema.withDecodingDefault(() => "")),
+  // Effective CODEX_HOME for this account. Empty means "derive from the
+  // shared home" (`<sharedHome>-accounts/<id>`); the server resolves it.
+  shadowHomePath: StringSetting.pipe(Schema.withDecodingDefault(() => "")),
+});
+export type CodexAccountSettings = typeof CodexAccountSettings.Type;
+
+const CodexAccounts = Schema.Array(CodexAccountSettings).pipe(Schema.withDecodingDefault(() => []));
+
 export const CodexServerProviderSettings = Schema.Struct({
   ...ProviderSettingsBase,
   binaryPath: StringSetting.pipe(Schema.withDecodingDefault(() => "codex")),
   homePath: StringSetting.pipe(Schema.withDecodingDefault(() => "")),
+  accounts: CodexAccounts,
+  // Account used for new sessions. Empty selects the primary account.
+  activeAccountId: StringSetting.pipe(Schema.withDecodingDefault(() => "")),
 });
 export type CodexServerProviderSettings = typeof CodexServerProviderSettings.Type;
 
@@ -133,6 +163,8 @@ export const ServerSettingsPatch = Schema.Struct({
         Schema.Struct({
           ...ProviderSettingsBasePatch,
           homePath: Schema.optionalKey(StringSetting),
+          accounts: Schema.optionalKey(Schema.Array(CodexAccountSettings)),
+          activeAccountId: Schema.optionalKey(StringSetting),
         }),
       ),
       claudeAgent: Schema.optionalKey(

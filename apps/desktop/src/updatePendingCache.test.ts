@@ -12,10 +12,10 @@ import {
 
 describe("resolveElectronUpdaterCacheDirName", () => {
   it("matches electron-updater's cache directory fallback", () => {
-    expect(resolveElectronUpdaterCacheDirName(null, "CTCode")).toBe("CTCode");
+    expect(resolveElectronUpdaterCacheDirName(null, "FCode")).toBe("FCode");
     expect(
-      resolveElectronUpdaterCacheDirName({ updaterCacheDirName: "CTCode-updater" }, "CTCode"),
-    ).toBe("CTCode-updater");
+      resolveElectronUpdaterCacheDirName({ updaterCacheDirName: "FCode-updater" }, "FCode"),
+    ).toBe("FCode-updater");
   });
 });
 
@@ -23,55 +23,55 @@ describe("resolveElectronUpdaterPendingCacheDir", () => {
   it("matches electron-updater's pending cache path on macOS", () => {
     expect(
       resolveElectronUpdaterPendingCacheDir({
-        cacheDirName: "CTCode-updater",
+        cacheDirName: "FCode-updater",
         platform: "darwin",
         homeDir: "/Users/test",
       }),
-    ).toBe("/Users/test/Library/Caches/CTCode-updater/pending");
+    ).toBe("/Users/test/Library/Caches/FCode-updater/pending");
   });
 
   it("matches electron-updater's pending cache path on Windows", () => {
     expect(
       resolveElectronUpdaterPendingCacheDir({
-        cacheDirName: "CTCode-updater",
+        cacheDirName: "FCode-updater",
         platform: "win32",
         homeDir: "C:\\Users\\test",
         localAppData: "C:\\Users\\test\\AppData\\Local",
       }),
-    ).toBe("C:\\Users\\test\\AppData\\Local\\CTCode-updater\\pending");
+    ).toBe("C:\\Users\\test\\AppData\\Local\\FCode-updater\\pending");
   });
 
   it("falls back from an empty Windows cache env var like electron-updater", () => {
     expect(
       resolveElectronUpdaterPendingCacheDir({
-        cacheDirName: "CTCode-updater",
+        cacheDirName: "FCode-updater",
         platform: "win32",
         homeDir: "C:\\Users\\test",
         localAppData: "",
       }),
-    ).toBe("C:\\Users\\test\\AppData\\Local\\CTCode-updater\\pending");
+    ).toBe("C:\\Users\\test\\AppData\\Local\\FCode-updater\\pending");
   });
 
   it("matches electron-updater's pending cache path on Linux", () => {
     expect(
       resolveElectronUpdaterPendingCacheDir({
-        cacheDirName: "CTCode-updater",
+        cacheDirName: "FCode-updater",
         platform: "linux",
         homeDir: "/home/test",
         xdgCacheHome: "/tmp/cache",
       }),
-    ).toBe("/tmp/cache/CTCode-updater/pending");
+    ).toBe("/tmp/cache/FCode-updater/pending");
   });
 
   it("falls back from an empty Linux cache env var like electron-updater", () => {
     expect(
       resolveElectronUpdaterPendingCacheDir({
-        cacheDirName: "CTCode-updater",
+        cacheDirName: "FCode-updater",
         platform: "linux",
         homeDir: "/home/test",
         xdgCacheHome: "",
       }),
-    ).toBe("/home/test/.cache/CTCode-updater/pending");
+    ).toBe("/home/test/.cache/FCode-updater/pending");
   });
 
   it("returns null when no cache dir is configured", () => {

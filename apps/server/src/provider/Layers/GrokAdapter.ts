@@ -94,7 +94,7 @@ const GROK_RESUME_VERSION = 1 as const;
 const GROK_MODEL_DISCOVERY_TIMEOUT_MS = 15_000;
 const GROK_ACP_TRANSPORT_DEBUG_MARKER = "grok-acp-meta-stripper-v2";
 const GROK_ACP_LOG_PAYLOAD_LIMIT = 4_000;
-const GROK_ACP_DEBUG_ENV = "CTCODE_GROK_ACP_DEBUG";
+const GROK_ACP_DEBUG_ENV = "FCODE_GROK_ACP_DEBUG";
 const DPCODE_GROK_ACP_DEBUG_ENV = "DPCODE_GROK_ACP_DEBUG";
 const LEGACY_GROK_ACP_DEBUG_ENV = "DP_GROK_ACP_DEBUG";
 const GROK_RESUME_REPLAY_QUIET_MS = 350;
@@ -102,9 +102,9 @@ const GROK_RESUME_REPLAY_MAX_WAIT_MS = 3_000;
 // Backstop for an alive-but-silent grok child: if a turn produces no ACP
 // activity for this long, force-fail it instead of showing "Working" forever.
 // Generous by design so legitimate long, quiet tool runs are not killed;
-// override with CTCODE_GROK_TURN_IDLE_TIMEOUT_MS when a workload needs longer.
+// override with FCODE_GROK_TURN_IDLE_TIMEOUT_MS when a workload needs longer.
 const GROK_TURN_IDLE_TIMEOUT_MS = resolveAcpTurnIdleTimeoutMs({
-  envVar: "CTCODE_GROK_TURN_IDLE_TIMEOUT_MS",
+  envVar: "FCODE_GROK_TURN_IDLE_TIMEOUT_MS",
   defaultMs: 600_000,
 });
 const GROK_TURN_WATCHDOG_INTERVAL_MS = 15_000;
@@ -113,7 +113,7 @@ const ACP_PLAN_MODE_ALIASES = ["plan"];
 const ACP_IMPLEMENT_MODE_ALIASES = ["code", "agent", "default", "chat", "implement"];
 const ACP_APPROVAL_MODE_ALIASES = ["ask"];
 const GROK_PLAN_MODE_PROMPT_PREFIX = [
-  "CTCode Grok plan mode is active.",
+  "FCode Grok plan mode is active.",
   "Do not implement or mutate files in this turn.",
   "Do not ask follow-up questions or wait for confirmation; if scope is ambiguous, choose a reasonable default and state the assumption in the plan.",
   "When ready, create the final implementation plan.",
@@ -953,7 +953,7 @@ export function makeGrokAdapter(
             childProcessSpawner,
             cwd,
             ...(resumeSessionId ? { resumeSessionId } : {}),
-            clientInfo: { name: "CTCode", version: "0.0.0" },
+            clientInfo: { name: "FCode", version: "0.0.0" },
             ...acpRuntimeLoggers,
           }).pipe(
             Effect.provideService(Scope.Scope, sessionScope),

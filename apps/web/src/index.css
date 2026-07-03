@@ -409,7 +409,7 @@
 :root {
   color-scheme: light;
   --radius: 0.625rem;
-  --radius-user-message: 0.8rem;
+  --radius-user-message: 0.875rem;
   --font-ui-family: var(
     --theme-font-ui-family,
     -apple-system,
@@ -432,9 +432,11 @@
   --font-chat-code-family: var(--theme-font-code-family, var(--font-mono-family));
   --terminal-font-family: "JetBrainsMono NFM", "JetBrainsMono NF", "JetBrains Mono", monospace;
   --app-shell-background: transparent;
-  --app-sidebar-backdrop-filter: blur(8px) saturate(135%);
-  --app-sidebar-shadow: inset 0 1px 0 rgba(0, 0, 0, 0.025);
-  --app-sidebar-surface: color-mix(in srgb, var(--card) 64%, transparent);
+  /* iOS-style frosted glass: heavier blur + saturation, a more translucent fill so
+     the blur reads, and a bright specular top edge with a soft base line. */
+  --app-sidebar-backdrop-filter: blur(24px) saturate(180%);
+  --app-sidebar-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55), inset 0 -1px 0 rgba(0, 0, 0, 0.04);
+  --app-sidebar-surface: color-mix(in srgb, var(--card) 52%, transparent);
   --background: #fcfcfc;
   --foreground: var(--color-neutral-800);
   --card: var(--color-white);
@@ -468,7 +470,9 @@
   --sidebar-primary: var(--primary);
   --sidebar-primary-foreground: var(--primary-foreground);
   --sidebar-accent: var(--secondary);
-  --sidebar-accent-active: var(--secondary);
+  /* Selected thread row sits a step above hover (--secondary, 4%) so the active
+     row reads as clearly filled — matches the target's highlighted selection. */
+  --sidebar-accent-active: --alpha(var(--color-black) / 6%);
   --sidebar-accent-foreground: var(--color-text-foreground, var(--foreground));
   --sidebar-border: var(--border);
   --sidebar-ring: var(--ring);
@@ -513,13 +517,16 @@
     --sidebar-primary: var(--primary);
     --sidebar-primary-foreground: var(--primary-foreground);
     --sidebar-accent: var(--secondary);
-    --sidebar-accent-active: var(--secondary);
+    /* Selected thread row sits a step above hover (--secondary, 4%) so the active
+       row reads as clearly filled — matches the target's highlighted selection. */
+    --sidebar-accent-active: --alpha(var(--color-white) / 7%);
     --sidebar-accent-foreground: var(--color-text-foreground, var(--foreground));
     --sidebar-border: var(--border);
     --sidebar-ring: var(--ring);
-    --app-sidebar-backdrop-filter: blur(8px) saturate(135%);
-    --app-sidebar-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.024);
-    --app-sidebar-surface: color-mix(in srgb, var(--card) 72%, transparent);
+    --app-sidebar-backdrop-filter: blur(24px) saturate(180%);
+    --app-sidebar-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.08), inset 0 -1px 0 rgba(0, 0, 0, 0.18);
+    --app-sidebar-surface: color-mix(in srgb, var(--card) 58%, transparent);
     --color-background-button-secondary-hover: var(--secondary);
     --color-background-elevated-secondary: var(--secondary);
     --warning: var(--color-amber-500);
@@ -1140,8 +1147,8 @@ label:has(> select#reasoning-effort) select {
     0 1px 4px -2px color-mix(in srgb, var(--color-black, #000) 16%, transparent);
 }
 
-/* Rounded chip holding the CTCode mark in the box header, echoing the source
-   file's row gutter badge so the comment reads as "from CTCode". */
+/* Rounded chip holding the FCode mark in the box header, echoing the source
+   file's row gutter badge so the comment reads as "from FCode". */
 .editor-file-viewer__comment-badge {
   display: inline-flex;
   align-items: center;
@@ -1757,7 +1764,8 @@ diffs-container {
 /* Composer shell/surface corner geometry — single source of truth so radius
    tweaks are not split across Tailwind utilities (and HMR cannot leave stale rules). */
 :root {
-  --composer-radius: 1.2rem;
+  /* Pill-ward to match the target's strongly-rounded follow-up input. */
+  --composer-radius: 1.75rem;
 }
 
 .chat-composer-shell,

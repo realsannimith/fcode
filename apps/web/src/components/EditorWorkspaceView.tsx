@@ -94,9 +94,9 @@ const EDITOR_EXPLORER_HIDDEN_DIRECTORY_NAMES = new Set([
   "target",
 ]);
 
-const EDITOR_CHAT_PANE_STORAGE_KEY = "ctcode.editor.chatPaneWidth";
-const EDITOR_SIDEBAR_VISIBLE_STORAGE_KEY = "ctcode.editor.sidebarVisible";
-const EDITOR_CHAT_PANE_VISIBLE_STORAGE_KEY = "ctcode.editor.chatPaneVisible";
+const EDITOR_CHAT_PANE_STORAGE_KEY = "fcode.editor.chatPaneWidth";
+const EDITOR_SIDEBAR_VISIBLE_STORAGE_KEY = "fcode.editor.sidebarVisible";
+const EDITOR_CHAT_PANE_VISIBLE_STORAGE_KEY = "fcode.editor.chatPaneVisible";
 const EDITOR_CHAT_PANE_DEFAULT_WIDTH = 384;
 const EDITOR_CHAT_PANE_MIN_WIDTH = 320;
 const EDITOR_CHAT_PANE_MAX_WIDTH = 600;
@@ -215,7 +215,7 @@ function shouldShowExplorerEntry(entry: ProjectFileSystemEntry): boolean {
   if (entry.kind !== "directory") {
     return true;
   }
-  if (entry.name.startsWith(".ctcode")) {
+  if (entry.name.startsWith(".fcode")) {
     return false;
   }
   return !EDITOR_EXPLORER_HIDDEN_DIRECTORY_NAMES.has(entry.name);

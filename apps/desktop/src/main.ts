@@ -98,9 +98,10 @@ import {
 } from "./browserIpc";
 import {
   BrowserUsePipeServer,
+  cleanupStaleBrowserUsePipeSockets,
   DPCODE_BROWSER_USE_PIPE_ENV,
-  CTCODE_BROWSER_USE_PIPE_ENV,
-  CTCODE_BROWSER_USE_PIPE_PATH,
+  FCODE_BROWSER_USE_PIPE_ENV,
+  FCODE_BROWSER_USE_PIPE_PATH,
   T3CODE_BROWSER_USE_PIPE_ENV,
 } from "./browserUsePipeServer";
 import {
@@ -140,16 +141,17 @@ const UPDATE_INSTALL_CHANNEL = "desktop:update-install";
 const NOTIFICATIONS_IS_SUPPORTED_CHANNEL = "desktop:notifications-is-supported";
 const NOTIFICATIONS_SHOW_CHANNEL = "desktop:notifications-show";
 const BASE_DIR =
+  process.env.FCODE_HOME?.trim() ||
   process.env.CTCODE_HOME?.trim() ||
   process.env.DPCODE_HOME?.trim() ||
   process.env.T3CODE_HOME?.trim() ||
-  Path.join(OS.homedir(), ".ctcode");
+  Path.join(OS.homedir(), ".fcode");
 const STATE_DIR = Path.join(BASE_DIR, "userdata");
 const DESKTOP_SCHEME = "t3";
 const ROOT_DIR = Path.resolve(__dirname, "../../..");
 const isDevelopment = Boolean(process.env.VITE_DEV_SERVER_URL);
-const APP_DISPLAY_NAME = isDevelopment ? "CTCode (Dev)" : "CTCode";
-const APP_USER_MODEL_ID = isDevelopment ? "com.t3tools.ctcode.dev" : "com.t3tools.ctcode";
+const APP_DISPLAY_NAME = isDevelopment ? "FCode (Dev)" : "FCode";
+const APP_USER_MODEL_ID = isDevelopment ? "com.t3tools.fcode.dev" : "com.t3tools.fcode";
 const COMMIT_HASH_PATTERN = /^[0-9a-f]{7,40}$/i;
 const COMMIT_HASH_DISPLAY_LENGTH = 12;
 const LOG_DIR = Path.join(STATE_DIR, "logs");
@@ -174,7 +176,7 @@ const AUTO_UPDATE_INSTALL_WATCHDOG_MS = 15 * 1000;
 const BACKEND_FORCE_KILL_DELAY_MS = 8_000;
 const BACKEND_SHUTDOWN_TIMEOUT_MS = 10_000;
 const BACKEND_MAX_OLD_SPACE_ENV_KEYS = [
-  "CTCODE_BACKEND_MAX_OLD_SPACE_MB",
+  "FCODE_BACKEND_MAX_OLD_SPACE_MB",
   "T3CODE_BACKEND_MAX_OLD_SPACE_MB",
   "DPCODE_BACKEND_MAX_OLD_SPACE_MB",
 ] as const;
@@ -184,9 +186,9 @@ const BROWSER_PERF_SAMPLE_INTERVAL_MS = 5_000;
 const DESKTOP_MENU_ZOOM_FACTOR_STEP = 1.1;
 const DESKTOP_MENU_MIN_ZOOM_FACTOR = 0.25;
 const DESKTOP_MENU_MAX_ZOOM_FACTOR = 5;
-const CTCODE_BROWSER_LABEL = "CTCode browser";
+const FCODE_BROWSER_LABEL = "FCode browser";
 const browserPerfLoggingEnabled =
-  process.env.CTCODE_BROWSER_PERF === "1" ||
+  process.env.FCODE_BROWSER_PERF === "1" ||
   process.env.DPCODE_BROWSER_PERF === "1" ||
   process.env.T3CODE_BROWSER_PERF === "1";
 
@@ -248,7 +250,7 @@ function startBrowserPerformanceLogging(): void {
         name: metric.name,
       }));
 
-    console.info(`[${CTCODE_BROWSER_LABEL} perf]`, {
+    console.info(`[${FCODE_BROWSER_LABEL} perf]`, {
       ...snapshot.counters,
       trackedProcessIds: snapshot.trackedProcessIds,
       processes: processMetrics,
@@ -261,6 +263,9 @@ async function ensureBrowserUsePipeServer(): Promise<void> {
   if (browserUsePipeServer) {
     return;
   }
+  // The pipe lives in a shared scan directory that Codex's browser plugin
+  // enumerates; sweep sockets orphaned by crashed instances before listening.
+  await cleanupStaleBrowserUsePipeSockets().catch(() => undefined);
   const server = new BrowserUsePipeServer(browserManager, {
     requestOpenPanel: () => {
       mainWindow?.webContents.send(BROWSER_IPC_CHANNELS.requestOpenPanel);
@@ -418,7 +423,7 @@ async function reserveBackendEndpoint(reason: string): Promise<void> {
   );
   backendHttpUrl = `http://127.0.0.1:${backendPort}`;
   backendWsUrl = `ws://127.0.0.1:${backendPort}/?token=${encodeURIComponent(backendAuthToken)}`;
-  process.env.CTCODE_DESKTOP_WS_URL = backendWsUrl;
+  process.env.FCODE_DESKTOP_WS_URL = backendWsUrl;
   process.env.DPCODE_DESKTOP_WS_URL = backendWsUrl;
   process.env.T3CODE_DESKTOP_WS_URL = backendWsUrl;
   writeDesktopLogHeader(`${reason} resolved backend endpoint port=${backendPort}`);
@@ -825,7 +830,7 @@ function handleFatalStartupError(stage: string, error: unknown): void {
   console.error(`[desktop] fatal startup error (${stage})`, error);
   if (!isQuitting) {
     isQuitting = true;
-    dialog.showErrorBox("CTCode failed to start", `Stage: ${stage}\n${message}${detail}`);
+    dialog.showErrorBox("FCode failed to start", `Stage: ${stage}\n${message}${detail}`);
   }
   stopBackend();
   restoreStdIoCapture?.();
@@ -970,14 +975,14 @@ async function checkForUpdatesFromMenu(): Promise<void> {
     void dialog.showMessageBox({
       type: "info",
       title: "You're up to date!",
-      message: `CTCode ${updateState.currentVersion} is currently the newest version available.`,
+      message: `FCode ${updateState.currentVersion} is currently the newest version available.`,
       buttons: ["OK"],
     });
   } else if (updateState.status === "downloading" || updateState.status === "available") {
     void dialog.showMessageBox({
       type: "info",
       title: "Update found",
-      message: "CTCode is preparing the update in the background.",
+      message: "FCode is preparing the update in the background.",
       buttons: ["OK"],
     });
   } else if (updateState.status === "downloaded") {
@@ -1147,9 +1152,9 @@ function resolveNotificationIconPath(): string | null {
     return null;
   }
   if (process.platform === "win32") {
-    return resolveResourcePath("ctcode.png") ?? resolveIconPath("ico");
+    return resolveResourcePath("fcode.png") ?? resolveIconPath("ico");
   }
-  return resolveResourcePath("ctcode.png") ?? resolveIconPath("png");
+  return resolveResourcePath("fcode.png") ?? resolveIconPath("png");
 }
 
 // Keep the app badge aligned with desktop notifications that arrive off-focus.
@@ -1237,7 +1242,7 @@ function showDesktopNotification(input: {
  * Resolve the Electron userData directory path.
  *
  * Electron derives the default userData path from `productName` in
- * package.json. We override it to a clean lowercase CTCode name while seeding
+ * package.json. We override it to a clean lowercase FCode name while seeding
  * from legacy app profiles when needed.
  */
 function resolveUserDataPath(): string {
@@ -1248,12 +1253,12 @@ function resolveUserDataPath(): string {
     legacyPaths: resolveLegacyDesktopUserDataPaths({ appDataBase, isDevelopment }),
   });
   if (seedResult.status === "seeded") {
-    console.info("[desktop] Seeded CTCode Electron profile from legacy profile", {
+    console.info("[desktop] Seeded FCode Electron profile from legacy profile", {
       sourcePath: seedResult.sourcePath,
       targetPath: seedResult.targetPath,
     });
   } else if (seedResult.status === "seed-failed") {
-    console.warn("[desktop] Failed to seed CTCode Electron profile from legacy profile", {
+    console.warn("[desktop] Failed to seed FCode Electron profile from legacy profile", {
       sourcePath: seedResult.sourcePath,
       targetPath: seedResult.targetPath,
       error: seedResult.error,
@@ -1841,7 +1846,7 @@ function configureAutoUpdater(): void {
 
   scheduleUpdatePoll();
 }
-// Builds process-local Node args so provider/tool children do not inherit CTCode's heap guard.
+// Builds process-local Node args so provider/tool children do not inherit FCode's heap guard.
 function backendNodeArgs(): string[] {
   const configuredMaxOldSpaceMb =
     BACKEND_MAX_OLD_SPACE_ENV_KEYS.map((key) => process.env[key]).find(
@@ -1862,15 +1867,15 @@ function backendEnv(): NodeJS.ProcessEnv {
     DPCODE_PORT: String(backendPort),
     DPCODE_HOME: BASE_DIR,
     DPCODE_AUTH_TOKEN: backendAuthToken,
-    [DPCODE_BROWSER_USE_PIPE_ENV]: CTCODE_BROWSER_USE_PIPE_PATH,
-    [CTCODE_BROWSER_USE_PIPE_ENV]: CTCODE_BROWSER_USE_PIPE_PATH,
+    [DPCODE_BROWSER_USE_PIPE_ENV]: FCODE_BROWSER_USE_PIPE_PATH,
+    [FCODE_BROWSER_USE_PIPE_ENV]: FCODE_BROWSER_USE_PIPE_PATH,
     T3CODE_MODE: "desktop",
     T3CODE_NO_BROWSER: "1",
     T3CODE_PORT: String(backendPort),
     T3CODE_HOME: BASE_DIR,
     T3CODE_AUTH_TOKEN: backendAuthToken,
-    CTCODE_HOME: BASE_DIR,
-    [T3CODE_BROWSER_USE_PIPE_ENV]: CTCODE_BROWSER_USE_PIPE_PATH,
+    FCODE_HOME: BASE_DIR,
+    [T3CODE_BROWSER_USE_PIPE_ENV]: FCODE_BROWSER_USE_PIPE_PATH,
   };
 }
 
@@ -2388,7 +2393,7 @@ function registerIpcHandlers(): void {
   registerDesktopVoiceTranscriptionHandler();
   startBrowserPerformanceLogging();
   void ensureBrowserUsePipeServer().catch((error) => {
-    console.warn("[CTCode browser] Failed to start browser-use native pipe", error);
+    console.warn("[FCode browser] Failed to start browser-use native pipe", error);
   });
 
   registerBrowserIpcHandlers(ipcMain, browserManager);

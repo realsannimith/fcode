@@ -11,6 +11,38 @@ export type TerminalVisualState = "idle" | TerminalActivityState;
 export type TerminalAgentHookEventType = "Start" | "Stop" | "PermissionRequest" | "Idle";
 export const T3CODE_TERMINAL_CLI_KIND_ENV_KEY = "T3CODE_TERMINAL_CLI_KIND";
 export const T3CODE_TERMINAL_HOOK_OSC_PREFIX = "633;T3CODE_AGENT_EVENT=";
+// OSC carrier for the underlying CLI session id, emitted by managed agent wrappers/hooks so
+// the server can resume the exact conversation after an app restart. Payload: `<cliKind>:<sessionId>`.
+export const T3CODE_TERMINAL_SESSION_OSC_PREFIX = "633;T3CODE_AGENT_SESSION=";
+
+export interface TerminalCliSessionInfo {
+  cliKind: TerminalCliKind;
+  sessionId: string;
+}
+
+// Session ids are codex rollout UUIDs or claude session ids; keep the charset shell-safe so the
+// resume command can be written into a PTY without quoting.
+const TERMINAL_CLI_SESSION_ID_PATTERN = /^[A-Za-z0-9._-]{1,200}$/;
+
+export function isValidTerminalCliSessionId(sessionId: string): boolean {
+  return TERMINAL_CLI_SESSION_ID_PATTERN.test(sessionId);
+}
+
+export function parseTerminalSessionOsc(content: string): TerminalCliSessionInfo | null {
+  if (!content.startsWith(T3CODE_TERMINAL_SESSION_OSC_PREFIX)) return null;
+  const payload = content.slice(T3CODE_TERMINAL_SESSION_OSC_PREFIX.length);
+  const separatorIndex = payload.indexOf(":");
+  if (separatorIndex <= 0) return null;
+  const cliKind = terminalCliKindFromValue(payload.slice(0, separatorIndex).trim());
+  const sessionId = payload.slice(separatorIndex + 1).trim();
+  if (!cliKind || !isValidTerminalCliSessionId(sessionId)) return null;
+  return { cliKind, sessionId };
+}
+
+// The subcommand each CLI uses to continue an exact prior session by id.
+export function terminalCliResumeArgs(info: TerminalCliSessionInfo): string[] {
+  return info.cliKind === "codex" ? ["resume", info.sessionId] : ["--resume", info.sessionId];
+}
 export const MANAGED_TERMINAL_COMMAND_NAME_BY_CLI_KIND: Record<TerminalCliKind, string> = {
   codex: "codex",
   claude: "claude",

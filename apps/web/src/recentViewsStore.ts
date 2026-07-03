@@ -22,7 +22,7 @@ interface RecentViewsStoreState {
   pruneRecentViews: (availability: RecentViewAvailability) => void;
 }
 
-const RECENT_VIEWS_STORAGE_KEY = "ctcode:recent-views:v1";
+const RECENT_VIEWS_STORAGE_KEY = "fcode:recent-views:v1";
 
 function normalizeOptionalId(value: unknown): string | undefined {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;

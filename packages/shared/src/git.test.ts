@@ -2,10 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import {
   WORKTREE_BRANCH_PREFIX,
-  buildCTCodeBranchName,
+  buildFCodeBranchName,
   buildTemporaryWorktreeBranchName,
   isTemporaryWorktreeBranch,
-  resolveUniqueCTCodeBranchName,
+  resolveUniqueFCodeBranchName,
   resolveThreadBranchRegressionGuard,
 } from "./git";
 
@@ -59,38 +59,38 @@ describe("resolveThreadBranchRegressionGuard", () => {
   });
 });
 
-describe("buildCTCodeBranchName", () => {
-  it("uses ctcode as the branch namespace", () => {
-    expect(buildCTCodeBranchName("fix toast copy")).toBe("ctcode/fix-toast-copy");
+describe("buildFCodeBranchName", () => {
+  it("uses fcode as the branch namespace", () => {
+    expect(buildFCodeBranchName("fix toast copy")).toBe("fcode/fix-toast-copy");
   });
 
-  it("keeps non-CTCode namespaces inside the CTCode branch", () => {
-    expect(buildCTCodeBranchName("feature/refine-toolbar-actions")).toBe(
-      "ctcode/feature/refine-toolbar-actions",
+  it("keeps non-FCode namespaces inside the FCode branch", () => {
+    expect(buildFCodeBranchName("feature/refine-toolbar-actions")).toBe(
+      "fcode/feature/refine-toolbar-actions",
     );
   });
 
   it("normalizes legacy prefixes before rebuilding the branch", () => {
-    expect(buildCTCodeBranchName("t3code/refine toolbar actions")).toBe(
-      "ctcode/refine-toolbar-actions",
+    expect(buildFCodeBranchName("t3code/refine toolbar actions")).toBe(
+      "fcode/refine-toolbar-actions",
     );
-    expect(buildCTCodeBranchName("dpcode/refine toolbar actions")).toBe(
-      "ctcode/refine-toolbar-actions",
+    expect(buildFCodeBranchName("dpcode/refine toolbar actions")).toBe(
+      "fcode/refine-toolbar-actions",
     );
   });
 
-  it("falls back to ctcode/update when no preferred name is provided", () => {
-    expect(buildCTCodeBranchName()).toBe("ctcode/update");
+  it("falls back to fcode/update when no preferred name is provided", () => {
+    expect(buildFCodeBranchName()).toBe("fcode/update");
   });
 });
 
-describe("resolveUniqueCTCodeBranchName", () => {
-  it("increments suffix when the CTCode branch already exists", () => {
+describe("resolveUniqueFCodeBranchName", () => {
+  it("increments suffix when the FCode branch already exists", () => {
     expect(
-      resolveUniqueCTCodeBranchName(
-        ["main", "ctcode/fix-toast-copy", "ctcode/fix-toast-copy-2"],
+      resolveUniqueFCodeBranchName(
+        ["main", "fcode/fix-toast-copy", "fcode/fix-toast-copy-2"],
         "fix toast copy",
       ),
-    ).toBe("ctcode/fix-toast-copy-3");
+    ).toBe("fcode/fix-toast-copy-3");
   });
 });

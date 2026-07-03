@@ -182,7 +182,7 @@ export function inferEntryKindFromPath(pathValue: string): "file" | "directory" 
   return "directory";
 }
 
-function extensionCandidates(fileName: string): string[] {
+export function extensionCandidates(fileName: string): string[] {
   const candidates: string[] = [];
   let dotIndex = fileName.indexOf(".");
   while (dotIndex !== -1 && dotIndex < fileName.length - 1) {
@@ -193,17 +193,32 @@ function extensionCandidates(fileName: string): string[] {
   return candidates;
 }
 
+// Shared basename → extension(s) lookup walk: exact basename match first, then
+// longest-extension-first (e.g. `.d.ts` before `.ts`). Used for both the
+// Central icon glyph lookup below and the real per-extension icon lookup in
+// `realFileTypeIcons.ts`, so the two icon systems never disagree about which
+// file a path "is".
+export function resolveIconByPath<T>(
+  pathValue: string,
+  basenameMap: Record<string, T>,
+  extensionMap: Record<string, T>,
+): T | undefined {
+  const basename = basenameOfPath(pathValue).toLowerCase();
+  const byName = basenameMap[basename];
+  if (byName !== undefined) return byName;
+  for (const candidate of extensionCandidates(basename)) {
+    const byExt = extensionMap[candidate];
+    if (byExt !== undefined) return byExt;
+  }
+  return undefined;
+}
+
 // Resolves the Central icon name for a file path, defaulting to the generic
 // bracket glyph when the basename/extension has no dedicated icon.
 export function getFileIconName(pathValue: string): string {
-  const basename = basenameOfPath(pathValue).toLowerCase();
-  const byName = FILE_ICON_BY_BASENAME[basename];
-  if (byName) return byName;
-  for (const candidate of extensionCandidates(basename)) {
-    const byExt = FILE_ICON_BY_EXTENSION[candidate];
-    if (byExt) return byExt;
-  }
-  return DEFAULT_FILE_ICON;
+  return (
+    resolveIconByPath(pathValue, FILE_ICON_BY_BASENAME, FILE_ICON_BY_EXTENSION) ?? DEFAULT_FILE_ICON
+  );
 }
 
 // MIME type → Central icon name, used as a fallback for attachments whose
@@ -249,13 +264,8 @@ export function getAttachmentIconName(attachment: {
   name: string;
   mimeType?: string | null | undefined;
 }): string {
-  const basename = basenameOfPath(attachment.name).toLowerCase();
-  const byName = FILE_ICON_BY_BASENAME[basename];
-  if (byName) return byName;
-  for (const candidate of extensionCandidates(basename)) {
-    const byExt = FILE_ICON_BY_EXTENSION[candidate];
-    if (byExt) return byExt;
-  }
+  const byPath = resolveIconByPath(attachment.name, FILE_ICON_BY_BASENAME, FILE_ICON_BY_EXTENSION);
+  if (byPath) return byPath;
 
   const mimeType = attachment.mimeType?.trim().toLowerCase() ?? "";
   if (mimeType.length > 0) {

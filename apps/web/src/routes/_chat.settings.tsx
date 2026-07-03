@@ -81,6 +81,7 @@ import { Select, SelectItem, SelectTrigger, SelectValue } from "../components/ui
 import { Switch } from "../components/ui/switch";
 import { toastManager } from "../components/ui/toast";
 import { ThemePackEditor } from "../components/ThemePackEditor";
+import { CodexAccountsSettingsSection } from "../components/settings/CodexAccountsSettingsSection";
 import { DebouncedSettingTextInput } from "../components/settings/DebouncedSettingTextInput";
 import {
   SettingsCard,
@@ -143,7 +144,6 @@ import {
   normalizeSettingsSection,
   SETTINGS_NAV_ITEMS,
   SETTINGS_TARGETS,
-  TERMINAL_HIDDEN_SETTINGS_SECTIONS,
 } from "../settingsNavigation";
 import {
   SETTINGS_CARD_ROW_DIVIDER_CLASS_NAME,
@@ -622,12 +622,7 @@ function useSettingsTargetScroll(
 function SettingsRouteView() {
   const routeSearch = useSearch({ strict: false }) as Record<string, unknown>;
   const { settings, defaults, updateSettings, resetSettings } = useAppSettings();
-  const isTerminalMode = settings.interfaceMode === "terminal";
-  // In terminal mode, GUI/chat-only sections are hidden from the nav and search.
-  const hiddenSections = isTerminalMode ? TERMINAL_HIDDEN_SETTINGS_SECTIONS : undefined;
-  const requestedSection = normalizeSettingsSection(routeSearch.section);
-  // Fall back to General if a hidden section is deep-linked while in terminal mode.
-  const activeSection = hiddenSections?.has(requestedSection) ? "general" : requestedSection;
+  const activeSection = normalizeSettingsSection(routeSearch.section);
   const settingsTarget = typeof routeSearch.target === "string" ? routeSearch.target : null;
   const activeSectionItem = SETTINGS_NAV_ITEMS.find((item) => item.id === activeSection)!;
 
@@ -964,9 +959,6 @@ function SettingsRouteView() {
       ? ["Assistant output"]
       : []),
     ...(settings.diffWordWrap !== defaults.diffWordWrap ? ["Diff line wrapping"] : []),
-    ...(settings.enableComposerSuggestions !== defaults.enableComposerSuggestions
-      ? ["Prompt suggestions"]
-      : []),
     ...(settings.confirmThreadDelete !== defaults.confirmThreadDelete
       ? ["Delete confirmation"]
       : []),
@@ -1243,7 +1235,7 @@ function SettingsRouteView() {
       return;
     }
 
-    const notification = new Notification(title, { body, tag: "ctcode:test-notification" });
+    const notification = new Notification(title, { body, tag: "fcode:test-notification" });
     notification.addEventListener("click", () => {
       window.focus();
     });
@@ -1496,39 +1488,6 @@ function SettingsRouteView() {
 
   const renderGeneralPanel = () => (
     <div className="space-y-6">
-      <SettingsSection title="Interface mode">
-        <SettingsRow
-          title="Interface style"
-          description="Switch between the terminal launcher and the classic chat GUI. Changes the sidebar and home screen."
-          resetAction={
-            settings.interfaceMode !== defaults.interfaceMode ? (
-              <SettingResetButton
-                label="interface mode"
-                onClick={() => updateSettings({ interfaceMode: defaults.interfaceMode })}
-              />
-            ) : null
-          }
-          control={
-            <SettingsSelectControl
-              value={settings.interfaceMode}
-              onValueChange={(value) => {
-                if (value !== "gui" && value !== "terminal") return;
-                updateSettings({ interfaceMode: value });
-              }}
-              ariaLabel="Interface mode"
-              valueContent={settings.interfaceMode === "gui" ? "GUI (Chat)" : "Terminal"}
-            >
-              <SelectItem hideIndicator value="terminal">
-                Terminal
-              </SelectItem>
-              <SelectItem hideIndicator value="gui">
-                GUI (Chat)
-              </SelectItem>
-            </SettingsSelectControl>
-          }
-        />
-      </SettingsSection>
-
       <SettingsSection title="Core defaults">
         <SettingsRow
           title="Default provider"
@@ -1568,221 +1527,213 @@ function SettingsRouteView() {
           }
         />
 
-        {!isTerminalMode && (
-          <SettingsRow
-            title="New threads"
-            description="Pick the default workspace mode for newly created draft threads."
-            resetAction={
-              settings.defaultThreadEnvMode !== defaults.defaultThreadEnvMode ? (
-                <SettingResetButton
-                  label="new threads"
-                  onClick={() =>
-                    updateSettings({
-                      defaultThreadEnvMode: defaults.defaultThreadEnvMode,
-                    })
-                  }
-                />
-              ) : null
-            }
-            control={
-              <SettingsSelectControl
-                value={settings.defaultThreadEnvMode}
-                onValueChange={(value) => {
-                  if (value !== "local" && value !== "worktree") return;
+        <SettingsRow
+          title="New threads"
+          description="Pick the default workspace mode for newly created draft threads."
+          resetAction={
+            settings.defaultThreadEnvMode !== defaults.defaultThreadEnvMode ? (
+              <SettingResetButton
+                label="new threads"
+                onClick={() =>
                   updateSettings({
-                    defaultThreadEnvMode: value,
-                  });
-                }}
-                ariaLabel="Default thread mode"
-                valueContent={
-                  settings.defaultThreadEnvMode === "worktree" ? "New worktree" : "Local"
+                    defaultThreadEnvMode: defaults.defaultThreadEnvMode,
+                  })
                 }
-              >
-                <SelectItem hideIndicator value="local">
-                  Local
-                </SelectItem>
-                <SelectItem hideIndicator value="worktree">
-                  New worktree
-                </SelectItem>
-              </SettingsSelectControl>
-            }
-          />
-        )}
+              />
+            ) : null
+          }
+          control={
+            <SettingsSelectControl
+              value={settings.defaultThreadEnvMode}
+              onValueChange={(value) => {
+                if (value !== "local" && value !== "worktree") return;
+                updateSettings({
+                  defaultThreadEnvMode: value,
+                });
+              }}
+              ariaLabel="Default thread mode"
+              valueContent={settings.defaultThreadEnvMode === "worktree" ? "New worktree" : "Local"}
+            >
+              <SelectItem hideIndicator value="local">
+                Local
+              </SelectItem>
+              <SelectItem hideIndicator value="worktree">
+                New worktree
+              </SelectItem>
+            </SettingsSelectControl>
+          }
+        />
       </SettingsSection>
 
-      {!isTerminalMode && (
-        <>
-          <SettingsSection title="Sidebar organization">
-            <SettingsRow
-              title="Project order"
-              description="Controls how projects are arranged in the main sidebar."
-              resetAction={
-                settings.sidebarProjectSortOrder !== defaults.sidebarProjectSortOrder ? (
-                  <SettingResetButton
-                    label="project order"
-                    onClick={() =>
-                      updateSettings({
-                        sidebarProjectSortOrder: defaults.sidebarProjectSortOrder,
-                      })
-                    }
-                  />
-                ) : null
-              }
-              control={
-                <SettingsSelectControl
-                  value={settings.sidebarProjectSortOrder}
-                  onValueChange={(value) => {
-                    if (value !== "updated_at" && value !== "created_at" && value !== "manual") {
-                      return;
-                    }
-                    updateSettings({ sidebarProjectSortOrder: value });
-                  }}
-                  ariaLabel="Project sort order"
-                  valueContent={SIDEBAR_PROJECT_SORT_ORDER_LABELS[settings.sidebarProjectSortOrder]}
-                >
-                  <SelectItem hideIndicator value="updated_at">
-                    {SIDEBAR_PROJECT_SORT_ORDER_LABELS.updated_at}
-                  </SelectItem>
-                  <SelectItem hideIndicator value="created_at">
-                    {SIDEBAR_PROJECT_SORT_ORDER_LABELS.created_at}
-                  </SelectItem>
-                  <SelectItem hideIndicator value="manual">
-                    {SIDEBAR_PROJECT_SORT_ORDER_LABELS.manual}
-                  </SelectItem>
-                </SettingsSelectControl>
-              }
-            />
+      <SettingsSection title="Sidebar organization">
+        <SettingsRow
+          title="Project order"
+          description="Controls how projects are arranged in the main sidebar."
+          resetAction={
+            settings.sidebarProjectSortOrder !== defaults.sidebarProjectSortOrder ? (
+              <SettingResetButton
+                label="project order"
+                onClick={() =>
+                  updateSettings({
+                    sidebarProjectSortOrder: defaults.sidebarProjectSortOrder,
+                  })
+                }
+              />
+            ) : null
+          }
+          control={
+            <SettingsSelectControl
+              value={settings.sidebarProjectSortOrder}
+              onValueChange={(value) => {
+                if (value !== "updated_at" && value !== "created_at" && value !== "manual") {
+                  return;
+                }
+                updateSettings({ sidebarProjectSortOrder: value });
+              }}
+              ariaLabel="Project sort order"
+              valueContent={SIDEBAR_PROJECT_SORT_ORDER_LABELS[settings.sidebarProjectSortOrder]}
+            >
+              <SelectItem hideIndicator value="updated_at">
+                {SIDEBAR_PROJECT_SORT_ORDER_LABELS.updated_at}
+              </SelectItem>
+              <SelectItem hideIndicator value="created_at">
+                {SIDEBAR_PROJECT_SORT_ORDER_LABELS.created_at}
+              </SelectItem>
+              <SelectItem hideIndicator value="manual">
+                {SIDEBAR_PROJECT_SORT_ORDER_LABELS.manual}
+              </SelectItem>
+            </SettingsSelectControl>
+          }
+        />
 
-            <SettingsRow
-              title="Thread order"
-              description="Controls how threads are arranged inside each project in the main sidebar."
-              resetAction={
-                settings.sidebarThreadSortOrder !== defaults.sidebarThreadSortOrder ? (
-                  <SettingResetButton
-                    label="thread order"
-                    onClick={() =>
-                      updateSettings({
-                        sidebarThreadSortOrder: defaults.sidebarThreadSortOrder,
-                      })
-                    }
-                  />
-                ) : null
-              }
-              control={
-                <SettingsSelectControl
-                  value={settings.sidebarThreadSortOrder}
-                  onValueChange={(value) => {
-                    if (value !== "updated_at" && value !== "created_at") {
-                      return;
-                    }
-                    updateSettings({ sidebarThreadSortOrder: value });
-                  }}
-                  ariaLabel="Thread sort order"
-                  valueContent={SIDEBAR_THREAD_SORT_ORDER_LABELS[settings.sidebarThreadSortOrder]}
-                >
-                  <SelectItem hideIndicator value="updated_at">
-                    {SIDEBAR_THREAD_SORT_ORDER_LABELS.updated_at}
-                  </SelectItem>
-                  <SelectItem hideIndicator value="created_at">
-                    {SIDEBAR_THREAD_SORT_ORDER_LABELS.created_at}
-                  </SelectItem>
-                </SettingsSelectControl>
-              }
-            />
-          </SettingsSection>
+        <SettingsRow
+          title="Thread order"
+          description="Controls how threads are arranged inside each project in the main sidebar."
+          resetAction={
+            settings.sidebarThreadSortOrder !== defaults.sidebarThreadSortOrder ? (
+              <SettingResetButton
+                label="thread order"
+                onClick={() =>
+                  updateSettings({
+                    sidebarThreadSortOrder: defaults.sidebarThreadSortOrder,
+                  })
+                }
+              />
+            ) : null
+          }
+          control={
+            <SettingsSelectControl
+              value={settings.sidebarThreadSortOrder}
+              onValueChange={(value) => {
+                if (value !== "updated_at" && value !== "created_at") {
+                  return;
+                }
+                updateSettings({ sidebarThreadSortOrder: value });
+              }}
+              ariaLabel="Thread sort order"
+              valueContent={SIDEBAR_THREAD_SORT_ORDER_LABELS[settings.sidebarThreadSortOrder]}
+            >
+              <SelectItem hideIndicator value="updated_at">
+                {SIDEBAR_THREAD_SORT_ORDER_LABELS.updated_at}
+              </SelectItem>
+              <SelectItem hideIndicator value="created_at">
+                {SIDEBAR_THREAD_SORT_ORDER_LABELS.created_at}
+              </SelectItem>
+            </SettingsSelectControl>
+          }
+        />
+      </SettingsSection>
 
-          <SettingsSection title="Sidebar sections">
-            {renderBooleanSettingRow({
-              settingKey: "showChatsSection",
-              title: "Chats",
-              description:
-                "Show the standalone Chats list in the sidebar footer (chats not tied to a project).",
-              resetLabel: "chats section",
-              ariaLabel: "Show the Chats section in the sidebar",
-            })}
+      <SettingsSection title="Sidebar sections">
+        {renderBooleanSettingRow({
+          settingKey: "showChatsSection",
+          title: "Chats",
+          description:
+            "Show the standalone Chats list in the sidebar footer (chats not tied to a project).",
+          resetLabel: "chats section",
+          ariaLabel: "Show the Chats section in the sidebar",
+        })}
 
-            {renderBooleanSettingRow({
-              settingKey: "showWorkspaceSection",
-              title: "Workspace",
-              description:
-                "Show the Workspace tab in the sidebar switcher. The Threads tab always stays visible.",
-              resetLabel: "workspace section",
-              ariaLabel: "Show the Workspace section in the sidebar",
-            })}
-          </SettingsSection>
+        {renderBooleanSettingRow({
+          settingKey: "showWorkspaceSection",
+          title: "Workspace",
+          description:
+            "Show the Workspace tab in the sidebar switcher. The Threads tab always stays visible.",
+          resetLabel: "workspace section",
+          ariaLabel: "Show the Workspace section in the sidebar",
+        })}
+      </SettingsSection>
 
-          <div ref={environmentPanelRef} id={SETTINGS_TARGETS.environmentPanel}>
-            <SettingsSection title="Environment panel">
-              {renderBooleanSettingRow({
-                settingKey: "showEnvironmentUsage",
-                title: "Usage",
-                description: "Show the provider usage row in the chat Environment panel.",
-                resetLabel: "usage section",
-                ariaLabel: "Show the Usage section in the Environment panel",
-              })}
+      <div ref={environmentPanelRef} id={SETTINGS_TARGETS.environmentPanel}>
+        <SettingsSection title="Environment panel">
+          {renderBooleanSettingRow({
+            settingKey: "showEnvironmentUsage",
+            title: "Usage",
+            description: "Show the provider usage row in the chat Environment panel.",
+            resetLabel: "usage section",
+            ariaLabel: "Show the Usage section in the Environment panel",
+          })}
 
-              {renderBooleanSettingRow({
-                settingKey: "showEnvironmentRepository",
-                title: "Repository",
-                description:
-                  "Show the GitHub repository link in the chat Environment panel. The git block (Changes, Worktree, branch, Commit and Push) always stays visible.",
-                resetLabel: "repository section",
-                ariaLabel: "Show the Repository section in the Environment panel",
-              })}
+          {renderBooleanSettingRow({
+            settingKey: "showEnvironmentRepository",
+            title: "Repository",
+            description:
+              "Show the GitHub repository link in the chat Environment panel. The git block (Changes, Worktree, branch, Commit and Push) always stays visible.",
+            resetLabel: "repository section",
+            ariaLabel: "Show the Repository section in the Environment panel",
+          })}
 
-              {renderBooleanSettingRow({
-                settingKey: "showEnvironmentEditor",
-                title: "Editor",
-                description:
-                  "Show the Editor section (in-app editor view and Open in editor picker) in the chat Environment panel.",
-                resetLabel: "editor section",
-                ariaLabel: "Show the Editor section in the Environment panel",
-              })}
+          {renderBooleanSettingRow({
+            settingKey: "showEnvironmentEditor",
+            title: "Editor",
+            description:
+              "Show the Editor section (in-app editor view and Open in editor picker) in the chat Environment panel.",
+            resetLabel: "editor section",
+            ariaLabel: "Show the Editor section in the Environment panel",
+          })}
 
-              {renderBooleanSettingRow({
-                settingKey: "showEnvironmentRecap",
-                title: "Recap",
-                description: "Show the auto-generated chat recap in the Environment panel.",
-                resetLabel: "recap section",
-                ariaLabel: "Show the Recap section in the Environment panel",
-              })}
+          {renderBooleanSettingRow({
+            settingKey: "showEnvironmentRecap",
+            title: "Recap",
+            description: "Show the auto-generated chat recap in the Environment panel.",
+            resetLabel: "recap section",
+            ariaLabel: "Show the Recap section in the Environment panel",
+          })}
 
-              {renderBooleanSettingRow({
-                settingKey: "showEnvironmentPinned",
-                title: "Pinned messages",
-                description: "Show the pinned-messages checklist in the Environment panel.",
-                resetLabel: "pinned messages section",
-                ariaLabel: "Show the Pinned messages section in the Environment panel",
-              })}
+          {renderBooleanSettingRow({
+            settingKey: "showEnvironmentPinned",
+            title: "Pinned messages",
+            description: "Show the pinned-messages checklist in the Environment panel.",
+            resetLabel: "pinned messages section",
+            ariaLabel: "Show the Pinned messages section in the Environment panel",
+          })}
 
-              {renderBooleanSettingRow({
-                settingKey: "showEnvironmentMarkers",
-                title: "Text markers",
-                description:
-                  "Show highlighted and underlined transcript text in the Environment panel.",
-                resetLabel: "text markers section",
-                ariaLabel: "Show the Text markers section in the Environment panel",
-              })}
+          {renderBooleanSettingRow({
+            settingKey: "showEnvironmentMarkers",
+            title: "Text markers",
+            description:
+              "Show highlighted and underlined transcript text in the Environment panel.",
+            resetLabel: "text markers section",
+            ariaLabel: "Show the Text markers section in the Environment panel",
+          })}
 
-              {renderBooleanSettingRow({
-                settingKey: "showEnvironmentInstructions",
-                title: "Project instructions",
-                description: "Show project-level instructions in the Environment panel.",
-                resetLabel: "project instructions section",
-                ariaLabel: "Show the Project instructions section in the Environment panel",
-              })}
+          {renderBooleanSettingRow({
+            settingKey: "showEnvironmentInstructions",
+            title: "Project instructions",
+            description: "Show project-level instructions in the Environment panel.",
+            resetLabel: "project instructions section",
+            ariaLabel: "Show the Project instructions section in the Environment panel",
+          })}
 
-              {renderBooleanSettingRow({
-                settingKey: "showEnvironmentNotepad",
-                title: "Notepad",
-                description: "Show the per-thread notepad in the Environment panel.",
-                resetLabel: "notepad section",
-                ariaLabel: "Show the Notepad section in the Environment panel",
-              })}
-            </SettingsSection>
-          </div>
-        </>
-      )}
+          {renderBooleanSettingRow({
+            settingKey: "showEnvironmentNotepad",
+            title: "Notepad",
+            description: "Show the per-thread notepad in the Environment panel.",
+            resetLabel: "notepad section",
+            ariaLabel: "Show the Notepad section in the Environment panel",
+          })}
+        </SettingsSection>
+      </div>
     </div>
   );
 
@@ -1793,7 +1744,7 @@ function SettingsRouteView() {
         <SettingsCard>
           <SettingsRow
             title="Theme"
-            description="Choose how CTCode looks across the app."
+            description="Choose how FCode looks across the app."
             resetAction={
               theme !== "system" ? (
                 <SettingResetButton label="theme" onClick={() => setTheme("system")} />
@@ -1858,48 +1809,46 @@ function SettingsRouteView() {
             }
           />
 
-          {!isTerminalMode && (
-            <SettingsRow
-              title="Base font size"
-              description="Adjust the app text base in pixels. Chat and UI typography scale proportionally from this value."
-              resetAction={
-                settings.chatFontSizePx !== defaults.chatFontSizePx ? (
-                  <SettingResetButton
-                    label="base font size"
-                    onClick={() =>
-                      updateSettings({
-                        chatFontSizePx: defaults.chatFontSizePx,
-                      })
-                    }
-                  />
-                ) : null
-              }
-              control={
-                <div className="flex w-full items-center justify-end gap-2 sm:w-auto">
-                  <Input
-                    type="number"
-                    size="sm"
-                    min={MIN_CHAT_FONT_SIZE_PX}
-                    max={MAX_CHAT_FONT_SIZE_PX}
-                    step={1}
-                    inputMode="numeric"
-                    variant="soft"
-                    className="w-full text-right sm:w-20"
-                    value={String(settings.chatFontSizePx)}
-                    onChange={(event) => {
-                      const nextValue = event.target.value.trim();
-                      if (nextValue.length === 0) return;
-                      updateSettings({
-                        chatFontSizePx: normalizeChatFontSizePx(Number(nextValue)),
-                      });
-                    }}
-                    aria-label="Base font size in pixels"
-                  />
-                  <span className="text-xs text-muted-foreground">px</span>
-                </div>
-              }
-            />
-          )}
+          <SettingsRow
+            title="Base font size"
+            description="Adjust the app text base in pixels. Chat and UI typography scale proportionally from this value."
+            resetAction={
+              settings.chatFontSizePx !== defaults.chatFontSizePx ? (
+                <SettingResetButton
+                  label="base font size"
+                  onClick={() =>
+                    updateSettings({
+                      chatFontSizePx: defaults.chatFontSizePx,
+                    })
+                  }
+                />
+              ) : null
+            }
+            control={
+              <div className="flex w-full items-center justify-end gap-2 sm:w-auto">
+                <Input
+                  type="number"
+                  size="sm"
+                  min={MIN_CHAT_FONT_SIZE_PX}
+                  max={MAX_CHAT_FONT_SIZE_PX}
+                  step={1}
+                  inputMode="numeric"
+                  variant="soft"
+                  className="w-full text-right sm:w-20"
+                  value={String(settings.chatFontSizePx)}
+                  onChange={(event) => {
+                    const nextValue = event.target.value.trim();
+                    if (nextValue.length === 0) return;
+                    updateSettings({
+                      chatFontSizePx: normalizeChatFontSizePx(Number(nextValue)),
+                    });
+                  }}
+                  aria-label="Base font size in pixels"
+                />
+                <span className="text-xs text-muted-foreground">px</span>
+              </div>
+            }
+          />
 
           <SettingsRow
             title="Terminal font size"
@@ -2117,52 +2066,40 @@ function SettingsRouteView() {
   const renderBehaviorPanel = () => (
     <div className="space-y-6">
       <SettingsSection title="Runtime behavior">
-        {!isTerminalMode &&
-          renderBooleanSettingRow({
-            settingKey: "enableAssistantStreaming",
-            title: "Assistant output",
-            description: "Show token-by-token output while a response is in progress.",
-            resetLabel: "assistant output",
-            ariaLabel: "Stream assistant messages",
-          })}
-
-        {!isTerminalMode &&
-          renderBooleanSettingRow({
-            settingKey: "diffWordWrap",
-            title: "Diff line wrapping",
-            description:
-              "Set the default wrap state when the diff panel opens. The in-panel wrap toggle only affects the current diff session.",
-            resetLabel: "diff line wrapping",
-            ariaLabel: "Wrap diff lines by default",
-          })}
+        {renderBooleanSettingRow({
+          settingKey: "enableAssistantStreaming",
+          title: "Assistant output",
+          description: "Show token-by-token output while a response is in progress.",
+          resetLabel: "assistant output",
+          ariaLabel: "Stream assistant messages",
+        })}
 
         {renderBooleanSettingRow({
-          settingKey: "enableComposerSuggestions",
-          title: "Prompt suggestions",
-          description: "Show suggested prompts under the composer when starting a new thread.",
-          resetLabel: "prompt suggestions",
-          ariaLabel: "Show composer prompt suggestions",
+          settingKey: "diffWordWrap",
+          title: "Diff line wrapping",
+          description:
+            "Set the default wrap state when the diff panel opens. The in-panel wrap toggle only affects the current diff session.",
+          resetLabel: "diff line wrapping",
+          ariaLabel: "Wrap diff lines by default",
         })}
       </SettingsSection>
 
       <SettingsSection title="Safety confirmations">
-        {!isTerminalMode &&
-          renderBooleanSettingRow({
-            settingKey: "confirmThreadDelete",
-            title: "Delete confirmation",
-            description: "Ask before deleting a thread and its chat history.",
-            resetLabel: "delete confirmation",
-            ariaLabel: "Confirm thread deletion",
-          })}
+        {renderBooleanSettingRow({
+          settingKey: "confirmThreadDelete",
+          title: "Delete confirmation",
+          description: "Ask before deleting a thread and its chat history.",
+          resetLabel: "delete confirmation",
+          ariaLabel: "Confirm thread deletion",
+        })}
 
-        {!isTerminalMode &&
-          renderBooleanSettingRow({
-            settingKey: "confirmThreadArchive",
-            title: "Archive confirmation",
-            description: "Ask before archiving a thread.",
-            resetLabel: "archive confirmation",
-            ariaLabel: "Confirm thread archive",
-          })}
+        {renderBooleanSettingRow({
+          settingKey: "confirmThreadArchive",
+          title: "Archive confirmation",
+          description: "Ask before archiving a thread.",
+          resetLabel: "archive confirmation",
+          ariaLabel: "Confirm thread archive",
+        })}
 
         {renderBooleanSettingRow({
           settingKey: "confirmTerminalTabClose",
@@ -2654,7 +2591,7 @@ function SettingsRouteView() {
       <SettingsSection title="Updates">
         <SettingsRow
           title="Provider updates"
-          description="Update installed provider tools that CTCode can safely update."
+          description="Update installed provider tools that FCode can safely update."
           status={
             outdatedProviderCount > 0
               ? `${outdatedProviderCount} ${pluralize(outdatedProviderCount, "update")} available`
@@ -2942,7 +2879,7 @@ function SettingsRouteView() {
                                     </code>
                                   </>
                                 ) : (
-                                  "A newer version is available, but CTCode could not identify a safe one-click update command for this installation."
+                                  "A newer version is available, but FCode could not identify a safe one-click update command for this installation."
                                 )}
                               </div>
                             ) : null}
@@ -3016,6 +2953,10 @@ function SettingsRouteView() {
                                   </span>
                                 ) : null}
                               </label>
+                            ) : null}
+
+                            {providerSettings.provider === "codex" ? (
+                              <CodexAccountsSettingsSection />
                             ) : null}
 
                             {providerSettings.agentDirKey ? (

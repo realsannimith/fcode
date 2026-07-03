@@ -761,6 +761,7 @@ function EventRouter() {
   const removeOrphanedTerminalStates = useTerminalStateStore(
     (store) => store.removeOrphanedTerminalStates,
   );
+  const seedTerminalEntryPoints = useTerminalStateStore((store) => store.seedTerminalEntryPoints);
   const setServerWorkspacePaths = useWorkspaceStore((store) => store.setServerWorkspacePaths);
   const workspacePages = useWorkspaceStore((store) => store.workspacePages);
   const serverThreads = useStore((store) => store.threads);
@@ -968,11 +969,12 @@ function EventRouter() {
     };
 
     const removeOrphanedTerminalsForCurrentState = () => {
+      const threads = useStore.getState().threads;
       const draftThreadIds = Object.keys(
         useComposerDraftStore.getState().draftThreadsByThreadId,
       ) as ThreadId[];
       const activeThreadIds = collectActiveTerminalThreadIds({
-        snapshotThreads: useStore.getState().threads.map((thread) => ({
+        snapshotThreads: threads.map((thread) => ({
           id: thread.id,
           deletedAt: null,
           archivedAt: thread.archivedAt ?? null,
@@ -989,6 +991,14 @@ function EventRouter() {
         activeThreadIds.add(dockTerminalThreadId(activeThreadId));
       }
       removeOrphanedTerminalStates(activeThreadIds);
+      // Server-created terminal threads must reopen as terminals even when the
+      // client-local terminal state is missing (fresh browser, cleared storage,
+      // or a previously pruned entry).
+      seedTerminalEntryPoints(
+        threads
+          .filter((thread) => thread.entryPoint === "terminal" && !thread.archivedAt)
+          .map((thread) => thread.id),
+      );
     };
 
     const flushPendingDomainEvents = () => {
@@ -1404,6 +1414,7 @@ function EventRouter() {
     navigate,
     queryClient,
     removeOrphanedTerminalStates,
+    seedTerminalEntryPoints,
     setProjectExpanded,
     setServerWorkspacePaths,
     syncServerShellSnapshot,

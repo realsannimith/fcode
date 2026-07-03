@@ -1,6 +1,6 @@
 # Brief: Fix & harden Profile-stats data layer (server + contract + query hooks)
 
-You are GPT-5.5 (xhigh) working in the Synara monorepo at `/Users/emanueledipietro/Developer/synara`.
+You are GPT-5.5 (xhigh) working in the FCode monorepo at `/Users/emanueledipietro/Developer/fcode`.
 A "Profile / stats" feature was just built. The DATA is wrong in three places and the loading is
 slow. Your job is the DATA/LOGIC/PERF layer ONLY. A separate agent (Opus) owns all React UI.
 
@@ -22,8 +22,8 @@ DO NOT TOUCH (Opus owns these — editing them will cause merge conflicts):
 
 ## Two databases to validate against (BOTH have live data)
 
-- BRANCH dev DB (what the dev instance uses): `./.synara/electron-dev/dev/state.sqlite`  (~40 turns)
-- REAL app DB: `~/.synara/userdata/state.sqlite`  (~437 turns, 192 MB) — the important one
+- BRANCH dev DB (what the dev instance uses): `./.fcode/electron-dev/dev/state.sqlite`  (~40 turns)
+- REAL app DB: `~/.fcode/userdata/state.sqlite`  (~437 turns, 192 MB) — the important one
 
 Use the `sqlite3` CLI to validate every query against BOTH before and after your change.
 

@@ -17,6 +17,7 @@ import {
   memo,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -26,6 +27,7 @@ import {
   type RefObject,
   type ReactNode,
 } from "react";
+import { computePinnedTurnBottomSpacerPx } from "../../chat-scroll";
 import {
   deriveTimelineEntries,
   formatClockElapsed,
@@ -82,6 +84,7 @@ import {
   resolveAssistantMessageCopyState,
   type StableMessagesTimelineRowsState,
 } from "./MessagesTimeline.logic";
+import { estimateFileChangeStat } from "../../lib/toolCallDetails";
 import { deriveReadableCommandDisplay } from "../../lib/toolCallLabel";
 import { openWorkspaceFileReference, useWorkspaceFileOpener } from "../../lib/workspaceFileOpener";
 import { isAgentActivityWorkEntry } from "./agentActivity.logic";
@@ -156,7 +159,17 @@ const EMPTY_THREAD_MARKERS_BY_MESSAGE_ID = new Map<MessageId, readonly ThreadMar
 export interface MessagesTimelineController {
   scrollToMessage: (messageId: MessageId) => void;
   scrollToMarker: (marker: ThreadMarker) => void;
+  /**
+   * Pin a just-sent user message to the top of the viewport and stream its reply beneath it.
+   * A bottom spacer is reserved so the message can reach the top even before the reply lands.
+   */
+  pinUserMessageToTop: (messageId: MessageId) => void;
+  /** Release any active top-pin so the transcript resumes normal follow-to-bottom behavior. */
+  clearPinnedUserMessage: () => void;
 }
+
+// Frames to keep retrying the initial pin scroll while the optimistic user row is still landing.
+const PIN_TO_TOP_MAX_RETRY_FRAMES = 30;
 
 const AgentTaskIcon: LucideIcon = (props) => (
   <RiRobot3Line className={props.className} style={props.style} />
@@ -259,6 +272,8 @@ interface MessagesTimelineProps {
   isRevertingCheckpoint: boolean;
   onImageExpand: (preview: ExpandedImagePreview) => void;
   onIsAtEndChange?: (isAtEnd: boolean) => void;
+  /** Reports whether a just-sent user message is currently pinned to the top of the viewport. */
+  onPinnedToTopChange?: (pinned: boolean) => void;
   onMessagesClickCapture?: ComponentProps<typeof LegendList>["onClickCapture"];
   onMessagesMouseUp?: ComponentProps<typeof LegendList>["onMouseUp"];
   onMessagesPointerCancel?: ComponentProps<typeof LegendList>["onPointerCancel"];
@@ -311,6 +326,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   isRevertingCheckpoint,
   onImageExpand,
   onIsAtEndChange,
+  onPinnedToTopChange,
   onMessagesClickCapture,
   onMessagesMouseUp,
   onMessagesPointerCancel,
@@ -447,10 +463,26 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   const fallbackListRef = useRef<LegendListRef | null>(null);
   const resolvedListRef = listRef ?? fallbackListRef;
   const timelineRootRef = useRef<HTMLDivElement | null>(null);
+  const footerRef = useRef<HTMLDivElement | null>(null);
   const bottomSpacerHeightPx = Math.max(bottomContentInsetPx ?? 0, MIN_BOTTOM_CONTENT_INSET_PX);
+  // When a just-sent user message is pinned to the top, the footer grows to reserve the space the
+  // message needs to reach the top; it shrinks back toward `bottomSpacerHeightPx` as the reply fills
+  // the viewport. `null` means no pin is active and the normal inset applies.
+  const [pinnedTurnSpacerPx, setPinnedTurnSpacerPx] = useState<number | null>(null);
+  const effectiveBottomSpacerHeightPx =
+    pinnedTurnSpacerPx != null
+      ? Math.max(pinnedTurnSpacerPx, bottomSpacerHeightPx)
+      : bottomSpacerHeightPx;
   const listFooter = useMemo(
-    () => <div aria-hidden="true" style={{ height: bottomSpacerHeightPx }} />,
-    [bottomSpacerHeightPx],
+    () => (
+      <div
+        ref={footerRef}
+        aria-hidden="true"
+        data-timeline-bottom-spacer="true"
+        style={{ height: effectiveBottomSpacerHeightPx }}
+      />
+    ),
+    [effectiveBottomSpacerHeightPx],
   );
 
   const rawRows = useMemo(
@@ -485,6 +517,150 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   useEffect(() => {
     rowsRef.current = rows;
   }, [rows]);
+
+  // ── Pin-to-top on send ──────────────────────────────────────────────────────────────────────
+  // When the user sends a message we scroll that message to the top of the viewport and let its
+  // reply stream in below it. `pinnedUserMessageId` drives the reserved footer space and flips the
+  // list from "follow the bottom" to "hold the visible anchor" so the message stays put.
+  const [pinnedUserMessageId, setPinnedUserMessageId] = useState<MessageId | null>(null);
+  const pinnedUserMessageIdRef = useRef<MessageId | null>(null);
+  const pinScrollFrameRef = useRef<number | null>(null);
+  const cancelPinScrollFrame = useCallback(() => {
+    if (pinScrollFrameRef.current !== null) {
+      window.cancelAnimationFrame(pinScrollFrameRef.current);
+      pinScrollFrameRef.current = null;
+    }
+  }, []);
+  // Recompute (and shrink) the reserved footer so the region below the pinned message stays exactly
+  // one viewport tall until the reply outgrows it, at which point the reserve collapses to the inset.
+  const recomputePinnedTurnSpacer = useCallback(
+    (messageId: MessageId) => {
+      const scrollNode = resolvedListRef.current?.getScrollableNode?.();
+      if (!(scrollNode instanceof HTMLElement)) return;
+      const viewportHeightPx = scrollNode.clientHeight;
+      if (viewportHeightPx <= 0) return;
+      const minBottomInsetPx = Math.max(bottomContentInsetPx ?? 0, MIN_BOTTOM_CONTENT_INSET_PX);
+      const rowEl = timelineRootRef.current?.querySelector<HTMLElement>(
+        `[data-message-id="${cssAttributeSelectorValue(messageId)}"]`,
+      );
+      // The message isn't rendered right now (e.g. scrolled far away) — keep the last reserve.
+      if (!rowEl) return;
+      const footerEl = footerRef.current;
+      let next: number;
+      if (footerEl) {
+        // The footer's top edge marks the bottom of the turn's real content; the gap up to the
+        // pinned message is everything below the pin we must not double-count when reserving space.
+        const contentBelowPinPx =
+          footerEl.getBoundingClientRect().top - rowEl.getBoundingClientRect().top;
+        next = computePinnedTurnBottomSpacerPx({
+          viewportHeightPx,
+          pinnedTurnContentHeightPx: contentBelowPinPx,
+          minBottomInsetPx,
+        });
+      } else {
+        // Footer virtualized away ⇒ the reply already exceeds the viewport ⇒ no extra reserve.
+        next = minBottomInsetPx;
+      }
+      setPinnedTurnSpacerPx((prev) => (prev != null && Math.abs(prev - next) < 0.5 ? prev : next));
+    },
+    [bottomContentInsetPx, resolvedListRef],
+  );
+  const clearPinnedUserMessage = useCallback(() => {
+    cancelPinScrollFrame();
+    if (pinnedUserMessageIdRef.current === null) return;
+    pinnedUserMessageIdRef.current = null;
+    setPinnedUserMessageId(null);
+    setPinnedTurnSpacerPx(null);
+  }, [cancelPinScrollFrame]);
+  const pinUserMessageToTop = useCallback(
+    (messageId: MessageId) => {
+      cancelPinScrollFrame();
+      pinnedUserMessageIdRef.current = messageId;
+      setPinnedUserMessageId(messageId);
+      // Reserve a generous slab immediately so the message can reach the top before its reply
+      // lands; the recompute below trims it to fit on the next frame.
+      const scrollNode = resolvedListRef.current?.getScrollableNode?.();
+      if (scrollNode instanceof HTMLElement && scrollNode.clientHeight > 0) {
+        setPinnedTurnSpacerPx(scrollNode.clientHeight);
+      }
+      let attempts = 0;
+      const attempt = () => {
+        pinScrollFrameRef.current = null;
+        if (pinnedUserMessageIdRef.current !== messageId) return;
+        const index = rowsRef.current.findIndex(
+          (row) => row.kind === "message" && row.message.id === messageId,
+        );
+        if (index < 0) {
+          attempts += 1;
+          if (attempts <= PIN_TO_TOP_MAX_RETRY_FRAMES) {
+            pinScrollFrameRef.current = window.requestAnimationFrame(attempt);
+          }
+          return;
+        }
+        void resolvedListRef.current?.scrollToIndex({ index, viewPosition: 0, animated: true });
+        pinScrollFrameRef.current = window.requestAnimationFrame(() => {
+          pinScrollFrameRef.current = null;
+          if (pinnedUserMessageIdRef.current !== messageId) return;
+          recomputePinnedTurnSpacer(messageId);
+        });
+      };
+      pinScrollFrameRef.current = window.requestAnimationFrame(attempt);
+    },
+    [cancelPinScrollFrame, recomputePinnedTurnSpacer, resolvedListRef],
+  );
+  useEffect(() => () => cancelPinScrollFrame(), [cancelPinScrollFrame]);
+  // Keep the reserve accurate as the reply streams in and on viewport resizes.
+  useLayoutEffect(() => {
+    if (pinnedUserMessageId === null) return;
+    recomputePinnedTurnSpacer(pinnedUserMessageId);
+  }, [pinnedUserMessageId, rows, timelineExtraData, recomputePinnedTurnSpacer]);
+  useEffect(() => {
+    if (pinnedUserMessageId === null) return;
+    const scrollNode = resolvedListRef.current?.getScrollableNode?.();
+    if (!(scrollNode instanceof HTMLElement) || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => {
+      const activeId = pinnedUserMessageIdRef.current;
+      if (activeId !== null) recomputePinnedTurnSpacer(activeId);
+    });
+    observer.observe(scrollNode);
+    return () => observer.disconnect();
+  }, [pinnedUserMessageId, recomputePinnedTurnSpacer, resolvedListRef]);
+  // Drop the pin once its message leaves the transcript (thread switch, revert, etc.).
+  useEffect(() => {
+    if (pinnedUserMessageId === null) return;
+    const stillPresent = rows.some(
+      (row) => row.kind === "message" && row.message.id === pinnedUserMessageId,
+    );
+    if (!stillPresent) clearPinnedUserMessage();
+  }, [rows, pinnedUserMessageId, clearPinnedUserMessage]);
+  useEffect(() => {
+    onPinnedToTopChange?.(pinnedUserMessageId !== null);
+  }, [pinnedUserMessageId, onPinnedToTopChange]);
+  // A deliberate scroll gesture hands control back to the reader and releases the pin.
+  const releasePinOnUserScroll = useCallback(() => {
+    if (pinnedUserMessageIdRef.current !== null) clearPinnedUserMessage();
+  }, [clearPinnedUserMessage]);
+  const handleWheelWithPinRelease = useCallback<
+    NonNullable<MessagesTimelineProps["onMessagesWheel"]>
+  >(
+    (event) => {
+      releasePinOnUserScroll();
+      onMessagesWheel?.(event);
+    },
+    [onMessagesWheel, releasePinOnUserScroll],
+  );
+  const handleTouchMoveWithPinRelease = useCallback<
+    NonNullable<MessagesTimelineProps["onMessagesTouchMove"]>
+  >(
+    (event) => {
+      releasePinOnUserScroll();
+      onMessagesTouchMove?.(event);
+    },
+    [onMessagesTouchMove, releasePinOnUserScroll],
+  );
+  const effectiveFollowLiveOutput = followLiveOutput && pinnedUserMessageId === null;
+  // ────────────────────────────────────────────────────────────────────────────────────────────
+
   const jumpHighlightTimeoutRef = useRef<number | null>(null);
   const markerFineScrollFrameRef = useRef<number | null>(null);
   // Marker spans currently carrying the deep-link "active" ring, tracked so the decoration can be
@@ -591,6 +767,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         clearJumpHighlightAfterDelay();
         scheduleMarkerFineScroll(marker);
       },
+      pinUserMessageToTop,
+      clearPinnedUserMessage,
     };
     controllerRef.current = controller;
     return () => {
@@ -598,7 +776,14 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         controllerRef.current = null;
       }
     };
-  }, [controllerRef, resolvedListRef, applyActiveMarkerDecoration, clearActiveMarkerDecoration]);
+  }, [
+    controllerRef,
+    resolvedListRef,
+    applyActiveMarkerDecoration,
+    clearActiveMarkerDecoration,
+    pinUserMessageToTop,
+    clearPinnedUserMessage,
+  ]);
   const tailContentRowId = useMemo(() => {
     for (let index = rows.length - 1; index >= 0; index -= 1) {
       const row = rows[index]!;
@@ -855,13 +1040,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
             userImages.length > 0;
           const isTailContentRow = row.id === tailContentRowId;
           return (
-            <div className="flex w-full justify-end">
-              <div
-                className={cn(
-                  "group flex flex-col items-end gap-px",
-                  isEditingThisMessage ? "w-full max-w-full" : "max-w-[80%]",
-                )}
-              >
+            <div className="flex w-full">
+              <div className="group flex w-full flex-col gap-px">
                 {/* Keep user-message chrome outside the bubble so the message reads as one simple block. */}
                 <UserDispatchModeChip
                   dispatchMode={row.message.dispatchMode}
@@ -928,7 +1108,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                 ) : showUserText ? (
                   <div
                     className={cn(
-                      "w-max max-w-full min-w-0 self-end bg-[var(--app-user-message-background)]",
+                      "w-full min-w-0 border border-border bg-[var(--app-user-message-background)]",
                       USER_MESSAGE_BUBBLE_RADIUS_CLASS_NAME,
                       bubbleIsChipOnly
                         ? "py-1 px-3.5"
@@ -1538,9 +1718,11 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         // has to be surfaced through extraData.
         extraData={timelineExtraData}
         initialScrollAtEnd
-        maintainScrollAtEnd={followLiveOutput}
+        // While a user message is pinned to the top we hold the visible anchor instead of chasing
+        // the bottom, so the message stays put as its reply streams in beneath it.
+        maintainScrollAtEnd={effectiveFollowLiveOutput}
         maintainScrollAtEndThreshold={0.1}
-        {...(!followLiveOutput ? { maintainVisibleContentPosition: true } : {})}
+        {...(!effectiveFollowLiveOutput ? { maintainVisibleContentPosition: true } : {})}
         onClickCapture={onMessagesClickCapture}
         onMouseUp={onMessagesMouseUp}
         onPointerCancel={onMessagesPointerCancel}
@@ -1548,9 +1730,9 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         onPointerUp={onMessagesPointerUp}
         onScroll={handleListScroll}
         onTouchEnd={onMessagesTouchEnd}
-        onTouchMove={onMessagesTouchMove}
+        onTouchMove={handleTouchMoveWithPinRelease}
         onTouchStart={onMessagesTouchStart}
-        onWheel={onMessagesWheel}
+        onWheel={handleWheelWithPinRelease}
         data-chat-scroll-container="true"
         ListFooterComponent={listFooter}
         className={cn(
@@ -2409,7 +2591,13 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
       {showEditedRows ? (
         <div className="space-y-0.5">
           {changedFiles.map((changedFilePath) => {
-            const changedFileStat = fileDiffStatByPath?.get(changedFilePath);
+            // Prefer the git-backed turn diff summary; fall back to counting
+            // before/after lines from the tool call payload itself so edits
+            // outside the project working tree (e.g. dotfiles in the user's
+            // home directory) still show a "+N -N" changes stat.
+            const changedFileStat =
+              fileDiffStatByPath?.get(changedFilePath) ??
+              estimateFileChangeStat(workEntry.toolDetails, changedFilePath);
             const canOpenEditedDiff = Boolean(turnId && onOpenTurnDiff);
             const canOpenEditedRow = canOpenToolDetails || canOpenEditedDiff;
             const editedRowClassName = cn(

@@ -134,16 +134,23 @@ export async function resolveAllowedLocalPreviewFile(input: {
     return resolved;
   }
 
-  // The generated-image and temp-dir roots exist for agent-produced images in
-  // chat markdown; keep them image-only so they never serve documents.
+  // The generated-image, temp-dir, and Downloads roots exist for
+  // agent-produced images in chat markdown; keep them image-only so they
+  // never serve documents.
   if (!isSupportedLocalImagePath(realFilePath)) {
     return null;
   }
   const generatedImagesRoots = await Promise.all(
     resolveCodexGeneratedImagesRoots(input.codexHomePath).map(realpathOrNull),
   ).then((roots) => roots.filter((root): root is string => root !== null));
+  // Users routinely ask agents to save generated images into ~/Downloads and
+  // the assistant markdown then references that absolute path, which sits
+  // outside every workspace root. Serve images from there so those previews
+  // render instead of 404ing into the error card.
+  const downloadsRoot = await realpathOrNull(path.join(os.homedir(), "Downloads"));
   const allowed =
     generatedImagesRoots.some((root) => isPathInside(realFilePath, root)) ||
-    tempRoots.some((root) => isPathInside(realFilePath, root));
+    tempRoots.some((root) => isPathInside(realFilePath, root)) ||
+    (downloadsRoot !== null && isPathInside(realFilePath, downloadsRoot));
   return allowed ? resolved : null;
 }

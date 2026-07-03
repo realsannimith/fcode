@@ -5,7 +5,7 @@
 
 import { defineConfig } from "tsdown";
 
-const sourcemapEnv = process.env.CTCODE_DESKTOP_SOURCEMAP?.trim().toLowerCase();
+const sourcemapEnv = process.env.FCODE_DESKTOP_SOURCEMAP?.trim().toLowerCase();
 const buildSourcemap = sourcemapEnv === "1" || sourcemapEnv === "true";
 
 const shared = {
