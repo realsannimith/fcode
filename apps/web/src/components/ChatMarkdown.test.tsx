@@ -21,11 +21,18 @@ async function renderMarkdown(
   text: string,
   cwd = "C:\\Users\\LENOVO\\dpcode",
   markers?: readonly ThreadMarker[],
+  onOpenExternalLink?: (url: string) => void,
 ) {
   const { default: ChatMarkdown } = await import("./ChatMarkdown");
 
   return renderToStaticMarkup(
-    <ChatMarkdown text={text} cwd={cwd} isStreaming={false} markers={markers} />,
+    <ChatMarkdown
+      text={text}
+      cwd={cwd}
+      isStreaming={false}
+      markers={markers}
+      onOpenExternalLink={onOpenExternalLink}
+    />,
   );
 }
 
@@ -89,6 +96,19 @@ describe("ChatMarkdown", () => {
       "inline-block size-[1em] shrink-0 align-middle -translate-y-px mr-0.5",
     );
     expect(markup).toContain("OpenAI benchmark");
+  });
+
+  it("lets chat surfaces route external assistant links through the in-app browser", async () => {
+    const markup = await renderMarkdown(
+      "Open [docs](https://example.com/docs).",
+      "/Users/tester/project",
+      undefined,
+      vi.fn(),
+    );
+
+    expect(markup).toContain('href="https://example.com/docs"');
+    expect(markup).not.toContain('target="_blank"');
+    expect(markup).not.toContain('rel="noopener noreferrer"');
   });
 
   it("keeps dollar signs in markdown file links from becoming math", async () => {

@@ -124,14 +124,19 @@ export function antigravityCapabilityResultFromModelsCommand(
 export const runAntigravityCliCommand = (input: {
   readonly binaryPath: string;
   readonly args: ReadonlyArray<string>;
+  readonly cwd?: string;
   readonly timeoutMs?: number;
 }) =>
   Effect.tryPromise({
     try: () =>
       new Promise<AntigravityCommandResult>((resolve, reject) => {
         const env = buildGeminiProbeEnv();
-        const prepared = prepareWindowsSafeProcess(input.binaryPath, [...input.args], { env });
+        const prepared = prepareWindowsSafeProcess(input.binaryPath, [...input.args], {
+          ...(input.cwd ? { cwd: input.cwd } : {}),
+          env,
+        });
         const child = spawn(prepared.command, prepared.args, {
+          ...(input.cwd ? { cwd: input.cwd } : {}),
           env,
           shell: prepared.shell,
           windowsHide: prepared.windowsHide,
@@ -182,7 +187,12 @@ export const runAntigravityCliCommand = (input: {
     catch: (cause) => (cause instanceof Error ? cause : new Error(String(cause))),
   });
 
-export const probeAntigravityCapabilities = (input: { readonly binaryPath: string }) =>
-  runAntigravityCliCommand({ binaryPath: input.binaryPath, args: ["models"] }).pipe(
-    Effect.map(antigravityCapabilityResultFromModelsCommand),
-  );
+export const probeAntigravityCapabilities = (input: {
+  readonly binaryPath: string;
+  readonly cwd?: string;
+}) =>
+  runAntigravityCliCommand({
+    binaryPath: input.binaryPath,
+    args: ["models"],
+    ...(input.cwd ? { cwd: input.cwd } : {}),
+  }).pipe(Effect.map(antigravityCapabilityResultFromModelsCommand));

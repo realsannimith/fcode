@@ -1863,6 +1863,287 @@ export const makeGitCore = (options?: { executeOverride?: GitCoreShape["execute"
         };
       });
 
+    // Verify a branch resolves to a commit and return its SHA. Shared by the merge
+    // conflict check and the ref-only merge below.
+    const resolveBranchCommit = (
+      operation: string,
+      cwd: string,
+      branch: string,
+    ): Effect.Effect<string, GitCommandError> =>
+      executeGit(operation, cwd, ["rev-parse", "--verify", "--quiet", `${branch}^{commit}`], {
+        timeoutMs: 5_000,
+        allowNonZeroExit: true,
+      }).pipe(
+        Effect.flatMap((result) =>
+          result.code === 0
+            ? Effect.succeed(result.stdout.trim())
+            : Effect.fail(
+                createGitCommandError(
+                  operation,
+                  cwd,
+                  ["rev-parse", "--verify", branch],
+                  `Branch "${branch}" does not resolve to a commit.`,
+                ),
+              ),
+        ),
+      );
+
+    // Run `git merge-tree --write-tree` — a merge simulation that never touches the
+    // working tree, index, or refs. Exit 0 = clean (first line is the merged tree OID);
+    // exit 1 = conflicts (following lines list conflicted paths); anything else is a
+    // real failure (e.g. Git < 2.38 lacks --write-tree).
+    const simulateMergeTree = (cwd: string, targetBranch: string, sourceBranch: string) =>
+      Effect.gen(function* () {
+        const args = [
+          "merge-tree",
+          "--write-tree",
+          "--name-only",
+          "--no-messages",
+          targetBranch,
+          sourceBranch,
+        ];
+        const result = yield* executeGit("GitCore.simulateMergeTree", cwd, args, {
+          timeoutMs: 30_000,
+          allowNonZeroExit: true,
+        });
+        if (result.code !== 0 && result.code !== 1) {
+          const stderr = result.stderr.trim();
+          const detail =
+            stderr.includes("unknown option") || stderr.includes("usage: git merge-tree")
+              ? "Merge conflict check requires Git 2.38 or newer (git merge-tree --write-tree)."
+              : stderr || "git merge-tree failed";
+          return yield* createGitCommandError("GitCore.simulateMergeTree", cwd, args, detail);
+        }
+        const lines = result.stdout
+          .split("\n")
+          .map((line) => line.trim())
+          .filter((line) => line.length > 0);
+        return {
+          mergeable: result.code === 0,
+          treeOid: lines[0] ?? null,
+          conflictingFiles: result.code === 1 ? [...new Set(lines.slice(1))] : [],
+        };
+      });
+
+    const checkMergeConflicts: GitCoreShape["checkMergeConflicts"] = (input) =>
+      Effect.gen(function* () {
+        const details = yield* statusDetails(input.cwd);
+        const sourceBranch = input.sourceBranch ?? details.branch;
+        if (!sourceBranch) {
+          return yield* createGitCommandError(
+            "GitCore.checkMergeConflicts",
+            input.cwd,
+            ["merge-tree"],
+            "Cannot check merge conflicts from a detached HEAD. Checkout a branch first.",
+          );
+        }
+        if (sourceBranch === input.targetBranch) {
+          return yield* createGitCommandError(
+            "GitCore.checkMergeConflicts",
+            input.cwd,
+            ["merge-tree"],
+            `Source and target branch are both ${sourceBranch}. Pick two different branches.`,
+          );
+        }
+        yield* resolveBranchCommit(
+          "GitCore.checkMergeConflicts.verifySource",
+          input.cwd,
+          sourceBranch,
+        );
+        yield* resolveBranchCommit(
+          "GitCore.checkMergeConflicts.verifyTarget",
+          input.cwd,
+          input.targetBranch,
+        );
+        const simulation = yield* simulateMergeTree(input.cwd, input.targetBranch, sourceBranch);
+        return {
+          sourceBranch,
+          targetBranch: input.targetBranch,
+          mergeable: simulation.mergeable,
+          conflictingFiles: simulation.conflictingFiles,
+          hasUncommittedChanges: details.hasWorkingTreeChanges,
+        };
+      });
+
+    const mergeBranch: GitCoreShape["mergeBranch"] = (input) =>
+      Effect.gen(function* () {
+        const { cwd, sourceBranch, targetBranch } = input;
+        if (sourceBranch === targetBranch) {
+          return yield* createGitCommandError(
+            "GitCore.mergeBranch",
+            cwd,
+            ["merge", sourceBranch],
+            `Source and target branch are both ${sourceBranch}. Pick two different branches.`,
+          );
+        }
+        const details = yield* statusDetails(cwd);
+        const sourceSha = yield* resolveBranchCommit(
+          "GitCore.mergeBranch.verifySource",
+          cwd,
+          sourceBranch,
+        );
+        const targetSha = yield* resolveBranchCommit(
+          "GitCore.mergeBranch.verifyTarget",
+          cwd,
+          targetBranch,
+        );
+        const targetIsCheckedOut = details.branch === targetBranch;
+
+        // `merge-base --is-ancestor` exits 0 when ancestor, 1 when not; anything else fails.
+        const isAncestor = (operation: string, ancestor: string, descendant: string) =>
+          executeGit(operation, cwd, ["merge-base", "--is-ancestor", ancestor, descendant], {
+            timeoutMs: 5_000,
+            allowNonZeroExit: true,
+          }).pipe(
+            Effect.flatMap((result) =>
+              result.code === 0 || result.code === 1
+                ? Effect.succeed(result.code === 0)
+                : Effect.fail(
+                    createGitCommandError(
+                      operation,
+                      cwd,
+                      ["merge-base", "--is-ancestor", ancestor, descendant],
+                      result.stderr.trim() || "git merge-base failed",
+                    ),
+                  ),
+            ),
+          );
+
+        // Pushes run only after a successful (or no-op) merge so conflicts leave the
+        // remote untouched. Failures are collected instead of failing the whole action.
+        const runRequestedPushes = Effect.gen(function* () {
+          const requested = [
+            ...(input.pushSourceBranch ? [sourceBranch] : []),
+            ...(input.pushTargetBranch ? [targetBranch] : []),
+          ];
+          const pushedBranches: string[] = [];
+          const pushFailures: string[] = [];
+          for (const branch of requested) {
+            const pushResult = yield* executeGit(
+              "GitCore.mergeBranch.push",
+              cwd,
+              ["push", "origin", branch],
+              { timeoutMs: 60_000, allowNonZeroExit: true },
+            );
+            if (pushResult.code === 0) {
+              pushedBranches.push(branch);
+            } else {
+              pushFailures.push(`${branch}: ${pushResult.stderr.trim() || "git push failed"}`);
+            }
+          }
+          return { pushedBranches, pushFailures };
+        });
+
+        if (yield* isAncestor("GitCore.mergeBranch.sourceIsAncestor", sourceSha, targetSha)) {
+          const pushes = yield* runRequestedPushes;
+          return {
+            status: "already_up_to_date" as const,
+            sourceBranch,
+            targetBranch,
+            fastForward: false,
+            mergeCommitSha: null,
+            conflictingFiles: [],
+            ...pushes,
+          };
+        }
+
+        const canFastForward = yield* isAncestor(
+          "GitCore.mergeBranch.targetIsAncestor",
+          targetSha,
+          sourceSha,
+        );
+        if (canFastForward) {
+          if (targetIsCheckedOut) {
+            // Updates the working tree too; git aborts on overlapping local changes.
+            yield* runGit("GitCore.mergeBranch.ffMerge", cwd, ["merge", "--ff-only", sourceBranch]);
+          } else {
+            // Ref-only fast-forward with a compare-and-swap guard on the old SHA.
+            yield* runGit("GitCore.mergeBranch.ffUpdateRef", cwd, [
+              "update-ref",
+              `refs/heads/${targetBranch}`,
+              sourceSha,
+              targetSha,
+            ]);
+          }
+          const pushes = yield* runRequestedPushes;
+          return {
+            status: "merged" as const,
+            sourceBranch,
+            targetBranch,
+            fastForward: true,
+            mergeCommitSha: sourceSha,
+            conflictingFiles: [],
+            ...pushes,
+          };
+        }
+
+        const simulation = yield* simulateMergeTree(cwd, targetBranch, sourceBranch);
+        if (!simulation.mergeable) {
+          return {
+            status: "conflicts" as const,
+            sourceBranch,
+            targetBranch,
+            fastForward: false,
+            mergeCommitSha: null,
+            conflictingFiles: simulation.conflictingFiles,
+            pushedBranches: [],
+            pushFailures: [],
+          };
+        }
+
+        let mergeCommitSha: string;
+        if (targetIsCheckedOut) {
+          yield* runGit("GitCore.mergeBranch.merge", cwd, [
+            "merge",
+            "--no-edit",
+            "--no-ff",
+            sourceBranch,
+          ]);
+          mergeCommitSha = yield* runGitStdout("GitCore.mergeBranch.mergedSha", cwd, [
+            "rev-parse",
+            "HEAD",
+          ]).pipe(Effect.map((stdout) => stdout.trim()));
+        } else {
+          if (!simulation.treeOid) {
+            return yield* createGitCommandError(
+              "GitCore.mergeBranch",
+              cwd,
+              ["merge-tree"],
+              "git merge-tree did not return a merged tree id.",
+            );
+          }
+          // Create the merge commit directly from the simulated tree and move the
+          // target ref (guarded by its old SHA); the working tree never changes.
+          mergeCommitSha = yield* runGitStdout("GitCore.mergeBranch.commitTree", cwd, [
+            "commit-tree",
+            simulation.treeOid,
+            "-p",
+            targetSha,
+            "-p",
+            sourceSha,
+            "-m",
+            `Merge branch '${sourceBranch}' into ${targetBranch}`,
+          ]).pipe(Effect.map((stdout) => stdout.trim()));
+          yield* runGit("GitCore.mergeBranch.updateRef", cwd, [
+            "update-ref",
+            `refs/heads/${targetBranch}`,
+            mergeCommitSha,
+            targetSha,
+          ]);
+        }
+
+        const pushes = yield* runRequestedPushes;
+        return {
+          status: "merged" as const,
+          sourceBranch,
+          targetBranch,
+          fastForward: false,
+          mergeCommitSha,
+          conflictingFiles: [],
+          ...pushes,
+        };
+      });
+
     const readRangeContext: GitCoreShape["readRangeContext"] = (cwd, baseBranch) =>
       Effect.gen(function* () {
         const range = `${baseBranch}..HEAD`;
@@ -2634,6 +2915,8 @@ export const makeGitCore = (options?: { executeOverride?: GitCoreShape["execute"
       commit,
       pushCurrentBranch,
       pullCurrentBranch,
+      checkMergeConflicts,
+      mergeBranch,
       readRangeContext,
       readConfigValue,
       listBranches,

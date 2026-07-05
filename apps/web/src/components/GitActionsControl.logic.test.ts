@@ -3,6 +3,7 @@ import { assert, describe, it } from "vitest";
 import {
   buildGitActionProgressStages,
   buildMenuItems,
+  buildMergeConflictResolutionPrompt,
   requiresFeatureBranchForDefaultBranchAction,
   requiresDefaultBranchConfirmation,
   resolveAutoFeatureBranchName,
@@ -1508,5 +1509,39 @@ describe("shouldOfferCreateBranchPrompt", () => {
         createBranchFlowCompleted: false,
       }),
     );
+  });
+});
+
+describe("buildMergeConflictResolutionPrompt", () => {
+  it("builds per-file rules that name the chosen branch", () => {
+    const prompt = buildMergeConflictResolutionPrompt({
+      sourceBranch: "feature/login",
+      targetBranch: "main",
+      files: [
+        { path: "src/auth.ts", choice: "source" },
+        { path: "src/routes.ts", choice: "target" },
+        { path: "src/app.ts", choice: "agent" },
+      ],
+      hasUncommittedChanges: false,
+    });
+
+    assert.include(prompt, "Merge branch `feature/login` into `main`");
+    assert.include(prompt, "- `src/auth.ts`: keep the version from `feature/login`");
+    assert.include(prompt, "- `src/routes.ts`: keep the version from `main`");
+    assert.include(prompt, "- `src/app.ts`: use your judgment to combine both sides correctly");
+    assert.include(prompt, "Do not push.");
+    assert.notInclude(prompt, "stash");
+  });
+
+  it("adds a stash step when the working tree has uncommitted changes", () => {
+    const prompt = buildMergeConflictResolutionPrompt({
+      sourceBranch: "feature/login",
+      targetBranch: "main",
+      files: [{ path: "src/auth.ts", choice: "agent" }],
+      hasUncommittedChanges: true,
+    });
+
+    assert.include(prompt, "stash them first");
+    assert.include(prompt, "git merge feature/login");
   });
 });

@@ -13,7 +13,7 @@ import { PROVIDER_USAGE_PROVIDERS, providerUsageDisplayName } from "@t3tools/sha
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useMemo, useState } from "react";
 
-import { useAppSettings } from "~/appSettings";
+import { resolveCodexUsageHomePath, useAppSettings } from "~/appSettings";
 import { useProviderUsageSummary } from "~/hooks/useProviderUsageSummary";
 import { RefreshCwIcon } from "~/lib/icons";
 import { openUsageQueryKeys } from "~/lib/openUsageReactQuery";
@@ -182,7 +182,7 @@ function SidebarProviderUsageChip({
 
 export function SidebarProviderUsageFooter() {
   const { settings } = useAppSettings();
-  const codexHomePath = settings.codexHomePath || null;
+  const codexHomePath = resolveCodexUsageHomePath(settings);
   const usageHiddenProviders = settings.usageHiddenProviders;
   const visibleProviders = useMemo(
     () => PROVIDER_USAGE_PROVIDERS.filter((provider) => !usageHiddenProviders.includes(provider)),
@@ -191,7 +191,7 @@ export function SidebarProviderUsageFooter() {
   const threads = useStore(useMemo(() => createAllThreadsSelector(), []));
   // Account/thread fallback rows are shared across every provider chip; derive once.
   const threadRateLimits = useMemo(() => deriveAccountRateLimits(threads), [threads]);
-  const usageQuery = useQuery(serverAllProviderUsageQueryOptions());
+  const usageQuery = useQuery(serverAllProviderUsageQueryOptions({ codexHomePath }));
   const snapshotByProvider = useMemo(() => {
     const map = new Map<ProviderKind, ServerProviderUsageSnapshot>();
     for (const snapshot of usageQuery.data ?? []) {

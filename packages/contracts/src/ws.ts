@@ -33,7 +33,9 @@ import {
 } from "./orchestration";
 import {
   GitActionProgressEvent,
+  GitCheckMergeConflictsInput,
   GitCheckoutInput,
+  GitMergeBranchInput,
   GitCreateBranchInput,
   GitCreateDetachedWorktreeInput,
   GitHubRepositoryInput,
@@ -142,6 +144,8 @@ export const WS_METHODS = {
   gitSummarizeDiff: "git.summarizeDiff",
   gitRunStackedAction: "git.runStackedAction",
   gitListBranches: "git.listBranches",
+  gitCheckMergeConflicts: "git.checkMergeConflicts",
+  gitMergeBranch: "git.mergeBranch",
   gitCreateWorktree: "git.createWorktree",
   gitCreateDetachedWorktree: "git.createDetachedWorktree",
   gitRemoveWorktree: "git.removeWorktree",
@@ -157,6 +161,7 @@ export const WS_METHODS = {
   gitHandoffThread: "git.handoffThread",
   gitResolvePullRequest: "git.resolvePullRequest",
   gitPreparePullRequestThread: "git.preparePullRequestThread",
+  gitCheckPullRequestConflicts: "git.checkPullRequestConflicts",
 
   // Terminal methods
   terminalOpen: "terminal.open",
@@ -293,6 +298,8 @@ const WebSocketRequestBody = Schema.Union([
   tagRequestBody(WS_METHODS.gitSummarizeDiff, GitSummarizeDiffInput),
   tagRequestBody(WS_METHODS.gitRunStackedAction, GitRunStackedActionInput),
   tagRequestBody(WS_METHODS.gitListBranches, GitListBranchesInput),
+  tagRequestBody(WS_METHODS.gitCheckMergeConflicts, GitCheckMergeConflictsInput),
+  tagRequestBody(WS_METHODS.gitMergeBranch, GitMergeBranchInput),
   tagRequestBody(WS_METHODS.gitCreateWorktree, GitCreateWorktreeInput),
   tagRequestBody(WS_METHODS.gitCreateDetachedWorktree, GitCreateDetachedWorktreeInput),
   tagRequestBody(WS_METHODS.gitRemoveWorktree, GitRemoveWorktreeInput),
@@ -308,6 +315,7 @@ const WebSocketRequestBody = Schema.Union([
   tagRequestBody(WS_METHODS.gitHandoffThread, GitHandoffThreadInput),
   tagRequestBody(WS_METHODS.gitResolvePullRequest, GitPullRequestRefInput),
   tagRequestBody(WS_METHODS.gitPreparePullRequestThread, GitPreparePullRequestThreadInput),
+  tagRequestBody(WS_METHODS.gitCheckPullRequestConflicts, GitPullRequestRefInput),
 
   // Terminal methods
   tagRequestBody(WS_METHODS.terminalOpen, TerminalOpenInput),

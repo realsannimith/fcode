@@ -10,8 +10,11 @@ import type {
   ServerListProviderUsageResult,
   ServerProviderUsageSnapshot,
 } from "@t3tools/contracts";
+import nodePath from "node:path";
+
 import { Effect } from "effect";
 
+import { expandHomePath } from "../codexHomePaths";
 import { ServerConfig } from "../config";
 import { loadLocalProviderUsageLines } from "../providerUsageSnapshot";
 import { errorSnapshot } from "./parse";
@@ -50,7 +53,13 @@ async function fetchProviderUsageCached(
     return null;
   }
 
-  const cacheKey = `${provider}:${ctx.homeDir}`;
+  // Codex usage is per-account: the selected account's home must key its own cache
+  // entry, otherwise switching accounts serves the previous account's snapshot for
+  // the TTL window.
+  const cacheKey =
+    provider === "codex" && ctx.codexHomePath
+      ? `${provider}:${ctx.homeDir}:${ctx.codexHomePath}`
+      : `${provider}:${ctx.homeDir}`;
   const existing = liveUsageCache.get(cacheKey);
   if (!options.forceRefresh && existing && existing.value && existing.expiresAtMs > ctx.nowMs) {
     return existing.value;
@@ -93,6 +102,7 @@ async function enrichWithLocalUsage(
   const localLines = await loadLocalProviderUsageLines({
     provider: snapshot.provider,
     homeDir: ctx.homeDir,
+    ...(snapshot.provider === "codex" && ctx.codexHomePath ? { homePath: ctx.codexHomePath } : {}),
   });
   if (localLines.length === 0) {
     return snapshot;
@@ -120,12 +130,18 @@ export async function collectProviderUsageSnapshots(
 
 export const listProviderUsage = Effect.fn(function* (input: ServerListProviderUsageInput) {
   const serverConfig = yield* ServerConfig;
+  // Settings-level account homes may be `~`-relative (the default shadow home is
+  // `~/.codex-accounts/<id>` when no shared home is configured); resolve before use.
+  const codexHomePath = input.codexHomePath?.trim()
+    ? nodePath.resolve(expandHomePath(input.codexHomePath.trim()))
+    : undefined;
   return yield* Effect.tryPromise({
     try: () =>
       collectProviderUsageSnapshots(
         {
           ...buildContext(),
           homeDir: serverConfig.homeDir,
+          ...(codexHomePath ? { codexHomePath } : {}),
         },
         { forceRefresh: input.forceRefresh === true },
       ),

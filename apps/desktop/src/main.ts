@@ -565,6 +565,21 @@ function captureBackendOutput(child: ChildProcess.ChildProcess): void {
   attachStream(child.stderr);
 }
 
+// When the process that launched us dies (e.g. the dev runner is stopped), our
+// stdout/stderr pipes close. The next write — often a Node warning — then emits an
+// async EPIPE error on the stream, which without a listener becomes an uncaught
+// exception and pops Electron's "JavaScript error in the main process" dialog.
+// Swallow EPIPE on stdio; rethrow anything else so real failures stay visible.
+function installStdIoEpipeGuard(): void {
+  for (const stream of [process.stdout, process.stderr]) {
+    stream.on("error", (error: NodeJS.ErrnoException) => {
+      if (error?.code === "EPIPE") return;
+      throw error;
+    });
+  }
+}
+
+installStdIoEpipeGuard();
 initializePackagedLogging();
 
 function getDestructiveMenuIcon(): Electron.NativeImage | undefined {

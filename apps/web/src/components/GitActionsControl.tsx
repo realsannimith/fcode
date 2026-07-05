@@ -16,6 +16,7 @@ import {
   CloudSyncIcon,
   GitBranchIcon,
   GitCommitIcon,
+  GitMergeIcon,
   InfoIcon,
   type LucideIcon,
   PushIcon,
@@ -94,6 +95,8 @@ import {
 } from "~/lib/gitReactQuery";
 import { cn, newCommandId, randomUUID } from "~/lib/utils";
 import { resolvePathLinkTarget } from "~/terminal-links";
+import { MergeConflictCheckDialog } from "./MergeConflictCheckDialog";
+import { PullRequestConflictDialog } from "./PullRequestConflictDialog";
 import { readNativeApi } from "~/nativeApi";
 import { createThreadSelector } from "~/storeSelectors";
 import { useStore } from "~/store";
@@ -144,11 +147,19 @@ interface RunGitActionWithToastInput {
 }
 
 interface GitPickerMenuItem {
-  id: "push" | "pr" | "sync" | "commit" | "commit_push" | "create_branch";
+  id:
+    | "push"
+    | "pr"
+    | "sync"
+    | "commit"
+    | "commit_push"
+    | "create_branch"
+    | "merge_check"
+    | "pr_conflicts";
   label: string;
   disabled: boolean;
   disabledReason: string | null;
-  icon: GitActionIconName | "sync" | "branch";
+  icon: GitActionIconName | "sync" | "branch" | "merge";
   onSelect: () => void;
 }
 
@@ -261,7 +272,7 @@ const GIT_ACTION_ICON_CLASS = "size-3.5";
 /** Semantic name → glyph for every git affordance. Single source of truth shared by
  *  the header quick action and the dropdown picker rows so the same action always
  *  renders the same icon (e.g. push-family → the cloud PushIcon, PR → GitHub mark). */
-type GitGlyphName = GitActionIconName | "sync" | "branch";
+type GitGlyphName = GitActionIconName | "sync" | "branch" | "merge";
 
 const GIT_ACTION_GLYPH: Record<GitGlyphName, LucideIcon> = {
   commit: GitCommitIcon,
@@ -269,6 +280,7 @@ const GIT_ACTION_GLYPH: Record<GitGlyphName, LucideIcon> = {
   pr: GitHubIcon,
   sync: CloudSyncIcon,
   branch: GitBranchIcon,
+  merge: GitMergeIcon,
 };
 
 function GitActionGlyph({ name, className }: { name: GitGlyphName; className?: string }) {
@@ -332,6 +344,8 @@ export default function GitActionsControl({
     useState<PendingDefaultBranchAction | null>(null);
   const [isCreateBranchDialogOpen, setIsCreateBranchDialogOpen] = useState(false);
   const [createBranchName, setCreateBranchName] = useState("");
+  const [isMergeCheckDialogOpen, setIsMergeCheckDialogOpen] = useState(false);
+  const [isPrConflictDialogOpen, setIsPrConflictDialogOpen] = useState(false);
   const activeGitActionProgressRef = useRef<ActiveGitActionProgress | null>(null);
 
   const updateActiveProgressToast = useCallback(() => {
@@ -922,6 +936,23 @@ export default function GitActionsControl({
     setIsCreateBranchDialogOpen(true);
   }, [suggestedCreateBranchName]);
 
+  // Local branches the current branch could merge into (merge-tree needs commits, not remotes).
+  const mergeTargetBranchOptions = useMemo(
+    () =>
+      (branchList?.branches ?? [])
+        .filter((branch) => !branch.isRemote && !branch.current)
+        .map((branch) => branch.name),
+    [branchList?.branches],
+  );
+
+  const openMergeCheckDialog = useCallback(() => {
+    setIsMergeCheckDialogOpen(true);
+  }, []);
+
+  const openPrConflictDialog = useCallback(() => {
+    setIsPrConflictDialogOpen(true);
+  }, []);
+
   const runQuickAction = useCallback(() => {
     if (quickAction.kind === "open_pr") {
       void openExistingPr();
@@ -1172,6 +1203,44 @@ export default function GitActionsControl({
       });
     }
 
+    const mergeCheckDisabled =
+      isGitActionRunning ||
+      !gitStatusForActions ||
+      !currentBranchName ||
+      mergeTargetBranchOptions.length === 0;
+    items.push({
+      id: "merge_check",
+      label: "Merge Branch",
+      disabled: mergeCheckDisabled,
+      disabledReason: mergeCheckDisabled
+        ? isGitActionRunning
+          ? "Git action in progress."
+          : !gitStatusForActions
+            ? "Git status is unavailable."
+            : !currentBranchName
+              ? "Detached HEAD: checkout a branch to merge branches."
+              : "No other local branches to merge into."
+        : null,
+      icon: "merge",
+      onSelect: openMergeCheckDialog,
+    });
+
+    const prConflictsDisabled = isGitActionRunning || !gitStatusForActions || !hasOriginRemote;
+    items.push({
+      id: "pr_conflicts",
+      label: "Resolve PR Conflicts",
+      disabled: prConflictsDisabled,
+      disabledReason: prConflictsDisabled
+        ? isGitActionRunning
+          ? "Git action in progress."
+          : !gitStatusForActions
+            ? "Git status is unavailable."
+            : "Requires a GitHub remote (origin)."
+        : null,
+      icon: "pr",
+      onSelect: openPrConflictDialog,
+    });
+
     items.push({
       id: "create_branch",
       label: "Create Branch",
@@ -1187,12 +1256,16 @@ export default function GitActionsControl({
 
     return items;
   }, [
+    currentBranchName,
     gitActionMenuItems,
     gitStatusForActions,
     hasOriginRemote,
     isGitActionRunning,
+    mergeTargetBranchOptions,
     openCreateBranchDialog,
     openDialogForMenuItem,
+    openMergeCheckDialog,
+    openPrConflictDialog,
     runSyncWithRemote,
   ]);
 
@@ -1578,6 +1651,21 @@ export default function GitActionsControl({
           </DialogPanel>
         </DialogPopup>
       </Dialog>
+
+      <MergeConflictCheckDialog
+        cwd={gitCwd}
+        activeThreadId={activeThreadId}
+        open={isMergeCheckDialogOpen}
+        onOpenChange={setIsMergeCheckDialogOpen}
+      />
+
+      <PullRequestConflictDialog
+        cwd={gitCwd}
+        activeThreadId={activeThreadId}
+        initialReference={gitStatusForActions?.pr ? String(gitStatusForActions.pr.number) : null}
+        open={isPrConflictDialogOpen}
+        onOpenChange={setIsPrConflictDialogOpen}
+      />
     </>
   );
 

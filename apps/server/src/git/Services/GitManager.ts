@@ -8,6 +8,7 @@
  */
 import {
   GitActionProgressEvent,
+  GitCheckPullRequestConflictsResult,
   GitHandoffThreadInput,
   GitHandoffThreadResult,
   GitPreparePullRequestThreadInput,
@@ -74,6 +75,14 @@ export interface GitManagerShape {
   readonly preparePullRequestThread: (
     input: GitPreparePullRequestThreadInput,
   ) => Effect.Effect<GitPreparePullRequestThreadResult, GitManagerServiceError>;
+
+  /**
+   * Simulate merging a pull request's head into its base branch to detect conflicts,
+   * without touching the working tree or checkout.
+   */
+  readonly checkPullRequestConflicts: (
+    input: GitPullRequestRefInput,
+  ) => Effect.Effect<GitCheckPullRequestConflictsResult, GitManagerServiceError>;
 
   /**
    * Move a thread between Local and Worktree while preserving recoverable Git state.

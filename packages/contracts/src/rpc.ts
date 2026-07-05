@@ -35,8 +35,13 @@ import {
   GitHandoffThreadInput,
   GitHandoffThreadResult,
   GitInitInput,
+  GitCheckMergeConflictsInput,
+  GitCheckMergeConflictsResult,
+  GitCheckPullRequestConflictsResult,
   GitListBranchesInput,
   GitListBranchesResult,
+  GitMergeBranchInput,
+  GitMergeBranchResult,
   GitPreparePullRequestThreadInput,
   GitPreparePullRequestThreadResult,
   GitPullInput,
@@ -402,9 +407,27 @@ export const WsGitPreparePullRequestThreadRpc = Rpc.make(WS_METHODS.gitPreparePu
   error: WsRpcError,
 });
 
+export const WsGitCheckPullRequestConflictsRpc = Rpc.make(WS_METHODS.gitCheckPullRequestConflicts, {
+  payload: GitPullRequestRefInput,
+  success: GitCheckPullRequestConflictsResult,
+  error: WsRpcError,
+});
+
 export const WsGitListBranchesRpc = Rpc.make(WS_METHODS.gitListBranches, {
   payload: GitListBranchesInput,
   success: GitListBranchesResult,
+  error: WsRpcError,
+});
+
+export const WsGitCheckMergeConflictsRpc = Rpc.make(WS_METHODS.gitCheckMergeConflicts, {
+  payload: GitCheckMergeConflictsInput,
+  success: GitCheckMergeConflictsResult,
+  error: WsRpcError,
+});
+
+export const WsGitMergeBranchRpc = Rpc.make(WS_METHODS.gitMergeBranch, {
+  payload: GitMergeBranchInput,
+  success: GitMergeBranchResult,
   error: WsRpcError,
 });
 
@@ -848,7 +871,10 @@ export const WsRpcGroup = RpcGroup.make(
   WsGitRunStackedActionRpc,
   WsGitResolvePullRequestRpc,
   WsGitPreparePullRequestThreadRpc,
+  WsGitCheckPullRequestConflictsRpc,
   WsGitListBranchesRpc,
+  WsGitCheckMergeConflictsRpc,
+  WsGitMergeBranchRpc,
   WsGitCreateWorktreeRpc,
   WsGitCreateDetachedWorktreeRpc,
   WsGitRemoveWorktreeRpc,

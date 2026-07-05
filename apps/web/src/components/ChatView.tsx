@@ -1715,6 +1715,7 @@ export default function ChatView({
     providerModelsQueryOptions({
       provider: "gemini",
       binaryPath: settings.geminiBinaryPath || null,
+      cwd: providerModelDiscoveryCwd,
       enabled: selectedProvider === "gemini" || lockedProvider === "gemini",
     }),
   );
@@ -3307,8 +3308,6 @@ export default function ChatView({
     (terminalState.workspaceLayout === "terminal-only" ||
       terminalState.workspaceActiveTab === "terminal");
   const isTerminalPrimarySurface = terminalState.entryPoint === "terminal";
-  const isTerminalEnvironmentContext =
-    isTerminalPrimarySurface || terminalWorkspaceTerminalTabActive;
   const shouldShowProviderHealthBanner = shouldRenderProviderHealthBanner({
     threadEntryPoint: terminalState.entryPoint,
     terminalWorkspaceTerminalTabActive,
@@ -3803,7 +3802,7 @@ export default function ChatView({
   const isDisposableThread = useIsDisposableThread(threadId);
   const environmentEnabled = !isDisposableThread && !isEditorRail;
   const environmentUsesFloatingOverlay =
-    isTerminalEnvironmentContext || isMobileViewport || rightDockOpen || surfaceMode === "split";
+    isMobileViewport || rightDockOpen || surfaceMode === "split";
   const environmentDefaultOpen = resolveDefaultEnvironmentPanelOpen({
     environmentEnabled,
     isCenteredEmptyLanding,
@@ -9339,7 +9338,8 @@ export default function ChatView({
   };
   // Full-width single chat: overlay plus transcript/composer inset. Floating overlay when the
   // column is already narrow — right dock open or a split pane (same as header compact mode).
-  // Terminal surfaces always float so opening Environment never resizes the terminal workspace.
+  // Terminal surfaces push too: the workspace container honors the same inset, and the
+  // terminal grid re-fits itself once the 300ms slide settles (see terminalRuntime).
   const environmentAppliesContentInset = environmentPanelVisible && !environmentUsesFloatingOverlay;
   const environmentOverlayVariant = environmentUsesFloatingOverlay ? "floating" : "docked";
   const environmentHeaderState = environmentEnabled
@@ -9893,6 +9893,7 @@ export default function ChatView({
                     onOpenTurnDiff={onOpenTurnDiff}
                     onOpenThread={onNavigateToThread}
                     onOpenAutomation={onOpenAutomation}
+                    onOpenExternalLink={openBrowserUrl}
                     revertTurnCountByUserMessageId={revertTurnCountByUserMessageId}
                     onRevertUserMessage={onRevertUserMessage}
                     onEditUserMessage={onEditUserMessage}
@@ -10001,15 +10002,26 @@ export default function ChatView({
                   : "pointer-events-none translate-y-1 opacity-0",
               )}
             >
-              <ThreadTerminalDrawer
-                key={`${activeThread.id}-workspace`}
-                {...terminalDrawerProps}
-                presentationMode="workspace"
-                isVisible={terminalWorkspaceTerminalTabActive}
-                onTogglePresentationMode={
-                  terminalState.workspaceLayout === "both" ? collapseTerminalWorkspace : undefined
+              {/* Same docked-panel push as the transcript/composer; the terminal grid
+                  re-fits automatically once the padding transition settles. */}
+              <div
+                className={cn("h-full min-h-0 min-w-0", ENVIRONMENT_CONTENT_INSET_MOTION_CLASS)}
+                style={
+                  environmentAppliesContentInset
+                    ? { paddingRight: ENVIRONMENT_DOCKED_CONTENT_INSET_PX }
+                    : undefined
                 }
-              />
+              >
+                <ThreadTerminalDrawer
+                  key={`${activeThread.id}-workspace`}
+                  {...terminalDrawerProps}
+                  presentationMode="workspace"
+                  isVisible={terminalWorkspaceTerminalTabActive}
+                  onTogglePresentationMode={
+                    terminalState.workspaceLayout === "both" ? collapseTerminalWorkspace : undefined
+                  }
+                />
+              </div>
             </div>
           ) : null}
 

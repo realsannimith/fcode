@@ -898,6 +898,22 @@ export function resolveActiveCodexAccount(
   };
 }
 
+/**
+ * Effective Codex home for usage queries: the active account's home when one is
+ * selected (so usage reflects that account's login), otherwise the shared home.
+ * Null when neither is configured (the server falls back to `~/.codex`).
+ */
+export function resolveCodexUsageHomePath(
+  settings: Pick<AppSettings, "codexAccounts" | "codexActiveAccountId" | "codexHomePath">,
+): string | null {
+  const activeAccount = resolveActiveCodexAccount(settings);
+  if (activeAccount) {
+    return activeAccount.homePath;
+  }
+  const sharedHome = settings.codexHomePath.trim();
+  return sharedHome.length > 0 ? sharedHome : null;
+}
+
 export function getProviderStartOptions(
   settings: Pick<
     AppSettings,

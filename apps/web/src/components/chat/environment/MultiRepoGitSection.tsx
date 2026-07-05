@@ -37,11 +37,14 @@ import {
   EllipsisIcon,
   FolderClosedIcon,
   GitCommitIcon,
+  GitMergeIcon,
   LoaderCircleIcon,
   PushIcon,
 } from "~/lib/icons";
 import { cn, randomUUID } from "~/lib/utils";
 import { ensureNativeApi } from "~/nativeApi";
+
+import { MergeConflictCheckDialog } from "../../MergeConflictCheckDialog";
 
 import {
   ENVIRONMENT_ROW_ICON_CLASS_NAME,
@@ -79,6 +82,7 @@ export function MultiRepoGitSection({ gitCwd, activeThreadId }: MultiRepoGitSect
   const [busyPaths, setBusyPaths] = useState<ReadonlySet<string>>(() => new Set());
   const [commitDialog, setCommitDialog] = useState<CommitDialogState | null>(null);
   const [dialogMessage, setDialogMessage] = useState("");
+  const [mergeCheckRepoPath, setMergeCheckRepoPath] = useState<string | null>(null);
 
   // Only surface for container folders: when the root itself is a repo, the standard
   // single-repo controls already cover it.
@@ -203,8 +207,18 @@ export function MultiRepoGitSection({ gitCwd, activeThreadId }: MultiRepoGitSect
           onCommit={() => openCommitDialog({ target: repo, action: "commit" })}
           onCommitPush={() => openCommitDialog({ target: repo, action: "commit_push" })}
           onPush={() => void runAction([repo], "push", `Push ${repo.name}`)}
+          onCheckMergeConflicts={() => setMergeCheckRepoPath(repo.path)}
         />
       ))}
+
+      <MergeConflictCheckDialog
+        cwd={mergeCheckRepoPath}
+        activeThreadId={activeThreadId}
+        open={mergeCheckRepoPath !== null}
+        onOpenChange={(open) => {
+          if (!open) setMergeCheckRepoPath(null);
+        }}
+      />
 
       <Dialog
         open={commitDialog !== null}
@@ -264,6 +278,7 @@ interface RepoStatusRowProps {
   readonly onCommit: () => void;
   readonly onCommitPush: () => void;
   readonly onPush: () => void;
+  readonly onCheckMergeConflicts: () => void;
 }
 
 function RepoStatusRow({
@@ -273,6 +288,7 @@ function RepoStatusRow({
   onCommit,
   onCommitPush,
   onPush,
+  onCheckMergeConflicts,
 }: RepoStatusRowProps) {
   const { data: status = null } = useQuery(gitStatusQueryOptions(repo.path));
   const hasChanges = status?.hasWorkingTreeChanges ?? false;
@@ -335,6 +351,11 @@ function RepoStatusRow({
             <MenuItem disabled={!canPush} onClick={onPush}>
               <PushIcon className="size-3.5" aria-hidden />
               <span className="flex-1">Push</span>
+            </MenuItem>
+            <MenuSeparator />
+            <MenuItem onClick={onCheckMergeConflicts}>
+              <GitMergeIcon className="size-3.5" aria-hidden />
+              <span className="flex-1">Merge branch…</span>
             </MenuItem>
           </MenuPopup>
         </Menu>

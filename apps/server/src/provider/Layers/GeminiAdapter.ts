@@ -43,7 +43,7 @@ import { prepareWindowsSafeProcess } from "@t3tools/shared/windowsProcess";
 import { Effect, FileSystem, Layer, Queue, Stream } from "effect";
 
 import { resolveAttachmentPath } from "../../attachmentStore.ts";
-import { ServerConfig } from "../../config.ts";
+import { ServerConfig, type ServerConfigShape } from "../../config.ts";
 import { appendFileAttachmentsPromptBlock } from "../attachmentProjection.ts";
 import {
   ProviderAdapterProcessError,
@@ -60,6 +60,7 @@ import {
   resolveGeminiCli,
 } from "../geminiCli.ts";
 import { GeminiAdapter, type GeminiAdapterShape } from "../Services/GeminiAdapter.ts";
+import { buildProviderBrowserAndSkillPrompt } from "../browserUsePrompt.ts";
 import { asArray, asNumber, asRecord, asString, trimToUndefined } from "../geminiValue.ts";
 import { extractProposedPlanMarkdown, withProviderPlanModePrompt } from "../planMode.ts";
 import { killChildProcess } from "../processControl.ts";
@@ -93,6 +94,19 @@ type GeminiToolKind =
   | "other";
 type GeminiToolStatus = "pending" | "in_progress" | "completed" | "failed";
 type GeminiPermissionOptionKind = "allow_once" | "allow_always" | "reject_once" | "reject_always";
+
+export function resolveGeminiSessionCwd(
+  inputCwd: string | undefined,
+  serverConfig: ServerConfigShape,
+): string {
+  const requestedCwd = inputCwd?.trim();
+  if (requestedCwd) {
+    return path.resolve(requestedCwd);
+  }
+
+  const fallbackCwd = serverConfig.cwd.trim() || serverConfig.homeDir.trim() || process.cwd();
+  return path.resolve(fallbackCwd);
+}
 
 interface GeminiPermissionOption {
   readonly optionId: string;
@@ -872,6 +886,7 @@ const makeGeminiAdapter = Effect.fn("makeGeminiAdapter")(function* (
   // run turn-by-turn in print mode instead of over a long-lived ACP process.
   const antigravityRuntime = makeGeminiAntigravityRuntime({
     attachmentsDir: serverConfig.attachmentsDir,
+    fcodeBaseDir: serverConfig.baseDir,
     emitEvent: offerRuntimeEvent,
     writeNativeRecord,
   });
@@ -2012,8 +2027,26 @@ const makeGeminiAdapter = Effect.fn("makeGeminiAdapter")(function* (
         interactionMode: input.interactionMode,
       }),
     );
+    const browserAndSkillPrompt = yield* Effect.tryPromise({
+      try: () =>
+        buildProviderBrowserAndSkillPrompt({
+          provider: PROVIDER,
+          fcodeBaseDir: serverConfig.baseDir,
+          skills: input.skills,
+          maxChars: 24_000,
+        }),
+      catch: (cause) =>
+        new ProviderAdapterRequestError({
+          provider: PROVIDER,
+          method: "turn/start",
+          detail: "Failed to prepare provider skill instructions.",
+          cause,
+        }),
+    });
     const promptText = appendFileAttachmentsPromptBlock({
-      text: planPromptText,
+      text: [browserAndSkillPrompt, planPromptText]
+        .filter((text): text is string => Boolean(text?.trim()))
+        .join("\n\nUser request:\n"),
       attachments: input.attachments,
       attachmentsDir: serverConfig.attachmentsDir,
       include: "all-files",
@@ -2122,6 +2155,8 @@ const makeGeminiAdapter = Effect.fn("makeGeminiAdapter")(function* (
 
       const configuredBinaryPath = trimToUndefined(input.providerOptions?.gemini?.binaryPath);
       const resolvedCli = resolveGeminiCli(configuredBinaryPath);
+      const cwd = resolveGeminiSessionCwd(input.cwd, serverConfig);
+      const startInput = { ...input, cwd };
 
       // Threads started on the Antigravity runtime stay on it: their resume
       // cursor holds an agy conversation id that the ACP runtime cannot load.
@@ -2131,7 +2166,7 @@ const makeGeminiAdapter = Effect.fn("makeGeminiAdapter")(function* (
             ? resolvedCli
             : resolveGeminiCli(ANTIGRAVITY_CLI_BINARY);
         if (antigravityCli) {
-          return yield* antigravityRuntime.startSession(input, antigravityCli.binaryPath);
+          return yield* antigravityRuntime.startSession(startInput, antigravityCli.binaryPath);
         }
       }
 
@@ -2144,10 +2179,9 @@ const makeGeminiAdapter = Effect.fn("makeGeminiAdapter")(function* (
       }
 
       if (resolvedCli.flavor === "antigravity") {
-        return yield* antigravityRuntime.startSession(input, resolvedCli.binaryPath);
+        return yield* antigravityRuntime.startSession(startInput, resolvedCli.binaryPath);
       }
 
-      const cwd = input.cwd ?? process.cwd();
       const binaryPath = resolvedCli.binaryPath;
       const runtimeModeId = runtimeModeToGeminiModeId(input.runtimeMode);
       const selectedGeminiModel =
@@ -2583,13 +2617,14 @@ const makeGeminiAdapter = Effect.fn("makeGeminiAdapter")(function* (
 
   const listModels: NonNullable<GeminiAdapterShape["listModels"]> = (input) => {
     const resolvedCli = resolveGeminiCli(trimToUndefined(input.binaryPath));
+    const cwd = resolveGeminiSessionCwd(input.cwd, serverConfig);
     if (resolvedCli?.flavor === "antigravity") {
-      return antigravityRuntime.listModels(resolvedCli.binaryPath);
+      return antigravityRuntime.listModels({ binaryPath: resolvedCli.binaryPath, cwd });
     }
 
     return probeGeminiCapabilities({
       binaryPath: resolvedCli?.binaryPath ?? trimToUndefined(input.binaryPath) ?? "gemini",
-      cwd: os.homedir(),
+      cwd,
     }).pipe(
       Effect.map(
         (result) =>

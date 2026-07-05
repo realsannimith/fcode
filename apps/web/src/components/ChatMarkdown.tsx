@@ -85,6 +85,7 @@ interface ChatMarkdownProps {
   isStreaming?: boolean;
   className?: string | undefined;
   style?: CSSProperties | undefined;
+  onOpenExternalLink?: ((url: string) => void) | undefined;
   onImageExpand?: ((preview: ExpandedImagePreview) => void) | undefined;
   markers?: readonly ThreadMarker[] | undefined;
   /**
@@ -952,6 +953,7 @@ function ChatMarkdown({
   isStreaming = false,
   className = "text-sm leading-relaxed",
   style,
+  onOpenExternalLink,
   onImageExpand,
   markers,
   onTaskToggle,
@@ -992,8 +994,18 @@ function ChatMarkdown({
             <a
               {...props}
               href={restoredHref}
-              target="_blank"
-              rel="noopener noreferrer"
+              {...(isExternalHttp && onOpenExternalLink
+                ? {
+                    onClick: (event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      onOpenExternalLink(restoredHref);
+                    },
+                  }
+                : {
+                    target: "_blank",
+                    rel: "noopener noreferrer",
+                  })}
               className={isExternalHttp ? MARKDOWN_EXTERNAL_LINK_CLASS_NAME : props.className}
             >
               {isExternalHttp ? (
@@ -1100,7 +1112,15 @@ function ChatMarkdown({
         return <input {...props} />;
       },
     }),
-    [cwd, diffThemeName, isStreaming, onImageExpand, onTaskToggle, resolvedTheme],
+    [
+      cwd,
+      diffThemeName,
+      isStreaming,
+      onImageExpand,
+      onOpenExternalLink,
+      onTaskToggle,
+      resolvedTheme,
+    ],
   );
 
   return (

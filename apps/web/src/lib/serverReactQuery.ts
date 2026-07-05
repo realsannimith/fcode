@@ -20,7 +20,12 @@ export const serverQueryKeys = {
   localServers: () => ["server", "localServers"] as const,
   providerUsage: (provider: ProviderKind | null | undefined, homePath?: string | null) =>
     ["server", "providerUsage", provider ?? null, homePath ?? null] as const,
-  allProviderUsage: () => ["server", "allProviderUsage"] as const,
+  // No-arg form is the invalidation prefix; with an argument the key pins the Codex
+  // home (active account) the batch was fetched for, so switching accounts refetches.
+  allProviderUsage: (codexHomePath?: string | null) =>
+    codexHomePath === undefined
+      ? (["server", "allProviderUsage"] as const)
+      : (["server", "allProviderUsage", codexHomePath] as const),
   profileStats: (utcOffsetMinutes: number) =>
     ["server", "profileStats", "peak-hour-v2", utcOffsetMinutes] as const,
   profileTokenStats: (utcOffsetMinutes: number) =>
@@ -199,16 +204,18 @@ export function serverAllProviderUsageQueryOptions(
     | boolean
     | {
         enabled?: boolean;
+        codexHomePath?: string | null;
       } = true,
 ) {
   const enabled = typeof input === "boolean" ? input : (input.enabled ?? true);
+  const codexHomePath = typeof input === "boolean" ? null : (input.codexHomePath ?? null);
   return queryOptions({
-    queryKey: serverQueryKeys.allProviderUsage(),
+    queryKey: serverQueryKeys.allProviderUsage(codexHomePath),
     enabled,
     staleTime: 60_000,
     refetchInterval: 60_000,
     refetchOnWindowFocus: false,
     retry: false,
-    queryFn: async () => fetchAllProviderUsage(),
+    queryFn: async () => fetchAllProviderUsage(codexHomePath ? { codexHomePath } : {}),
   });
 }

@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  buildAntigravityInteractiveTurnArgs,
   buildAntigravityTurnArgs,
+  chunkAntigravityResponseDeltas,
+  extractAntigravityAssistantTextFromScreen,
   normalizeAntigravityUsage,
   parseAntigravityPrintOutput,
   readAntigravityResumeCursor,
@@ -73,14 +76,16 @@ describe("buildAntigravityTurnArgs", () => {
       "json",
       "--print-timeout",
       "30m",
+      "--new-project",
     ]);
   });
 
-  it("threads conversation, model, and permission flags", () => {
+  it("threads workspace, conversation, model, and permission flags", () => {
     expect(
       buildAntigravityTurnArgs({
         prompt: "next",
         conversationId: "abc",
+        workspaceDirs: ["/repo/project"],
         model: "Gemini 3.1 Pro (Low)",
         fullAccess: true,
       }),
@@ -91,11 +96,70 @@ describe("buildAntigravityTurnArgs", () => {
       "json",
       "--print-timeout",
       "30m",
+      "--add-dir",
+      "/repo/project",
       "--conversation",
       "abc",
       "--model",
       "Gemini 3.1 Pro (Low)",
       "--dangerously-skip-permissions",
+    ]);
+  });
+});
+
+describe("buildAntigravityInteractiveTurnArgs", () => {
+  it("builds PTY interactive args with workspace and new project", () => {
+    expect(
+      buildAntigravityInteractiveTurnArgs({
+        prompt: "hello",
+        workspaceDirs: ["/repo/project"],
+        model: "Gemini 3.5 Flash (Medium)",
+        fullAccess: true,
+      }),
+    ).toEqual([
+      "--prompt-interactive",
+      "hello",
+      "--add-dir",
+      "/repo/project",
+      "--new-project",
+      "--model",
+      "Gemini 3.5 Flash (Medium)",
+      "--dangerously-skip-permissions",
+    ]);
+  });
+});
+
+describe("extractAntigravityAssistantTextFromScreen", () => {
+  it("filters Antigravity chrome and keeps assistant text", () => {
+    const screen = [
+      "Antigravity CLI 1.0.16",
+      "────────────────────────────────────────",
+      "> What is here?",
+      "Generating...",
+      "  This is the answer.",
+      "  It has two lines.",
+      "esc to cancel                  Gemini 3.5 Flash (Medium)",
+    ].join("\n");
+
+    expect(extractAntigravityAssistantTextFromScreen(screen, "What is here?")).toBe(
+      "This is the answer.\nIt has two lines.",
+    );
+  });
+});
+
+describe("chunkAntigravityResponseDeltas", () => {
+  it("splits longer responses into reconstructable deltas", () => {
+    const response = "First sentence with enough text to split. Second sentence stays intact.";
+    const chunks = chunkAntigravityResponseDeltas(response, 24);
+
+    expect(chunks.length).toBeGreaterThan(1);
+    expect(chunks.join("")).toBe(response);
+  });
+
+  it("prefers whitespace boundaries when possible", () => {
+    expect(chunkAntigravityResponseDeltas("alpha beta gamma", 11)).toEqual([
+      "alpha beta ",
+      "gamma",
     ]);
   });
 });

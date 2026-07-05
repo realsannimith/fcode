@@ -559,4 +559,87 @@ export function resolveLiveThreadBranchUpdate(input: {
 }
 
 // Re-export from shared for backwards compatibility in this module's exports
+// Per-file preference for agent-driven conflict resolution: keep the source
+// branch's version, keep the target branch's version, or let the agent combine.
+export type MergeConflictSideChoice = "source" | "target" | "agent";
+
+export interface MergeConflictFileResolution {
+  path: string;
+  choice: MergeConflictSideChoice;
+}
+
+export function buildMergeConflictResolutionPrompt(input: {
+  sourceBranch: string;
+  targetBranch: string;
+  files: readonly MergeConflictFileResolution[];
+  hasUncommittedChanges: boolean;
+}): string {
+  const { sourceBranch, targetBranch, files, hasUncommittedChanges } = input;
+  const ruleForChoice = (choice: MergeConflictSideChoice): string => {
+    if (choice === "source") return `keep the version from \`${sourceBranch}\``;
+    if (choice === "target") return `keep the version from \`${targetBranch}\``;
+    return "use your judgment to combine both sides correctly";
+  };
+  const fileRules = files.map((file) => `- \`${file.path}\`: ${ruleForChoice(file.choice)}`);
+
+  return [
+    `Merge branch \`${sourceBranch}\` into \`${targetBranch}\` and resolve the merge conflicts.`,
+    "",
+    "Steps:",
+    ...(hasUncommittedChanges
+      ? [
+          "1. My working tree has uncommitted changes — stash them first and restore them at the end.",
+          `2. Checkout \`${targetBranch}\`, then run \`git merge ${sourceBranch}\`.`,
+        ]
+      : [`1. Checkout \`${targetBranch}\`, then run \`git merge ${sourceBranch}\`.`]),
+    "",
+    "Resolve each conflicted file using these rules:",
+    ...fileRules,
+    "",
+    "If other files conflict beyond the ones listed, resolve them with your judgment.",
+    "After resolving every conflict, complete the merge commit. Do not push.",
+  ].join("\n");
+}
+
+// Per-file preference for agent-driven PR conflict resolution: keep the pull
+// request branch's version, keep the base branch's version, or let the agent combine.
+export type PullRequestConflictSideChoice = "pr" | "base" | "agent";
+
+export interface PullRequestConflictFileResolution {
+  path: string;
+  choice: PullRequestConflictSideChoice;
+}
+
+export function buildPullRequestConflictResolutionPrompt(input: {
+  prNumber: number;
+  prTitle: string;
+  prUrl: string;
+  baseBranch: string;
+  headBranch: string;
+  files: readonly PullRequestConflictFileResolution[];
+}): string {
+  const { prNumber, prTitle, prUrl, baseBranch, headBranch, files } = input;
+  const ruleForChoice = (choice: PullRequestConflictSideChoice): string => {
+    if (choice === "pr") return `keep the pull request branch's version (\`${headBranch}\`)`;
+    if (choice === "base") return `keep the version from \`${baseBranch}\``;
+    return "use your judgment to combine both sides correctly";
+  };
+  const fileRules = files.map((file) => `- \`${file.path}\`: ${ruleForChoice(file.choice)}`);
+
+  return [
+    `Resolve the merge conflicts on pull request #${prNumber} "${prTitle}" (${prUrl}) so it can be merged into \`${baseBranch}\`.`,
+    "",
+    "Steps:",
+    `1. Run \`gh pr checkout ${prNumber}\` to check out the pull request branch.`,
+    `2. Fetch the latest base branch: \`git fetch origin ${baseBranch}\`.`,
+    `3. Merge the base branch into the pull request branch: \`git merge origin/${baseBranch}\`.`,
+    "",
+    "Resolve each conflicted file using these rules:",
+    ...fileRules,
+    "",
+    "If other files conflict beyond the ones listed, resolve them with your judgment.",
+    "After resolving every conflict, complete the merge commit, then push the branch with `git push` so the pull request updates.",
+  ].join("\n");
+}
+
 export { resolveAutoFeatureBranchName } from "@t3tools/shared/git";

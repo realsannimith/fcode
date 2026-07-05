@@ -12,7 +12,7 @@ import {
 import { HiOutlineHandRaised } from "react-icons/hi2";
 import { CentralIcon } from "~/lib/central-icons";
 import { useCallback, useMemo, useRef, useState, type ReactNode } from "react";
-import { useAppSettings } from "~/appSettings";
+import { resolveCodexUsageHomePath, useAppSettings } from "~/appSettings";
 
 import { newCommandId, cn } from "../lib/utils";
 import { readNativeApi } from "../nativeApi";
@@ -356,7 +356,7 @@ export default function BranchToolbar({
   const usageSummary = useProviderUsageSummary({
     provider: activeProvider,
     threads,
-    codexHomePath: settings.codexHomePath || null,
+    codexHomePath: resolveCodexUsageHomePath(settings),
   });
   const [rateLimitsOpen, setRateLimitsOpen] = useState(true);
   const [envPickerOpen, setEnvPickerOpen] = useState(false);

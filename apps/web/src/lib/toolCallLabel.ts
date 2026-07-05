@@ -372,6 +372,12 @@ export function deriveReadableCommandDisplay(
     case "python3":
     case "ruby":
     case "perl":
+      if (tool === "node" || tool === "bun" || tool === "deno") {
+        const browserDisplay = fcodeBrowserCommandDisplay(tool, args, rawCommand, isRunning);
+        if (browserDisplay) {
+          return browserDisplay;
+        }
+      }
       return {
         verb: isRunning ? "Running" : "Ran",
         target: inlineScriptTarget(tool, command, args) ?? compactInlineCommand(command),
@@ -570,6 +576,76 @@ function inlineScriptTarget(tool: string, command: string, args: string): string
     return `${normalizedTool} script`;
   }
   return null;
+}
+
+export function isFCodeBrowserCommand(rawCommand: string): boolean {
+  const command = stripCommandDisplayWrappers(unwrapShellCommandIfPresent(rawCommand));
+  const primaryCommand = firstShellCommandSegment(command);
+  const [tool, args] = splitToolAndArgs(primaryCommand);
+  return fcodeBrowserCommandDisplay(tool, args, rawCommand, false) !== null;
+}
+
+function fcodeBrowserCommandDisplay(
+  tool: string,
+  args: string,
+  rawCommand: string,
+  isRunning: boolean,
+): ReadableCommandDisplay | null {
+  if (!["node", "bun", "deno"].includes(tool)) {
+    return null;
+  }
+
+  const tokens = tokenizeCommandArgs(args);
+  const scriptIndex = tokens.findIndex((token) =>
+    /(?:^|[/\\])fcode-browser[/\\]browser\.mjs$/i.test(token),
+  );
+  if (scriptIndex < 0) {
+    return null;
+  }
+
+  const browserCommand = tokens[scriptIndex + 1]?.toLowerCase() ?? "";
+  const firstArg = tokens[scriptIndex + 2];
+  const commandLabels: Record<string, { verb: string; target: string }> = {
+    tabs: { verb: isRunning ? "Checking" : "Checked", target: "browser tabs" },
+    navigate: { verb: isRunning ? "Navigating" : "Navigated", target: firstArg ?? "browser" },
+    "page-state": { verb: isRunning ? "Reading" : "Read", target: "browser page state" },
+    "click-element": {
+      verb: isRunning ? "Clicking" : "Clicked",
+      target: `browser element ${firstArg ?? ""}`.trim(),
+    },
+    "input-text": {
+      verb: isRunning ? "Typing" : "Typed",
+      target: `browser element ${firstArg ?? ""}`.trim(),
+    },
+    "select-option": {
+      verb: isRunning ? "Selecting" : "Selected",
+      target: `browser option ${firstArg ?? ""}`.trim(),
+    },
+    read: { verb: isRunning ? "Reading" : "Read", target: "browser page" },
+    screenshot: { verb: isRunning ? "Capturing" : "Captured", target: "browser screenshot" },
+    console: { verb: isRunning ? "Reading" : "Read", target: "browser console" },
+    eval: { verb: isRunning ? "Evaluating" : "Evaluated", target: "browser JavaScript" },
+    click: { verb: isRunning ? "Clicking" : "Clicked", target: "browser coordinates" },
+    type: { verb: isRunning ? "Typing" : "Typed", target: "browser" },
+    press: { verb: isRunning ? "Pressing" : "Pressed", target: firstArg ?? "browser key" },
+    scroll: { verb: isRunning ? "Scrolling" : "Scrolled", target: "browser page" },
+    back: { verb: isRunning ? "Going back" : "Went back", target: "browser history" },
+    forward: { verb: isRunning ? "Going forward" : "Went forward", target: "browser history" },
+    "new-tab": { verb: isRunning ? "Opening" : "Opened", target: "browser tab" },
+    "select-tab": {
+      verb: isRunning ? "Selecting" : "Selected",
+      target: `browser tab ${firstArg ?? ""}`.trim(),
+    },
+  };
+  const label = commandLabels[browserCommand] ?? {
+    verb: isRunning ? "Using" : "Used",
+    target: "FCode browser",
+  };
+
+  return {
+    ...label,
+    fullCommand: rawCommand,
+  };
 }
 
 function containsHeredoc(command: string): boolean {

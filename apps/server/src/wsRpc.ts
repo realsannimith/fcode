@@ -785,8 +785,22 @@ export const makeWsRpcLayer = () =>
               .pipe(Effect.tap(() => refreshGitStatus(input.cwd))),
             "Failed to prepare pull request thread",
           ),
+        [WS_METHODS.gitCheckPullRequestConflicts]: (input) =>
+          rpcEffect(
+            gitManager
+              .checkPullRequestConflicts(input)
+              .pipe(Effect.tap(() => refreshGitStatus(input.cwd))),
+            "Failed to check pull request conflicts",
+          ),
         [WS_METHODS.gitListBranches]: (input) =>
           rpcEffect(git.listBranches(input), "Failed to list branches"),
+        [WS_METHODS.gitCheckMergeConflicts]: (input) =>
+          rpcEffect(git.checkMergeConflicts(input), "Failed to check merge conflicts"),
+        [WS_METHODS.gitMergeBranch]: (input) =>
+          rpcEffect(
+            git.mergeBranch(input).pipe(Effect.tap(() => refreshGitStatus(input.cwd))),
+            "Failed to merge branch",
+          ),
         [WS_METHODS.gitCreateWorktree]: (input) =>
           rpcEffect(
             git.createWorktree(input).pipe(Effect.tap(() => refreshGitStatus(input.cwd))),

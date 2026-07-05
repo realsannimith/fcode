@@ -11,6 +11,8 @@
 
 - When the user asks to run, start, launch, or "rerun" the project, run the **native desktop (Electron) app** — not the web/server target alone.
 - Use `bun electron:dev` (isolated dev home at `./.fcode/electron-dev`). This boots the server, the Vite web app, and the Electron shell together.
+- NEVER run, build, or test the app in a plain Chrome/web browser. FCode ships only as the native Electron app; all manual/UI verification goes through the Electron shell (`bun electron:dev`). Server-side behavior may additionally be verified headlessly over the WebSocket RPC (`ws://[::1]:<port>/ws`).
+- "Run the native app" always means the DEV app (`FCode (Dev).app` via `bun electron:dev` with an isolated home). NEVER kill, restart, or otherwise touch the production FCode app the user has open on their Mac — when cleaning up dev processes, kill only the exact PIDs/ports you started (never `pkill Electron` or similar broad matches).
 
 ## Project Snapshot
 

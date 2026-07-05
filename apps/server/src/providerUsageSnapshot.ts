@@ -14,6 +14,7 @@ import type {
 } from "@t3tools/contracts";
 import { Effect } from "effect";
 
+import { expandHomePath } from "./codexHomePaths";
 import { ServerConfig } from "./config";
 
 const LOOKBACK_DAYS = 30;
@@ -496,8 +497,11 @@ async function loadCodexUsageSnapshot(input: {
   homeDir: string;
   homePath?: string;
 }): Promise<UsageSnapshot | null> {
-  const codexHomeDir =
-    input.homePath?.trim() || process.env.CODEX_HOME || nodePath.join(input.homeDir, ".codex");
+  // Settings-level homes may be `~`-relative (e.g. the default account shadow home
+  // `~/.codex-accounts/<id>`); expand before touching the filesystem.
+  const codexHomeDir = input.homePath?.trim()
+    ? nodePath.resolve(expandHomePath(input.homePath.trim()))
+    : process.env.CODEX_HOME || nodePath.join(input.homeDir, ".codex");
   const sessionsRoot = nodePath.join(codexHomeDir, "sessions");
   const sessionFiles = await listRecentCodexSessionFiles(sessionsRoot);
   if (sessionFiles.length === 0) {

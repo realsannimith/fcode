@@ -1672,6 +1672,94 @@ export const makeGitManager = Effect.gen(function* () {
     },
   );
 
+  // Detect whether a PR still merges cleanly into its base without touching the
+  // working tree or checkout: materialize the PR head as a local branch, refresh the
+  // base ref, then run the same merge-tree simulation as the branch merge check.
+  const checkPullRequestConflicts: GitManagerShape["checkPullRequestConflicts"] = Effect.fnUntraced(
+    function* (input) {
+      const normalizedReference = normalizePullRequestReference(input.reference);
+      const pullRequestSummary = yield* gitHubCli.getPullRequest({
+        cwd: input.cwd,
+        reference: normalizedReference,
+      });
+      const pullRequest = toResolvedPullRequest(pullRequestSummary);
+      if (pullRequest.state === "merged") {
+        return yield* gitManagerError(
+          "checkPullRequestConflicts",
+          `Pull request #${pullRequest.number} is already merged.`,
+        );
+      }
+
+      const pullRequestWithRemoteInfo = {
+        ...pullRequest,
+        ...toPullRequestHeadRemoteInfo(pullRequestSummary),
+      } as const;
+      const localPullRequestBranch =
+        resolvePullRequestWorktreeLocalBranchName(pullRequestWithRemoteInfo);
+      yield* materializePullRequestHeadBranch(
+        input.cwd,
+        pullRequestWithRemoteInfo,
+        localPullRequestBranch,
+      );
+
+      const resolvesToCommit = (ref: string) =>
+        gitCore
+          .execute({
+            operation: "GitManager.checkPullRequestConflicts.resolveRef",
+            cwd: input.cwd,
+            args: ["rev-parse", "--verify", "--quiet", `${ref}^{commit}`],
+            allowNonZeroExit: true,
+            timeoutMs: 5_000,
+          })
+          .pipe(Effect.map((result) => result.code === 0));
+
+      // The base lives on the remote the PR targets; refresh it so the simulation
+      // compares against the branch GitHub would actually merge into. Fetch failures
+      // (e.g. offline) fall back to whatever ref is already available locally.
+      const remotesResult = yield* gitCore.execute({
+        operation: "GitManager.checkPullRequestConflicts.listRemotes",
+        cwd: input.cwd,
+        args: ["remote"],
+        allowNonZeroExit: true,
+        timeoutMs: 5_000,
+      });
+      const remoteNames = remotesResult.stdout
+        .split("\n")
+        .map((line) => line.trim())
+        .filter((line) => line.length > 0);
+      const baseRemote = remoteNames.includes("origin") ? "origin" : (remoteNames[0] ?? null);
+      if (baseRemote) {
+        yield* gitCore.execute({
+          operation: "GitManager.checkPullRequestConflicts.fetchBase",
+          cwd: input.cwd,
+          args: ["fetch", "--quiet", "--no-tags", baseRemote, pullRequest.baseBranch],
+          allowNonZeroExit: true,
+          timeoutMs: 60_000,
+        });
+      }
+
+      const remoteBaseRef = baseRemote ? `${baseRemote}/${pullRequest.baseBranch}` : null;
+      const baseRef =
+        remoteBaseRef && (yield* resolvesToCommit(remoteBaseRef))
+          ? remoteBaseRef
+          : pullRequest.baseBranch;
+
+      const check = yield* gitCore.checkMergeConflicts({
+        cwd: input.cwd,
+        sourceBranch: localPullRequestBranch,
+        targetBranch: baseRef,
+      });
+
+      return {
+        pullRequest,
+        baseRef,
+        headBranch: localPullRequestBranch,
+        mergeable: check.mergeable,
+        conflictingFiles: check.conflictingFiles,
+      };
+    },
+  );
+
   const readStashRef = (cwd: string) =>
     gitCore
       .execute({
@@ -2787,6 +2875,7 @@ The local stash entry was kept for recovery.`,
     summarizeDiff,
     resolvePullRequest,
     preparePullRequestThread,
+    checkPullRequestConflicts,
     handoffThread,
     runStackedAction,
   } satisfies GitManagerShape;

@@ -176,6 +176,10 @@ export type ServerGetProviderUsageSnapshotResult = typeof ServerGetProviderUsage
 // Returns one entry per supported provider (including needs-auth/error) so the UI can render a row each.
 export const ServerListProviderUsageInput = Schema.Struct({
   forceRefresh: Schema.optional(Schema.Boolean),
+  // Effective CODEX_HOME of the active Codex account. Lets the live Codex fetch read
+  // that account's auth.json (and key its cache per account) instead of always using
+  // the shared/primary home when multiple accounts are configured.
+  codexHomePath: Schema.optional(TrimmedNonEmptyString),
 });
 export type ServerListProviderUsageInput = typeof ServerListProviderUsageInput.Type;
 

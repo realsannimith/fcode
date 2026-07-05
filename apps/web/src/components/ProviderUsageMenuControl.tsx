@@ -4,7 +4,7 @@
 import { PROVIDER_DISPLAY_NAMES, type ProviderKind } from "@t3tools/contracts";
 import { useMemo, type ReactNode } from "react";
 
-import { useAppSettings } from "~/appSettings";
+import { resolveCodexUsageHomePath, useAppSettings } from "~/appSettings";
 import { useProviderUsageSummary } from "~/hooks/useProviderUsageSummary";
 import {
   deriveProviderUsageDisplayRows,
@@ -40,7 +40,7 @@ export function useProviderUsageMenuModel(provider: ProviderKind): ProviderUsage
   const usageSummary = useProviderUsageSummary({
     provider,
     threads,
-    codexHomePath: settings.codexHomePath || null,
+    codexHomePath: resolveCodexUsageHomePath(settings),
   });
   const usageRows = useMemo(
     () => deriveProviderUsageDisplayRows(usageSummary.rateLimits),

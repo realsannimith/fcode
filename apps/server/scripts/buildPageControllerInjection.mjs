@@ -36,7 +36,7 @@ const generated = `// FILE: pageControllerInjection.gen.ts
 // Layer: Generated asset — DO NOT EDIT.
 // Regenerate with: bun scripts/buildPageControllerInjection.mjs
 
-export const FCODE_PAGE_CONTROLLER_INJECTION_VERSION = 3;
+export const FCODE_PAGE_CONTROLLER_INJECTION_VERSION = 4;
 
 // prettier-ignore
 export const FCODE_PAGE_CONTROLLER_INJECTION_SOURCE: string = ${JSON.stringify(bundleSource)};

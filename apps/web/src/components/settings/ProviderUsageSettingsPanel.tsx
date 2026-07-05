@@ -12,7 +12,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useMemo } from "react";
 
-import { useAppSettings } from "~/appSettings";
+import { resolveCodexUsageHomePath, useAppSettings } from "~/appSettings";
 import { ProviderIcon } from "~/components/ProviderIcon";
 import { ProviderUsageLimitRows } from "~/components/ProviderUsageLimitRows";
 import { ProviderUsageLineList } from "~/components/ProviderUsageLineList";
@@ -190,7 +190,7 @@ function mergeProviderUsageRefresh(
 export function ProviderUsageSettingsPanel() {
   const queryClient = useQueryClient();
   const { settings, updateSettings } = useAppSettings();
-  const codexHomePath = settings.codexHomePath || null;
+  const codexHomePath = resolveCodexUsageHomePath(settings);
   const usageHidden = useMemo(
     () => new Set(settings.usageHiddenProviders),
     [settings.usageHiddenProviders],
@@ -210,12 +210,16 @@ export function ProviderUsageSettingsPanel() {
   const threads = useStore(useMemo(() => createAllThreadsSelector(), []));
   // Account/thread fallback rows are shared by every provider card; derive them once per panel.
   const threadRateLimits = useMemo(() => deriveAccountRateLimits(threads), [threads]);
-  const usageQuery = useQuery(serverAllProviderUsageQueryOptions());
+  const usageQuery = useQuery(serverAllProviderUsageQueryOptions({ codexHomePath }));
   const refreshMutation = useMutation({
-    mutationFn: () => fetchAllProviderUsage({ forceRefresh: true }),
+    mutationFn: () =>
+      fetchAllProviderUsage({
+        forceRefresh: true,
+        ...(codexHomePath ? { codexHomePath } : {}),
+      }),
     onSuccess: (data) => {
       queryClient.setQueryData<readonly ServerProviderUsageSnapshot[]>(
-        serverQueryKeys.allProviderUsage(),
+        serverQueryKeys.allProviderUsage(codexHomePath),
         (previous) => mergeProviderUsageRefresh(previous, data),
       );
     },

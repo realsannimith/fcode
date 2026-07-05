@@ -37,7 +37,7 @@ declare global {
 
 // Keep in sync with FCODE_PAGE_CONTROLLER_INJECTION_VERSION written by
 // buildPageControllerInjection.mjs.
-const FCODE_BROWSER_USE_RUNTIME_VERSION = 3;
+const FCODE_BROWSER_USE_RUNTIME_VERSION = 4;
 // FCode's Claude brand accent (the `--claude` clay in the web app's theme). The
 // agent cursor uses it so automation reads as "FCode is acting" on any page.
 const FCODE_CURSOR_ACCENT = "#d97757";
@@ -46,6 +46,8 @@ const FCODE_CURSOR_FADE_MS = 1_500;
 const CONSOLE_BUFFER_LIMIT = 200;
 const CONSOLE_TEXT_LIMIT = 2_000;
 const HOOKED_CONSOLE_LEVELS = ["log", "info", "warn", "error", "debug"] as const;
+const PAGE_AGENT_HIGHLIGHT_CONTAINER_ID = "playwright-highlight-container";
+const PAGE_AGENT_HIGHLIGHT_SUPPRESSION_STYLE_ID = "fcode-page-agent-highlight-suppression";
 
 function formatConsoleArgument(value: unknown): string {
   if (typeof value === "string") {
@@ -91,6 +93,41 @@ function installConsoleCapture(): FCodeBrowserUseRuntime["drainConsole"] {
   });
 
   return () => buffer.splice(0);
+}
+
+function installPageAgentHighlightSuppressor(): void {
+  if (document.getElementById(PAGE_AGENT_HIGHLIGHT_SUPPRESSION_STYLE_ID)) {
+    return;
+  }
+  const style = document.createElement("style");
+  style.id = PAGE_AGENT_HIGHLIGHT_SUPPRESSION_STYLE_ID;
+  style.textContent = `
+    #${PAGE_AGENT_HIGHLIGHT_CONTAINER_ID},
+    .playwright-highlight-label {
+      display: none !important;
+      visibility: hidden !important;
+      opacity: 0 !important;
+      pointer-events: none !important;
+    }
+  `;
+  (document.head ?? document.documentElement).appendChild(style);
+}
+
+function removePageAgentHighlights(): void {
+  const globalWithHighlights = window as unknown as {
+    _highlightCleanupFunctions?: Array<() => void>;
+  };
+  const cleanupFunctions = globalWithHighlights._highlightCleanupFunctions ?? [];
+  for (const cleanup of cleanupFunctions) {
+    try {
+      cleanup();
+    } catch {
+      // Highlight cleanup is visual-only; never block browser state/actions.
+    }
+  }
+  globalWithHighlights._highlightCleanupFunctions = [];
+  document.getElementById(PAGE_AGENT_HIGHLIGHT_CONTAINER_ID)?.remove();
+  document.querySelectorAll(".playwright-highlight-label").forEach((element) => element.remove());
 }
 
 // A passive, on-brand cursor overlay that shows where the agent is acting. It
@@ -167,7 +204,12 @@ function installAgentCursor(): FCodeBrowserUseRuntime["showCursor"] {
 }
 
 if (window.__fcodeBrowserUse?.version !== FCODE_BROWSER_USE_RUNTIME_VERSION) {
-  const controller = new PageController({ enableMask: false });
+  installPageAgentHighlightSuppressor();
+  const controller = new PageController({
+    enableMask: false,
+    highlightOpacity: 0,
+    highlightLabelOpacity: 0,
+  });
   const drainConsole = installConsoleCapture();
   const showCursor = installAgentCursor();
   // Surface the cursor at an indexed element's on-screen center before clicking
@@ -198,12 +240,22 @@ if (window.__fcodeBrowserUse?.version !== FCODE_BROWSER_USE_RUNTIME_VERSION) {
     cursorForIndex(index);
     return controller.inputText(index, text);
   };
+  const selectOptionWithCursor = (index: number, optionText: string) => {
+    cursorForIndex(index);
+    return controller.selectOption(index, optionText);
+  };
+  const getBrowserStateWithoutHighlights = async () => {
+    showCursor(Math.round(window.innerWidth / 2), Math.round(window.innerHeight / 2), false);
+    const state = await controller.getBrowserState();
+    removePageAgentHighlights();
+    return state;
+  };
   window.__fcodeBrowserUse = {
     version: FCODE_BROWSER_USE_RUNTIME_VERSION,
-    getBrowserState: () => controller.getBrowserState(),
+    getBrowserState: () => getBrowserStateWithoutHighlights(),
     clickElement: (index) => clickElementWithCursor(index),
     inputText: (index, text) => inputTextWithCursor(index, text),
-    selectOption: (index, optionText) => controller.selectOption(index, optionText),
+    selectOption: (index, optionText) => selectOptionWithCursor(index, optionText),
     scroll: (options) => controller.scroll(options),
     drainConsole,
     showCursor,

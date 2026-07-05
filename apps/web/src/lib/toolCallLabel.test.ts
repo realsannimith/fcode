@@ -3,6 +3,7 @@ import {
   deriveInlineCommandCall,
   deriveReadableCommandDisplay,
   deriveReadableToolTitle,
+  isFCodeBrowserCommand,
   normalizeCompactToolLabel,
 } from "./toolCallLabel";
 
@@ -215,6 +216,16 @@ describe("deriveReadableCommandDisplay", () => {
       verb: "Running",
       target: "python script",
       fullCommand: "python3 - <<'PY'\nprint('hi')\nPY",
+    });
+  });
+
+  it("renders FCode browser skill commands as browser actions", () => {
+    const command = `node "/Users/me/.fcode/skills/fcode-browser/browser.mjs" navigate http://localhost:5173`;
+    expect(isFCodeBrowserCommand(command)).toBe(true);
+    expect(deriveReadableCommandDisplay(command)).toEqual({
+      verb: "Navigated",
+      target: "http://localhost:5173",
+      fullCommand: command,
     });
   });
 

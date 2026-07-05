@@ -12,6 +12,9 @@
  * @module GeminiAntigravityRuntime
  */
 import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
+import * as pty from "node-pty";
+import xtermHeadless from "@xterm/headless";
+import type { Terminal as HeadlessTerminalType } from "@xterm/headless";
 
 import {
   type CanonicalItemType,
@@ -39,6 +42,7 @@ import {
 } from "../Errors.ts";
 import { appendFileAttachmentsPromptBlock } from "../attachmentProjection.ts";
 import { isAntigravityAuthFailure, probeAntigravityCapabilities } from "../antigravityCliProbe.ts";
+import { buildProviderBrowserAndSkillPrompt } from "../browserUsePrompt.ts";
 import { asNumber, asRecord, asString, trimToUndefined } from "../geminiValue.ts";
 import { killChildProcess } from "../processControl.ts";
 import { extractProposedPlanMarkdown, withProviderPlanModePrompt } from "../planMode.ts";
@@ -48,6 +52,11 @@ const ANTIGRAVITY_RESUME_FLAVOR = "antigravity" as const;
 // Matches the 30 minute ACP prompt timeout; agy enforces it internally.
 const ANTIGRAVITY_PRINT_TIMEOUT = "30m";
 const MAX_CAPTURED_STDERR_LINES = 5;
+const ANTIGRAVITY_STREAM_CHUNK_CHARS = 96;
+const ANTIGRAVITY_STREAM_CHUNK_DELAY_MS = 12;
+const ANTIGRAVITY_TUI_COLS = 120;
+const ANTIGRAVITY_TUI_ROWS = 40;
+const { Terminal: HeadlessTerminal } = xtermHeadless as typeof import("@xterm/headless");
 
 interface AntigravityRecordedItem {
   readonly id: string;
@@ -76,6 +85,7 @@ interface AntigravitySessionContext {
   threadStartedEmitted: boolean;
   turnState: AntigravityTurnState | undefined;
   activeChild: ChildProcessWithoutNullStreams | undefined;
+  activePty: pty.IPty | undefined;
   interruptRequested: boolean;
   stopped: boolean;
   lastKnownTokenUsage: ThreadTokenUsageSnapshot | undefined;
@@ -83,6 +93,7 @@ interface AntigravitySessionContext {
 
 export interface GeminiAntigravityRuntimeDeps {
   readonly attachmentsDir: string;
+  readonly fcodeBaseDir: string;
   readonly emitEvent: (event: ProviderRuntimeEvent) => Effect.Effect<void>;
   readonly writeNativeRecord: (threadId: ThreadId | null, record: unknown) => Effect.Effect<void>;
 }
@@ -202,9 +213,11 @@ export function parseAntigravityPrintOutput(stdout: string): AntigravityPrintEnv
 export function buildAntigravityTurnArgs(input: {
   readonly prompt: string;
   readonly conversationId?: string;
+  readonly workspaceDirs?: ReadonlyArray<string>;
   readonly model?: string;
   readonly fullAccess: boolean;
 }): Array<string> {
+  const workspaceArgs = (input.workspaceDirs ?? []).flatMap((dir) => ["--add-dir", dir]);
   return [
     "--print",
     input.prompt,
@@ -212,10 +225,104 @@ export function buildAntigravityTurnArgs(input: {
     "json",
     "--print-timeout",
     ANTIGRAVITY_PRINT_TIMEOUT,
+    ...workspaceArgs,
+    ...(input.conversationId ? [] : ["--new-project"]),
     ...(input.conversationId ? ["--conversation", input.conversationId] : []),
     ...(input.model ? ["--model", input.model] : []),
     ...(input.fullAccess ? ["--dangerously-skip-permissions"] : []),
   ];
+}
+
+export function buildAntigravityInteractiveTurnArgs(input: {
+  readonly prompt: string;
+  readonly conversationId?: string;
+  readonly workspaceDirs?: ReadonlyArray<string>;
+  readonly model?: string;
+  readonly fullAccess: boolean;
+}): Array<string> {
+  const workspaceArgs = (input.workspaceDirs ?? []).flatMap((dir) => ["--add-dir", dir]);
+  return [
+    "--prompt-interactive",
+    input.prompt,
+    ...workspaceArgs,
+    ...(input.conversationId ? [] : ["--new-project"]),
+    ...(input.conversationId ? ["--conversation", input.conversationId] : []),
+    ...(input.model ? ["--model", input.model] : []),
+    ...(input.fullAccess ? ["--dangerously-skip-permissions"] : []),
+  ];
+}
+
+function isAntigravityChromeLine(line: string, promptText: string): boolean {
+  const trimmed = line.trim();
+  if (trimmed.length === 0) return true;
+  if (trimmed === `> ${promptText}` || trimmed === ">") return true;
+  if (/^[─━]+$/.test(trimmed)) return true;
+  if (/^[▄▀\s]+$/.test(trimmed)) return true;
+  return (
+    trimmed === "Generating..." ||
+    trimmed.startsWith("Welcome to the Antigravity CLI") ||
+    trimmed.startsWith("Accessing workspace:") ||
+    trimmed.startsWith("Do you trust the contents of this project?") ||
+    trimmed.startsWith("Antigravity CLI requires permission") ||
+    trimmed.startsWith("Yes, I trust this folder") ||
+    trimmed.startsWith("> Yes, I trust this folder") ||
+    trimmed.startsWith("No, exit") ||
+    trimmed.includes("Navigate · enter Confirm") ||
+    trimmed.includes("for shortcuts") ||
+    trimmed.includes("esc to cancel") ||
+    trimmed.startsWith("Antigravity CLI ") ||
+    trimmed.startsWith("Resume: agy --conversation=") ||
+    trimmed.startsWith("└ Tip:") ||
+    trimmed.includes("Gemini 3.5") ||
+    trimmed.includes("Gemini 3.1") ||
+    trimmed.includes("Google AI")
+  );
+}
+
+export function extractAntigravityAssistantTextFromScreen(
+  screenText: string,
+  promptText: string,
+): string {
+  const lines = screenText
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => !isAntigravityChromeLine(line, promptText));
+
+  const promptIndex = lines.findIndex((line) => line.trim() === `> ${promptText}`);
+  const candidateLines = promptIndex >= 0 ? lines.slice(promptIndex + 1) : lines;
+  return candidateLines.join("\n").trim();
+}
+
+export function chunkAntigravityResponseDeltas(
+  responseText: string,
+  maxChunkChars = ANTIGRAVITY_STREAM_CHUNK_CHARS,
+): ReadonlyArray<string> {
+  if (responseText.length === 0) {
+    return [];
+  }
+  const limit = Math.max(1, maxChunkChars);
+  const chunks: string[] = [];
+  let offset = 0;
+
+  while (offset < responseText.length) {
+    const hardEnd = Math.min(responseText.length, offset + limit);
+    let end = hardEnd;
+    if (hardEnd < responseText.length) {
+      const candidate = responseText.slice(offset, hardEnd);
+      const whitespaceIndex = Math.max(
+        candidate.lastIndexOf(" "),
+        candidate.lastIndexOf("\n"),
+        candidate.lastIndexOf("\t"),
+      );
+      if (whitespaceIndex > 0) {
+        end = offset + whitespaceIndex + 1;
+      }
+    }
+    chunks.push(responseText.slice(offset, end));
+    offset = end;
+  }
+
+  return chunks;
 }
 
 function toMessage(cause: unknown, fallback: string): string {
@@ -238,6 +345,16 @@ interface AntigravityTurnProcessResult {
   readonly stderr: string;
   readonly code: number | null;
   readonly signal: NodeJS.Signals | null;
+  readonly spawnError?: Error;
+}
+
+interface AntigravityInteractiveTurnResult {
+  readonly responseText: string;
+  readonly conversationId?: string;
+  readonly stdout: string;
+  readonly stderr: string;
+  readonly code: number | null;
+  readonly signal: number | null;
   readonly spawnError?: Error;
 }
 
@@ -473,21 +590,27 @@ export const makeGeminiAntigravityRuntime = (deps: GeminiAntigravityRuntimeDeps)
         title: "Assistant message",
       },
     });
-    yield* deps.emitEvent({
-      ...makeEventBase(context),
-      turnId: turnState.turnId,
-      itemId: turnState.assistantItemId,
-      type: "content.delta",
-      payload: {
-        streamKind: "assistant_text",
-        delta: responseText,
-      },
-      raw: {
-        source: "gemini.agy.result",
-        method: "print.response",
-        payload: rawPayload,
-      },
-    });
+    const deltas = chunkAntigravityResponseDeltas(responseText);
+    for (let index = 0; index < deltas.length; index += 1) {
+      yield* deps.emitEvent({
+        ...makeEventBase(context),
+        turnId: turnState.turnId,
+        itemId: turnState.assistantItemId,
+        type: "content.delta",
+        payload: {
+          streamKind: "assistant_text",
+          delta: deltas[index] ?? "",
+        },
+        raw: {
+          source: "gemini.agy.result",
+          method: "print.response",
+          payload: rawPayload,
+        },
+      });
+      if (index < deltas.length - 1) {
+        yield* Effect.sleep(ANTIGRAVITY_STREAM_CHUNK_DELAY_MS);
+      }
+    }
   });
 
   const spawnTurnProcess = Effect.fn("spawnAntigravityTurnProcess")(function* (
@@ -551,28 +674,154 @@ export const makeGeminiAntigravityRuntime = (deps: GeminiAntigravityRuntimeDeps)
       });
     });
 
+  const runInteractiveTurnProcess = (
+    context: AntigravitySessionContext,
+    args: ReadonlyArray<string>,
+    promptText: string,
+    turnState: AntigravityTurnState,
+  ): Effect.Effect<AntigravityInteractiveTurnResult> =>
+    Effect.callback<AntigravityInteractiveTurnResult>((resume) => {
+      let term: HeadlessTerminalType;
+      let proc: pty.IPty;
+      try {
+        term = new HeadlessTerminal({
+          cols: ANTIGRAVITY_TUI_COLS,
+          rows: ANTIGRAVITY_TUI_ROWS,
+          allowProposedApi: true,
+        });
+        proc = pty.spawn(context.binaryPath, [...args], {
+          cwd: context.session.cwd ?? process.cwd(),
+          env: process.env,
+          cols: ANTIGRAVITY_TUI_COLS,
+          rows: ANTIGRAVITY_TUI_ROWS,
+          name: "xterm-256color",
+        });
+      } catch (cause) {
+        resume(
+          Effect.succeed({
+            responseText: "",
+            stdout: "",
+            stderr: "",
+            code: null,
+            signal: null,
+            spawnError: cause instanceof Error ? cause : new Error(String(cause)),
+          }),
+        );
+        return;
+      }
+
+      context.activePty = proc;
+      let stdout = "";
+      let settled = false;
+      let trustConfirmed = false;
+      let itemStarted = false;
+      let emittedText = "";
+      let conversationId: string | undefined;
+      let eventChain: Promise<void> = Promise.resolve();
+
+      const enqueue = (effect: Effect.Effect<void>) => {
+        eventChain = eventChain.then(() => Effect.runPromise(effect)).catch(() => undefined);
+      };
+
+      const screenText = () => {
+        const lines: string[] = [];
+        const buffer = term.buffer.active;
+        for (let index = 0; index < buffer.length; index += 1) {
+          lines.push(buffer.getLine(index)?.translateToString(true) ?? "");
+        }
+        return lines.join("\n");
+      };
+
+      const emitDelta = (delta: string, rawPayload: unknown) => {
+        if (delta.length === 0) return;
+        if (!itemStarted) {
+          itemStarted = true;
+          enqueue(
+            deps.emitEvent({
+              ...makeEventBase(context),
+              turnId: turnState.turnId,
+              itemId: turnState.assistantItemId,
+              type: "item.started",
+              payload: {
+                itemType: "assistant_message",
+                status: "inProgress",
+                title: "Assistant message",
+              },
+            }),
+          );
+        }
+        enqueue(
+          deps.emitEvent({
+            ...makeEventBase(context),
+            turnId: turnState.turnId,
+            itemId: turnState.assistantItemId,
+            type: "content.delta",
+            payload: {
+              streamKind: "assistant_text",
+              delta,
+            },
+            raw: {
+              source: "gemini.agy.result",
+              method: "interactive.tui",
+              payload: rawPayload,
+            },
+          }),
+        );
+      };
+
+      const onData = proc.onData((data) => {
+        stdout += data;
+        const resumeMatch = stdout.match(/Resume:\s+agy --conversation=([0-9a-f-]+)/i);
+        if (resumeMatch?.[1]) {
+          conversationId = resumeMatch[1];
+        }
+        if (!trustConfirmed && data.includes("Do you trust the contents of this project?")) {
+          trustConfirmed = true;
+          setTimeout(() => proc.write("\r"), 100);
+        }
+        term.write(data, () => {
+          const nextText = extractAntigravityAssistantTextFromScreen(screenText(), promptText);
+          if (nextText.length > emittedText.length && nextText.startsWith(emittedText)) {
+            const delta = nextText.slice(emittedText.length);
+            emittedText = nextText;
+            emitDelta(delta, { screen: nextText });
+          }
+        });
+      });
+
+      const onExit = proc.onExit(({ exitCode, signal }) => {
+        if (settled) return;
+        settled = true;
+        context.activePty = undefined;
+        onData.dispose();
+        onExit.dispose();
+        void eventChain.finally(() => {
+          resume(
+            Effect.succeed({
+              responseText: emittedText,
+              ...(conversationId ? { conversationId } : {}),
+              stdout,
+              stderr: "",
+              code: exitCode,
+              signal: signal ?? null,
+            }),
+          );
+        });
+      });
+    });
+
   const runTurn = Effect.fn("runAntigravityTurn")(function* (
     context: AntigravitySessionContext,
     turnState: AntigravityTurnState,
     args: ReadonlyArray<string>,
   ) {
-    const spawnResult = yield* Effect.result(spawnTurnProcess(context, args));
-    if (spawnResult._tag === "Failure") {
-      const message = toMessage(spawnResult.failure, "Failed to spawn Antigravity CLI.");
-      yield* emitRuntimeError(context, message, { detail: message }, turnState.turnId);
-      yield* finishTurn(context, { state: "failed", errorMessage: message });
-      return;
-    }
-
-    const child = spawnResult.success;
-    context.activeChild = child;
-    const processResult = yield* awaitTurnProcess(child);
-    context.activeChild = undefined;
+    const processResult = yield* runInteractiveTurnProcess(context, args, args[1] ?? "", turnState);
     const interrupted = context.interruptRequested;
     context.interruptRequested = false;
 
     yield* deps.writeNativeRecord(context.session.threadId, {
       source: "gemini.agy.result",
+      runtime: "interactive-pty",
       exitCode: processResult.code,
       signal: processResult.signal,
       stdout: processResult.stdout,
@@ -607,24 +856,12 @@ export const makeGeminiAntigravityRuntime = (deps: GeminiAntigravityRuntimeDeps)
       return;
     }
 
-    const envelope = parseAntigravityPrintOutput(processResult.stdout);
-    if (envelope.conversationId) {
-      context.conversationId = envelope.conversationId;
+    if (processResult.conversationId) {
+      context.conversationId = processResult.conversationId;
       yield* emitThreadStartedOnce(context);
     }
 
-    if (envelope.status && envelope.status !== "SUCCESS") {
-      const message = `Antigravity CLI reported turn status '${envelope.status}'.${envelope.response ? ` ${envelope.response.trim()}` : ""}`;
-      yield* emitRuntimeError(context, message, envelope.raw, turnState.turnId);
-      yield* finishTurn(context, { state: "failed", errorMessage: message });
-      return;
-    }
-
-    yield* emitAssistantMessage(context, turnState, envelope.response, envelope.raw);
-    if (envelope.usage) {
-      yield* emitUsage(context, envelope.usage, turnState.turnId, envelope.raw);
-    }
-    yield* finishTurn(context, { state: "completed", responseText: envelope.response });
+    yield* finishTurn(context, { state: "completed", responseText: processResult.responseText });
   });
 
   const startSession = Effect.fn("startAntigravitySession")(function* (
@@ -636,6 +873,10 @@ export const makeGeminiAntigravityRuntime = (deps: GeminiAntigravityRuntimeDeps)
       existing.stopped = true;
       if (existing.activeChild) {
         killChildProcess(existing.activeChild);
+      }
+      if (existing.activePty) {
+        existing.activePty.kill();
+        existing.activePty = undefined;
       }
       sessions.delete(input.threadId);
     }
@@ -662,6 +903,7 @@ export const makeGeminiAntigravityRuntime = (deps: GeminiAntigravityRuntimeDeps)
       threadStartedEmitted: false,
       turnState: undefined,
       activeChild: undefined,
+      activePty: undefined,
       interruptRequested: false,
       stopped: false,
       lastKnownTokenUsage: undefined,
@@ -717,8 +959,30 @@ export const makeGeminiAntigravityRuntime = (deps: GeminiAntigravityRuntimeDeps)
         interactionMode: input.interactionMode,
       }),
     );
+    const browserAndSkillPrompt = yield* Effect.tryPromise({
+      try: () =>
+        buildProviderBrowserAndSkillPrompt({
+          provider: PROVIDER,
+          fcodeBaseDir: deps.fcodeBaseDir,
+          skills: input.skills,
+          maxChars: 24_000,
+        }),
+      catch: (cause) =>
+        new ProviderAdapterRequestError({
+          provider: PROVIDER,
+          method: "turn/start",
+          detail: "Failed to prepare provider skill instructions.",
+          cause,
+        }),
+    });
+    const workspacePrompt =
+      context.session.cwd && context.session.cwd.trim().length > 0
+        ? `FCode current project workspace: ${context.session.cwd}\nUse this directory as "my project" and the primary workspace. Do not treat Antigravity scratch directories as the user's project unless the user explicitly asks for them.`
+        : undefined;
     const promptText = appendFileAttachmentsPromptBlock({
-      text: planPromptText,
+      text: [browserAndSkillPrompt, workspacePrompt, planPromptText]
+        .filter((text): text is string => Boolean(text?.trim()))
+        .join("\n\nUser request:\n"),
       attachments: input.attachments,
       attachmentsDir: deps.attachmentsDir,
       include: "all-files",
@@ -754,9 +1018,10 @@ export const makeGeminiAntigravityRuntime = (deps: GeminiAntigravityRuntimeDeps)
       payload: context.session.model ? { model: context.session.model } : {},
     });
 
-    const args = buildAntigravityTurnArgs({
+    const args = buildAntigravityInteractiveTurnArgs({
       prompt: promptText,
       ...(context.conversationId ? { conversationId: context.conversationId } : {}),
+      ...(context.session.cwd ? { workspaceDirs: [context.session.cwd] } : {}),
       ...(context.session.model ? { model: context.session.model } : {}),
       fullAccess: context.session.runtimeMode === "full-access",
     });
@@ -782,11 +1047,17 @@ export const makeGeminiAntigravityRuntime = (deps: GeminiAntigravityRuntimeDeps)
         issue: `Turn '${turnId}' is not active for thread '${threadId}'.`,
       });
     }
-    if (!context.turnState || !context.activeChild) {
+    if (!context.turnState || (!context.activeChild && !context.activePty)) {
       return;
     }
     context.interruptRequested = true;
-    killChildProcess(context.activeChild);
+    if (context.activeChild) {
+      killChildProcess(context.activeChild);
+    }
+    if (context.activePty) {
+      context.activePty.kill();
+      context.activePty = undefined;
+    }
   });
 
   const respondToRequest = (threadId: ThreadId) =>
@@ -804,6 +1075,10 @@ export const makeGeminiAntigravityRuntime = (deps: GeminiAntigravityRuntimeDeps)
     if (context.activeChild) {
       killChildProcess(context.activeChild);
       context.activeChild = undefined;
+    }
+    if (context.activePty) {
+      context.activePty.kill();
+      context.activePty = undefined;
     }
     updateSession(context, { status: "closed", activeTurnId: undefined });
     yield* emitSessionState(context, "stopped", "session_closed");
@@ -851,8 +1126,8 @@ export const makeGeminiAntigravityRuntime = (deps: GeminiAntigravityRuntimeDeps)
       discard: true,
     }).pipe(Effect.ignore, Effect.asVoid);
 
-  const listModels = (binaryPath: string) =>
-    probeAntigravityCapabilities({ binaryPath }).pipe(
+  const listModels = (input: { readonly binaryPath: string; readonly cwd?: string }) =>
+    probeAntigravityCapabilities(input).pipe(
       Effect.map(
         (result) =>
           ({
@@ -878,6 +1153,10 @@ export const makeGeminiAntigravityRuntime = (deps: GeminiAntigravityRuntimeDeps)
       if (context.activeChild) {
         killChildProcess(context.activeChild);
         context.activeChild = undefined;
+      }
+      if (context.activePty) {
+        context.activePty.kill();
+        context.activePty = undefined;
       }
       sessions.delete(context.session.threadId);
     }

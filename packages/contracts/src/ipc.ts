@@ -45,8 +45,13 @@ import type {
   GitDiscoverRepositoriesInput,
   GitDiscoverRepositoriesResult,
   GitInitInput,
+  GitCheckMergeConflictsInput,
+  GitCheckMergeConflictsResult,
+  GitCheckPullRequestConflictsResult,
   GitListBranchesInput,
   GitListBranchesResult,
+  GitMergeBranchInput,
+  GitMergeBranchResult,
   GitPullInput,
   GitPullResult,
   GitReadWorkingTreeDiffInput,
@@ -457,6 +462,10 @@ export interface NativeApi {
     // Existing branch/worktree API
     githubRepository: (input: GitHubRepositoryInput) => Promise<GitHubRepositoryResult>;
     listBranches: (input: GitListBranchesInput) => Promise<GitListBranchesResult>;
+    checkMergeConflicts: (
+      input: GitCheckMergeConflictsInput,
+    ) => Promise<GitCheckMergeConflictsResult>;
+    mergeBranch: (input: GitMergeBranchInput) => Promise<GitMergeBranchResult>;
     createWorktree: (input: GitCreateWorktreeInput) => Promise<GitCreateWorktreeResult>;
     createDetachedWorktree: (
       input: GitCreateDetachedWorktreeInput,
@@ -476,6 +485,9 @@ export interface NativeApi {
     preparePullRequestThread: (
       input: GitPreparePullRequestThreadInput,
     ) => Promise<GitPreparePullRequestThreadResult>;
+    checkPullRequestConflicts: (
+      input: GitPullRequestRefInput,
+    ) => Promise<GitCheckPullRequestConflictsResult>;
     // Stacked action API
     pull: (input: GitPullInput) => Promise<GitPullResult>;
     status: (input: GitStatusInput) => Promise<GitStatusResult>;

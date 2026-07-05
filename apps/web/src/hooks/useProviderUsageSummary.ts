@@ -42,6 +42,7 @@ export function useProviderUsageSummary(input: {
   const allProviderUsageQuery = useQuery(
     serverAllProviderUsageQueryOptions({
       enabled: input.provider !== null && input.provider !== undefined,
+      codexHomePath: input.codexHomePath ?? null,
     }),
   );
   const localUsageSnapshotQuery = useQuery(

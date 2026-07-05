@@ -57,6 +57,8 @@ function makeTestLayer(state: {
     resolvePullRequest: () => Effect.die("resolvePullRequest should not be called in this test"),
     preparePullRequestThread: () =>
       Effect.die("preparePullRequestThread should not be called in this test"),
+    checkPullRequestConflicts: () =>
+      Effect.die("checkPullRequestConflicts should not be called in this test"),
     handoffThread: () => Effect.die("handoffThread should not be called in this test"),
     runStackedAction: () => Effect.die("runStackedAction should not be called in this test"),
   };

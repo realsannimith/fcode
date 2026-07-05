@@ -31,6 +31,12 @@ const USAGE_URL = "https://chatgpt.com/backend-api/wham/usage";
 type CodexAuth = { kind: "oauth"; accessToken: string; accountId?: string } | { kind: "api-key" };
 
 function authFilePaths(ctx: ProviderUsageContext): string[] {
+  // A selected non-primary account keeps its auth.json in its own shadow home.
+  // Never fall back to the shared/global auth there — that would silently report
+  // another account's usage.
+  if (ctx.codexHomePath) {
+    return [nodePath.join(ctx.codexHomePath, "auth.json")];
+  }
   const paths: string[] = [];
   if (ctx.env.CODEX_HOME) {
     paths.push(nodePath.join(ctx.env.CODEX_HOME, "auth.json"));
@@ -68,14 +74,18 @@ async function resolveCodexAuth(ctx: ProviderUsageContext): Promise<CodexAuth | 
     }
   }
 
-  const keychain = await readKeychainPassword({ service: "Codex Auth", platform: ctx.platform });
-  if (keychain) {
-    const parsed = readCodexAuthRecord(asRecord(decodeKeychainJson(keychain)));
-    if (parsed && parsed !== "api-key-only") {
-      return parsed;
-    }
-    if (parsed === "api-key-only") {
-      sawApiKeyOnly = true;
+  // The keychain entry is global (not per shadow home), so it only stands in for
+  // the shared/primary login — skip it when a specific account home is selected.
+  if (!ctx.codexHomePath) {
+    const keychain = await readKeychainPassword({ service: "Codex Auth", platform: ctx.platform });
+    if (keychain) {
+      const parsed = readCodexAuthRecord(asRecord(decodeKeychainJson(keychain)));
+      if (parsed && parsed !== "api-key-only") {
+        return parsed;
+      }
+      if (parsed === "api-key-only") {
+        sawApiKeyOnly = true;
+      }
     }
   }
 

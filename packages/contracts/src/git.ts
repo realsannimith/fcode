@@ -144,6 +144,27 @@ export const GitListBranchesInput = Schema.Struct({
 });
 export type GitListBranchesInput = typeof GitListBranchesInput.Type;
 
+// Simulates merging a source branch (defaults to the current branch) into a target
+// branch (via `git merge-tree`) without touching the working tree or index.
+export const GitCheckMergeConflictsInput = Schema.Struct({
+  cwd: TrimmedNonEmptyStringSchema,
+  targetBranch: TrimmedNonEmptyStringSchema,
+  sourceBranch: Schema.optional(TrimmedNonEmptyStringSchema),
+});
+export type GitCheckMergeConflictsInput = typeof GitCheckMergeConflictsInput.Type;
+
+// Merges sourceBranch into targetBranch. When the target is not the checked-out branch
+// the merge happens ref-only (merge-tree + commit-tree) so the working tree stays
+// untouched. Conflicts abort with the conflicting file list instead of failing.
+export const GitMergeBranchInput = Schema.Struct({
+  cwd: TrimmedNonEmptyStringSchema,
+  sourceBranch: TrimmedNonEmptyStringSchema,
+  targetBranch: TrimmedNonEmptyStringSchema,
+  pushSourceBranch: Schema.optional(Schema.Boolean),
+  pushTargetBranch: Schema.optional(Schema.Boolean),
+});
+export type GitMergeBranchInput = typeof GitMergeBranchInput.Type;
+
 export const GitCreateWorktreeInput = Schema.Struct({
   cwd: TrimmedNonEmptyStringSchema,
   branch: TrimmedNonEmptyStringSchema,
@@ -352,6 +373,29 @@ export const GitListBranchesResult = Schema.Struct({
 });
 export type GitListBranchesResult = typeof GitListBranchesResult.Type;
 
+export const GitCheckMergeConflictsResult = Schema.Struct({
+  sourceBranch: TrimmedNonEmptyStringSchema,
+  targetBranch: TrimmedNonEmptyStringSchema,
+  mergeable: Schema.Boolean,
+  conflictingFiles: Schema.Array(TrimmedNonEmptyStringSchema),
+  // The simulation only compares commits; uncommitted working tree changes are invisible to it.
+  hasUncommittedChanges: Schema.Boolean,
+});
+export type GitCheckMergeConflictsResult = typeof GitCheckMergeConflictsResult.Type;
+
+export const GitMergeBranchResult = Schema.Struct({
+  status: Schema.Literals(["merged", "already_up_to_date", "conflicts"]),
+  sourceBranch: TrimmedNonEmptyStringSchema,
+  targetBranch: TrimmedNonEmptyStringSchema,
+  fastForward: Schema.Boolean,
+  mergeCommitSha: Schema.NullOr(TrimmedNonEmptyStringSchema),
+  conflictingFiles: Schema.Array(TrimmedNonEmptyStringSchema),
+  pushedBranches: Schema.Array(TrimmedNonEmptyStringSchema),
+  // Push failures don't fail the merge; they surface here so the UI can warn.
+  pushFailures: Schema.Array(Schema.String),
+});
+export type GitMergeBranchResult = typeof GitMergeBranchResult.Type;
+
 export const GitCreateWorktreeResult = Schema.Struct({
   worktree: GitWorktree,
 });
@@ -375,6 +419,19 @@ export const GitResolvePullRequestResult = Schema.Struct({
   pullRequest: GitResolvedPullRequest,
 });
 export type GitResolvePullRequestResult = typeof GitResolvePullRequestResult.Type;
+
+// Simulates merging a pull request's head into its base branch (via `git merge-tree`)
+// after fetching both sides, without touching the working tree or checkout.
+export const GitCheckPullRequestConflictsResult = Schema.Struct({
+  pullRequest: GitResolvedPullRequest,
+  // Ref used as the merge target in the simulation (e.g. `origin/main`).
+  baseRef: TrimmedNonEmptyStringSchema,
+  // Local branch materialized from the PR head for the simulation.
+  headBranch: TrimmedNonEmptyStringSchema,
+  mergeable: Schema.Boolean,
+  conflictingFiles: Schema.Array(TrimmedNonEmptyStringSchema),
+});
+export type GitCheckPullRequestConflictsResult = typeof GitCheckPullRequestConflictsResult.Type;
 
 export const GitPreparePullRequestThreadResult = Schema.Struct({
   pullRequest: GitResolvedPullRequest,

@@ -44,6 +44,7 @@ import {
   CircleAlertIcon,
   EyeIcon,
   GitHubIcon,
+  GlobeIcon,
   HammerIcon,
   type LucideIcon,
   McpIcon,
@@ -85,7 +86,7 @@ import {
   type StableMessagesTimelineRowsState,
 } from "./MessagesTimeline.logic";
 import { estimateFileChangeStat } from "../../lib/toolCallDetails";
-import { deriveReadableCommandDisplay } from "../../lib/toolCallLabel";
+import { deriveReadableCommandDisplay, isFCodeBrowserCommand } from "../../lib/toolCallLabel";
 import { openWorkspaceFileReference, useWorkspaceFileOpener } from "../../lib/workspaceFileOpener";
 import { isAgentActivityWorkEntry } from "./agentActivity.logic";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
@@ -265,6 +266,7 @@ interface MessagesTimelineProps {
   onOpenThread?: (threadId: ThreadId) => void;
   /** Open an automation's detail page from a "created automation" transcript card. */
   onOpenAutomation?: (automationId: string) => void;
+  onOpenExternalLink?: (url: string) => void;
   revertTurnCountByUserMessageId: Map<MessageId, number>;
   onRevertUserMessage: (messageId: MessageId) => void;
   onEditUserMessage?: (messageId: MessageId, text: string) => boolean | Promise<boolean>;
@@ -319,6 +321,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   onOpenTurnDiff,
   onOpenThread,
   onOpenAutomation,
+  onOpenExternalLink,
   revertTurnCountByUserMessageId,
   onRevertUserMessage,
   onEditUserMessage,
@@ -1331,6 +1334,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                                 isStreaming={false}
                                 style={chatTypographyStyle}
                                 onImageExpand={onImageExpand}
+                                onOpenExternalLink={onOpenExternalLink}
                               />
                             </div>
                           ),
@@ -1349,6 +1353,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                     isStreaming={Boolean(row.message.streaming)}
                     style={chatTypographyStyle}
                     onImageExpand={onImageExpand}
+                    onOpenExternalLink={onOpenExternalLink}
                     markers={messageMarkers}
                   />
                 </div>
@@ -2328,6 +2333,8 @@ function workEntryIcon(workEntry: TimelineWorkEntry): LucideIcon {
   if (workEntry.requestKind === "file-change") return SquarePenIcon;
 
   if (workEntry.itemType === "command_execution" || workEntry.command) {
+    const command = workEntry.command ?? workEntry.rawCommand;
+    if (command && isFCodeBrowserCommand(command)) return GlobeIcon;
     return TerminalIcon;
   }
   if (workEntry.itemType === "file_change") {

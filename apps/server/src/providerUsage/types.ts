@@ -15,6 +15,12 @@ export interface ProviderUsageContext {
   readonly platform: NodeJS.Platform;
   /** Reference "now" in epoch ms, used for token-expiry checks (kept injectable for tests). */
   readonly nowMs: number;
+  /**
+   * Effective CODEX_HOME of the active Codex account (absolute path), when one is
+   * selected. The Codex fetcher must read only this home's auth.json so usage
+   * reflects the selected account rather than the shared/primary login.
+   */
+  readonly codexHomePath?: string | undefined;
 }
 
 export interface ProviderUsageFetcher {

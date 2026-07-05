@@ -58,6 +58,11 @@ export const gitMutationKeys = {
   handoffThread: (cwd: string | null) => ["git", "mutation", "handoff-thread", cwd] as const,
   stageFiles: (cwd: string | null) => ["git", "mutation", "stage-files", cwd] as const,
   unstageFiles: (cwd: string | null) => ["git", "mutation", "unstage-files", cwd] as const,
+  checkMergeConflicts: (cwd: string | null) =>
+    ["git", "mutation", "check-merge-conflicts", cwd] as const,
+  checkPullRequestConflicts: (cwd: string | null) =>
+    ["git", "mutation", "check-pull-request-conflicts", cwd] as const,
+  mergeBranch: (cwd: string | null) => ["git", "mutation", "merge-branch", cwd] as const,
 };
 
 export function invalidateGitQueries(queryClient: QueryClient) {
@@ -379,6 +384,76 @@ export function gitRunStackedActionMutationOptions(input: {
         ...(input.codexHomePath ? { codexHomePath: input.codexHomePath } : {}),
         ...(input.model ? { textGenerationModel: input.model } : {}),
         ...(input.providerOptions ? { providerOptions: input.providerOptions } : {}),
+      }),
+  });
+}
+
+// Read-only merge simulation (git merge-tree); no git caches change, so no invalidation.
+export function gitCheckMergeConflictsMutationOptions(input: { cwd: string | null }) {
+  return mutationOptions({
+    mutationKey: gitMutationKeys.checkMergeConflicts(input.cwd),
+    mutationFn: async ({
+      targetBranch,
+      sourceBranch,
+    }: {
+      targetBranch: string;
+      sourceBranch?: string;
+    }) => {
+      const api = ensureNativeApi();
+      if (!input.cwd) throw new Error("Merge conflict check is unavailable.");
+      return api.git.checkMergeConflicts({
+        cwd: input.cwd,
+        targetBranch,
+        ...(sourceBranch ? { sourceBranch } : {}),
+      });
+    },
+  });
+}
+
+// Fetches the PR head/base refs and materializes a local PR branch before the
+// merge-tree simulation, so branch caches are refreshed for this cwd afterwards.
+export function gitCheckPullRequestConflictsMutationOptions(input: {
+  cwd: string | null;
+  queryClient: QueryClient;
+}) {
+  return makeGitMutationOptions<
+    { reference: string },
+    Awaited<ReturnType<NativeApi["git"]["checkPullRequestConflicts"]>>
+  >({
+    cwd: input.cwd,
+    queryClient: input.queryClient,
+    mutationKey: gitMutationKeys.checkPullRequestConflicts(input.cwd),
+    unavailableMessage: "Pull request conflict check is unavailable.",
+    invalidate: "cwd",
+    run: (api, cwd, { reference }) => api.git.checkPullRequestConflicts({ cwd, reference }),
+  });
+}
+
+export function gitMergeBranchMutationOptions(input: {
+  cwd: string | null;
+  queryClient: QueryClient;
+}) {
+  return makeGitMutationOptions<
+    {
+      sourceBranch: string;
+      targetBranch: string;
+      pushSourceBranch?: boolean;
+      pushTargetBranch?: boolean;
+    },
+    Awaited<ReturnType<NativeApi["git"]["mergeBranch"]>>
+  >({
+    cwd: input.cwd,
+    queryClient: input.queryClient,
+    mutationKey: gitMutationKeys.mergeBranch(input.cwd),
+    unavailableMessage: "Branch merge is unavailable.",
+    invalidate: "cwd",
+    run: (api, cwd, args) =>
+      api.git.mergeBranch({
+        cwd,
+        sourceBranch: args.sourceBranch,
+        targetBranch: args.targetBranch,
+        ...(args.pushSourceBranch ? { pushSourceBranch: true } : {}),
+        ...(args.pushTargetBranch ? { pushTargetBranch: true } : {}),
       }),
   });
 }

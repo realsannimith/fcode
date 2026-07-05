@@ -9,8 +9,12 @@
 import { ServiceMap } from "effect";
 import type { Effect, Scope } from "effect";
 import type {
+  GitCheckMergeConflictsInput,
+  GitCheckMergeConflictsResult,
   GitCheckoutInput,
   GitCreateBranchInput,
+  GitMergeBranchInput,
+  GitMergeBranchResult,
   GitCreateDetachedWorktreeInput,
   GitCreateDetachedWorktreeResult,
   GitCreateWorktreeInput,
@@ -247,6 +251,24 @@ export interface GitCoreShape {
    * Pull current branch from upstream using fast-forward only.
    */
   readonly pullCurrentBranch: (cwd: string) => Effect.Effect<GitPullResult, GitCommandError>;
+
+  /**
+   * Simulate merging a source branch (default: current) into a target branch via
+   * `git merge-tree` without modifying the working tree, index, or refs.
+   */
+  readonly checkMergeConflicts: (
+    input: GitCheckMergeConflictsInput,
+  ) => Effect.Effect<GitCheckMergeConflictsResult, GitCommandError>;
+
+  /**
+   * Merge sourceBranch into targetBranch, optionally pushing either branch afterwards.
+   * When the target is not the checked-out branch the merge is performed ref-only
+   * (merge-tree + commit-tree), leaving the working tree untouched. Conflicts abort
+   * cleanly and are reported in the result rather than raised as an error.
+   */
+  readonly mergeBranch: (
+    input: GitMergeBranchInput,
+  ) => Effect.Effect<GitMergeBranchResult, GitCommandError>;
 
   /**
    * Create a worktree and branch from a base branch.

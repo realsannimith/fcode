@@ -543,6 +543,11 @@ export function createWsNativeApi(): NativeApi {
           timeoutMs: null,
         }),
       listBranches: (input) => transport.request(WS_METHODS.gitListBranches, input),
+      checkMergeConflicts: (input) => transport.request(WS_METHODS.gitCheckMergeConflicts, input),
+      mergeBranch: (input) =>
+        transport.request(WS_METHODS.gitMergeBranch, input, {
+          timeoutMs: null,
+        }),
       createWorktree: (input) => transport.request(WS_METHODS.gitCreateWorktree, input),
       createDetachedWorktree: (input) =>
         transport.request(WS_METHODS.gitCreateDetachedWorktree, input),
@@ -560,6 +565,10 @@ export function createWsNativeApi(): NativeApi {
       resolvePullRequest: (input) => transport.request(WS_METHODS.gitResolvePullRequest, input),
       preparePullRequestThread: (input) =>
         transport.request(WS_METHODS.gitPreparePullRequestThread, input),
+      checkPullRequestConflicts: (input) =>
+        transport.request(WS_METHODS.gitCheckPullRequestConflicts, input, {
+          timeoutMs: null,
+        }),
       onActionProgress: (callback) => {
         gitActionProgressListeners.add(callback);
         return () => {

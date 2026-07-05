@@ -80,6 +80,7 @@ export function useProviderModelCatalog(input: {
     providerModelsQueryOptions({
       provider: "gemini",
       binaryPath: settings.geminiBinaryPath || null,
+      cwd: discoveryCwd,
       enabled: selectedProvider === "gemini",
     }),
   );
