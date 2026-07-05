@@ -9323,7 +9323,6 @@ export default function ChatView({
     onToggleDiff,
     onOpenAutomation: openAutomationEditDialog,
     onOpenGithubRepository: openBrowserUrl,
-    onOpenServerUrl: openBrowserUrl,
     onJumpToPinnedMessage: handleJumpToPinnedMessage,
     onTogglePinnedMessageDone: handleTogglePinnedMessageDone,
     onUnpinMessage: handleUnpinMessage,
