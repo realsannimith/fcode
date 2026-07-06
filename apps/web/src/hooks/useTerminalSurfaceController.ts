@@ -20,7 +20,9 @@ import {
 } from "~/lib/terminalCloseConfirmation";
 import { readNativeApi } from "~/nativeApi";
 import { runProjectCommandInTerminal } from "~/projectTerminalRunner";
+import { collectTerminalIdsFromLayout } from "~/terminalPaneLayout";
 import { selectThreadTerminalState, useTerminalStateStore } from "~/terminalStateStore";
+import { MAX_TERMINALS_PER_GROUP } from "~/types";
 import {
   disposeAndCloseTerminalSession,
   randomTerminalId,
@@ -101,7 +103,26 @@ export function useTerminalSurfaceController(threadId: ThreadId) {
         return;
       }
       const terminalId = randomTerminalId();
-      newTerminal(threadId, terminalId);
+      // Launch into a new tab beside the active terminal (same pane tab row) instead of a
+      // whole new terminal group; only overflow past the per-group tab limit (or a missing
+      // anchor) falls back to a new group.
+      const anchorTerminalId = terminalState.activeTerminalId || terminalState.terminalIds[0] || "";
+      const anchorGroup =
+        terminalState.terminalGroups.find(
+          (group) => group.id === terminalState.activeTerminalGroupId,
+        ) ??
+        terminalState.terminalGroups.find((group) =>
+          collectTerminalIdsFromLayout(group.layout).includes(anchorTerminalId),
+        ) ??
+        null;
+      const anchorGroupFull = anchorGroup
+        ? collectTerminalIdsFromLayout(anchorGroup.layout).length >= MAX_TERMINALS_PER_GROUP
+        : false;
+      if (anchorTerminalId.length === 0 || anchorGroupFull) {
+        newTerminal(threadId, terminalId);
+      } else {
+        newTerminalTab(threadId, anchorTerminalId, terminalId);
+      }
       bumpFocusRequest();
       try {
         const { metadata } = await runProjectCommandInTerminal({
@@ -124,7 +145,17 @@ export function useTerminalSurfaceController(threadId: ThreadId) {
         // (empty) terminal open, matching how a manual "new terminal" behaves on failure.
       }
     },
-    [bumpFocusRequest, newTerminal, setTerminalMetadataStore, threadId],
+    [
+      bumpFocusRequest,
+      newTerminal,
+      newTerminalTab,
+      setTerminalMetadataStore,
+      terminalState.activeTerminalGroupId,
+      terminalState.activeTerminalId,
+      terminalState.terminalGroups,
+      terminalState.terminalIds,
+      threadId,
+    ],
   );
 
   const activateTerminal = useCallback(

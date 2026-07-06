@@ -3979,7 +3979,15 @@ export default function ChatView({
 
       setTerminalOpen(true);
       if (shouldCreateNewTerminal) {
-        storeNewTerminal(activeThreadId, targetTerminalId);
+        if (hasReachedSplitLimit) {
+          storeNewTerminal(activeThreadId, targetTerminalId);
+        } else {
+          // Launched commands open as a new tab beside the active terminal (same pane tab
+          // row) rather than a whole new terminal group — a new group surfaces the group
+          // tab bar/sidebar, which reads as a separate terminal list. The store falls back
+          // to a fresh group by itself when no terminal exists yet.
+          storeNewTerminalTab(activeThreadId, baseTerminalId, targetTerminalId);
+        }
       } else {
         storeSetActiveTerminal(activeThreadId, targetTerminalId);
       }
@@ -4016,9 +4024,11 @@ export default function ChatView({
       activeThread,
       activeThreadId,
       gitCwd,
+      hasReachedSplitLimit,
       setTerminalOpen,
       setThreadError,
       storeNewTerminal,
+      storeNewTerminalTab,
       storeSetActiveTerminal,
       storeSetTerminalMetadata,
       setLastInvokedScriptByProjectId,
