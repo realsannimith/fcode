@@ -189,6 +189,30 @@ it.layer(TestLayer)("git integration", (it) => {
     );
   });
 
+  // ── prepareCommitContext ──
+
+  describe("prepareCommitContext", () => {
+    it.effect("truncates (does not fail) when the staged diff exceeds the output cap", () =>
+      Effect.gen(function* () {
+        const tmp = yield* makeTmpDir();
+        yield* initRepoWithCommit(tmp);
+
+        // A >1MB text diff would previously exceed the git output cap and throw, aborting
+        // Commit & Push. Multi-line text keeps git from treating it as a binary blob.
+        const bigContent = "large diff line with filler text to accumulate bytes\n".repeat(30_000);
+        yield* writeTextFile(path.join(tmp, "big.txt"), bigContent);
+
+        const context = yield* (yield* GitCore).prepareCommitContext(tmp);
+
+        expect(context).not.toBeNull();
+        expect(context?.stagedSummary).toContain("big.txt");
+        // The oversized patch is truncated (with a marker) instead of failing the command.
+        expect(context?.stagedPatch).toContain("[truncated]");
+        expect(context?.stagedPatch.length).toBeLessThan(bigContent.length);
+      }),
+    );
+  });
+
   // ── initGitRepo ──
 
   describe("initGitRepo", () => {

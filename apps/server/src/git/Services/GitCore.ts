@@ -43,6 +43,13 @@ export interface ExecuteGitInput {
   readonly allowNonZeroExit?: boolean;
   readonly timeoutMs?: number;
   readonly maxOutputBytes?: number;
+  /**
+   * Behavior when output exceeds `maxOutputBytes`. "error" (default) fails the command; "truncate"
+   * keeps the first `maxOutputBytes` and appends a `[truncated]` marker instead of failing. Use
+   * "truncate" for output that only seeds best-effort text (e.g. commit-message generation), so a
+   * very large diff can never abort the operation.
+   */
+  readonly outputOverflow?: "error" | "truncate";
   readonly progress?: ExecuteGitProgress;
 }
 

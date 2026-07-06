@@ -80,6 +80,8 @@ interface ExecuteGitOptions {
   fallbackErrorMessage?: string | undefined;
   env?: NodeJS.ProcessEnv | undefined;
   progress?: ExecuteGitProgress | undefined;
+  maxOutputBytes?: number | undefined;
+  outputOverflow?: "error" | "truncate" | undefined;
 }
 
 type WorkingTreeFileStat = { path: string; insertions: number; deletions: number };
@@ -612,11 +614,13 @@ const collectOutput = Effect.fn(function* <E>(
   stream: Stream.Stream<Uint8Array, E>,
   maxOutputBytes: number,
   onLine: ((line: string) => Effect.Effect<void, never>) | undefined,
+  overflow: "error" | "truncate" = "error",
 ): Effect.fn.Return<string, GitCommandError> {
   const decoder = new TextDecoder();
   let bytes = 0;
   let text = "";
   let lineBuffer = "";
+  let truncated = false;
 
   const emitCompleteLines = (flush: boolean) =>
     Effect.gen(function* () {
@@ -641,13 +645,22 @@ const collectOutput = Effect.fn(function* <E>(
 
   yield* Stream.runForEach(stream, (chunk) =>
     Effect.gen(function* () {
+      // Once truncated, keep draining the pipe so git can finish writing and exit cleanly
+      // (avoids a SIGPIPE), but stop accumulating output.
+      if (truncated) {
+        return;
+      }
       bytes += chunk.byteLength;
       if (bytes > maxOutputBytes) {
+        if (overflow === "truncate") {
+          truncated = true;
+          return;
+        }
         return yield* new GitCommandError({
           operation: input.operation,
           command: quoteGitCommand(input.args),
           cwd: input.cwd,
-          detail: `${quoteGitCommand(input.args)} output exceeded ${maxOutputBytes} bytes and was truncated.`,
+          detail: `${quoteGitCommand(input.args)} output exceeded ${maxOutputBytes} bytes.`,
         });
       }
       const decoded = decoder.decode(chunk, { stream: true });
@@ -656,6 +669,11 @@ const collectOutput = Effect.fn(function* <E>(
       yield* emitCompleteLines(false);
     }),
   ).pipe(Effect.mapError(toGitCommandError(input, "output stream failed.")));
+
+  if (truncated) {
+    // Best-effort partial output: callers that opt into "truncate" only use this as context.
+    return `${text}\n[truncated]`;
+  }
 
   const remainder = decoder.decode();
   text += remainder;
@@ -704,6 +722,7 @@ export const makeGitCore = (options?: { executeOverride?: GitCoreShape["execute"
         } as const;
         const timeoutMs = input.timeoutMs ?? DEFAULT_TIMEOUT_MS;
         const maxOutputBytes = input.maxOutputBytes ?? DEFAULT_MAX_OUTPUT_BYTES;
+        const outputOverflow = input.outputOverflow ?? "error";
 
         const commandEffect = Effect.gen(function* () {
           const trace2Monitor = yield* createTrace2Monitor(commandInput, input.progress).pipe(
@@ -731,12 +750,14 @@ export const makeGitCore = (options?: { executeOverride?: GitCoreShape["execute"
                 child.stdout,
                 maxOutputBytes,
                 input.progress?.onStdoutLine,
+                outputOverflow,
               ),
               collectOutput(
                 commandInput,
                 child.stderr,
                 maxOutputBytes,
                 input.progress?.onStderrLine,
+                outputOverflow,
               ),
               child.exitCode.pipe(
                 Effect.map((value) => Number(value)),
@@ -798,6 +819,8 @@ export const makeGitCore = (options?: { executeOverride?: GitCoreShape["execute"
         ...(options.timeoutMs !== undefined ? { timeoutMs: options.timeoutMs } : {}),
         ...(options.env ? { env: options.env } : {}),
         ...(options.progress ? { progress: options.progress } : {}),
+        ...(options.maxOutputBytes !== undefined ? { maxOutputBytes: options.maxOutputBytes } : {}),
+        ...(options.outputOverflow !== undefined ? { outputOverflow: options.outputOverflow } : {}),
       }).pipe(
         Effect.flatMap((result) => {
           if (options.allowNonZeroExit || result.code === 0) {
@@ -1646,21 +1669,27 @@ export const makeGitCore = (options?: { executeOverride?: GitCoreShape["execute"
           yield* runGit("GitCore.prepareCommitContext.addAll", cwd, ["add", "-A"]);
         }
 
-        const stagedSummary = yield* runGitStdout(
+        // The staged summary + patch only seed commit-message generation (both are re-truncated
+        // to a few KB downstream), so a very large staged diff must never abort the commit. Use
+        // "truncate" instead of the default "error" overflow behavior — otherwise a big change set
+        // (lockfiles, build output, generated files) exceeds the git output cap and fails the
+        // whole Commit & Push.
+        const stagedSummary = yield* executeGit(
           "GitCore.prepareCommitContext.stagedSummary",
           cwd,
           ["diff", "--cached", "--name-status"],
-        ).pipe(Effect.map((stdout) => stdout.trim()));
+          { outputOverflow: "truncate" },
+        ).pipe(Effect.map((result) => result.stdout.trim()));
         if (stagedSummary.length === 0) {
           return null;
         }
 
-        const stagedPatch = yield* runGitStdout("GitCore.prepareCommitContext.stagedPatch", cwd, [
-          "diff",
-          "--cached",
-          "--patch",
-          "--minimal",
-        ]);
+        const stagedPatch = yield* executeGit(
+          "GitCore.prepareCommitContext.stagedPatch",
+          cwd,
+          ["diff", "--cached", "--patch", "--minimal"],
+          { outputOverflow: "truncate" },
+        ).pipe(Effect.map((result) => result.stdout));
 
         return {
           stagedSummary,
