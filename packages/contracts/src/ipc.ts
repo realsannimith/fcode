@@ -226,6 +226,10 @@ export interface DesktopUpdateState {
   // read-only install location, unsupported platform). Null when no GitHub
   // update source is configured.
   releaseUrl: string | null;
+  // Version of the backend serving this session. Differs from currentVersion after an
+  // update whose backend survived to keep sessions alive (session survival); the UI then
+  // offers "restart sessions to finish update" (restartBackend). Null when unknown.
+  backendVersion: string | null;
 }
 
 export interface DesktopUpdateActionResult {
@@ -380,6 +384,8 @@ export interface DesktopBridge {
   checkForUpdates: () => Promise<DesktopUpdateState>;
   downloadUpdate: () => Promise<DesktopUpdateActionResult>;
   installUpdate: () => Promise<DesktopUpdateActionResult>;
+  /** Restarts the surviving previous-version backend on the current version ("finish update"). */
+  restartBackend?: () => Promise<DesktopUpdateActionResult>;
   onUpdateState: (listener: (state: DesktopUpdateState) => void) => () => void;
   notifications: {
     isSupported: () => Promise<boolean>;

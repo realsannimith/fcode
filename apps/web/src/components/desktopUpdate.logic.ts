@@ -5,11 +5,39 @@
 
 import type { DesktopUpdateActionResult, DesktopUpdateState } from "@t3tools/contracts";
 
-export type DesktopUpdateButtonAction = "check" | "download" | "install" | "none";
+export type DesktopUpdateButtonAction =
+  | "check"
+  | "download"
+  | "install"
+  | "restart-backend"
+  | "none";
+
+/**
+ * True after a session-survival update: the UI already runs the new version while the
+ * previous-version backend keeps sessions alive; restarting the backend finishes the update.
+ */
+export function isDesktopBackendUpdatePending(state: DesktopUpdateState | null): boolean {
+  return (
+    !!state?.backendVersion &&
+    state.backendVersion.length > 0 &&
+    state.backendVersion !== state.currentVersion
+  );
+}
 
 export function resolveDesktopUpdateButtonAction(
   state: DesktopUpdateState,
 ): DesktopUpdateButtonAction {
+  // Finishing a survived update outranks routine checks, but never interrupts an update
+  // that is actively being prepared or is ready to install (that newer update supersedes).
+  if (
+    isDesktopBackendUpdatePending(state) &&
+    (state.status === "idle" ||
+      state.status === "checking" ||
+      state.status === "up-to-date" ||
+      (state.status === "error" && state.errorContext === "check"))
+  ) {
+    return "restart-backend";
+  }
   if (
     state.status === "idle" ||
     state.status === "checking" ||
@@ -43,6 +71,10 @@ export function resolveDesktopUpdateButtonAction(
 
 export function shouldShowDesktopUpdateButton(state: DesktopUpdateState | null): boolean {
   if (!state?.enabled) return false;
+  // A survived update waiting for its backend restart is always actionable.
+  if (resolveDesktopUpdateButtonAction(state) === "restart-backend") {
+    return true;
+  }
   // Only show the button when there's actually something to do:
   // a version being prepared, a downloaded update to install, or a retryable error.
   // Update checks stay background-only so periodic polling never flashes sidebar UI.
@@ -147,6 +179,13 @@ export function getDesktopUpdateButtonPresentation(
       progressPercent: null,
     };
   }
+  if (action === "restart-backend") {
+    return {
+      label: "Finish update",
+      secondaryLabel: null,
+      progressPercent: null,
+    };
+  }
   if (action === "check") {
     return {
       label: "Check updates",
@@ -186,6 +225,9 @@ export function getDesktopUpdateButtonTooltip(
 ): string {
   if (options?.installing) {
     return "Applying update...";
+  }
+  if (resolveDesktopUpdateButtonAction(state) === "restart-backend") {
+    return `Updated to ${state.currentVersion} — your sessions are still on ${state.backendVersion}. Click to restart sessions and finish the update.`;
   }
   if (state.status === "idle") {
     return "Check for updates";

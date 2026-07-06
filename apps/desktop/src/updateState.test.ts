@@ -28,6 +28,7 @@ const baseState: DesktopUpdateState = {
   errorContext: null,
   canRetry: false,
   releaseUrl: null,
+  backendVersion: null,
 };
 
 describe("getDownloadStallTimeoutMessage", () => {

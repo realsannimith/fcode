@@ -38,6 +38,18 @@ import { AnalyticsService } from "./telemetry/Services/AnalyticsService";
 import { OrchestrationEngineService } from "./orchestration/Services/OrchestrationEngine";
 import { startThreadRetentionJob } from "./threadRetention";
 
+// Desktop mode pipes this process's stdio into the Electron shell for log capture. When the
+// shell exits while the backend keeps running (session survival across UI updates), those
+// pipes close and any later console write raises EPIPE on the stream — which is fatal if
+// unhandled. Swallow exactly that: an orphaned backend simply stops emitting stdio logs.
+for (const stream of [process.stdout, process.stderr]) {
+  stream.on("error", (error: NodeJS.ErrnoException) => {
+    if (error.code !== "EPIPE") {
+      throw error;
+    }
+  });
+}
+
 export class StartupError extends Data.TaggedError("StartupError")<{
   readonly message: string;
   readonly cause?: unknown;

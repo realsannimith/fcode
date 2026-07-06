@@ -88,6 +88,24 @@ import {
   resolveElectronUpdaterPendingCacheDir,
 } from "./updatePendingCache";
 import { buildGitHubReleasesPageUrl, resolveGitHubUpdateSource } from "./githubUpdateFeed";
+import {
+  clearBackendAdoptionRecord,
+  isProcessAlive,
+  probeBackendHealth,
+  readBackendAdoptionRecord,
+  writeBackendAdoptionRecord,
+} from "./backendAdoption";
+import {
+  backendEntryFromRuntimeDir,
+  cleanupStaleBackendRuntimeCopies,
+  ensureBackendRuntimeCopy,
+} from "./backendRuntimeCopy";
+import {
+  prepareDirectMacInstall,
+  probeMacAppSignature,
+  resolveMacAppBundlePath,
+  shouldUseDirectMacInstall,
+} from "./unsignedMacUpdateInstall";
 import { isArm64HostRunningIntelBuild, resolveDesktopRuntimeInfo } from "./runtimeArch";
 import { DesktopBrowserManager } from "./browserManager";
 import {
@@ -138,6 +156,7 @@ const UPDATE_GET_STATE_CHANNEL = "desktop:update-get-state";
 const UPDATE_CHECK_CHANNEL = "desktop:update-check";
 const UPDATE_DOWNLOAD_CHANNEL = "desktop:update-download";
 const UPDATE_INSTALL_CHANNEL = "desktop:update-install";
+const UPDATE_RESTART_BACKEND_CHANNEL = "desktop:update-restart-backend";
 const NOTIFICATIONS_IS_SUPPORTED_CHANNEL = "desktop:notifications-is-supported";
 const NOTIFICATIONS_SHOW_CHANNEL = "desktop:notifications-show";
 const BASE_DIR =
@@ -198,6 +217,22 @@ let mainWindow: BrowserWindow | null = null;
 let backendProcess: ChildProcess.ChildProcess | null = null;
 let backendPort = 0;
 let backendAuthToken = "";
+// ── Backend session survival (CMux-style) ────────────────────────────────────
+// On macOS packaged builds the backend runs detached from a per-version runtime copy,
+// so a UI update can quit the shell while the backend (and every agent session/PTY it
+// owns) keeps running; the relaunched shell adopts it via the persisted adoption record.
+let backendRuntimeDir: string | null = null;
+// Pid/version of a backend adopted from a previous shell session (no ChildProcess handle).
+let adoptedBackendPid: number | null = null;
+let adoptedBackendVersion: string | null = null;
+let adoptedBackendWatchdogTimer: ReturnType<typeof setInterval> | null = null;
+// True only while quitting for an update install: the one case where the backend must
+// deliberately outlive the shell.
+let backendSurvivalQuit = false;
+
+function backendSurvivalSupported(): boolean {
+  return process.platform === "darwin" && app.isPackaged;
+}
 let backendHttpUrl = "";
 let backendWsUrl = "";
 let backendReadinessAbortController: AbortController | null = null;
@@ -415,18 +450,23 @@ function cancelBackendReadinessWait(): void {
   backendReadinessAbortController = null;
 }
 
-async function reserveBackendEndpoint(reason: string): Promise<void> {
-  backendPort = await Effect.service(NetService).pipe(
-    Effect.flatMap((net) => net.reserveLoopbackPort()),
-    Effect.provide(NetService.layer),
-    Effect.runPromise,
-  );
+function applyBackendEndpoint(port: number, reason: string): void {
+  backendPort = port;
   backendHttpUrl = `http://127.0.0.1:${backendPort}`;
   backendWsUrl = `ws://127.0.0.1:${backendPort}/?token=${encodeURIComponent(backendAuthToken)}`;
   process.env.FCODE_DESKTOP_WS_URL = backendWsUrl;
   process.env.DPCODE_DESKTOP_WS_URL = backendWsUrl;
   process.env.T3CODE_DESKTOP_WS_URL = backendWsUrl;
   writeDesktopLogHeader(`${reason} resolved backend endpoint port=${backendPort}`);
+}
+
+async function reserveBackendEndpoint(reason: string): Promise<void> {
+  const port = await Effect.service(NetService).pipe(
+    Effect.flatMap((net) => net.reserveLoopbackPort()),
+    Effect.provide(NetService.layer),
+    Effect.runPromise,
+  );
+  applyBackendEndpoint(port, reason);
 }
 
 async function waitForBackendWindowReady(baseUrl: string): Promise<"listening" | "http"> {
@@ -616,6 +656,9 @@ let updateCheckTimeoutTimer: ReturnType<typeof setTimeout> | null = null;
 let updateDownloadStallTimer: ReturnType<typeof setTimeout> | null = null;
 let updateInstallWatchdogTimer: ReturnType<typeof setTimeout> | null = null;
 let updateDownloadCancellationToken: CancellationToken | null = null;
+// Absolute path of the last fully-downloaded update archive (zip); consumed by the
+// unsigned-macOS direct install path.
+let downloadedUpdateArchivePath: string | null = null;
 let rejectUpdateDownloadStall: ((error: Error) => void) | null = null;
 let lastUpdateDownloadProgressSample: DownloadProgressSample | null = null;
 let stalledDownloadCancellationSuppressionsRemaining = 0;
@@ -645,6 +688,155 @@ function clearUpdateInstallWatchdogTimer(): void {
   }
 }
 
+// The codesign probe result cannot change while the app is running, so it is cached after
+// the first install attempt.
+let cachedDirectMacInstallDecision: boolean | null = null;
+
+function resolveDirectMacInstallDecision(): {
+  direct: boolean;
+  appBundlePath: string | null;
+} {
+  if (process.platform !== "darwin" || !app.isPackaged) {
+    return { direct: false, appBundlePath: null };
+  }
+  const appBundlePath = resolveMacAppBundlePath(process.execPath);
+  if (!appBundlePath) {
+    return { direct: false, appBundlePath: null };
+  }
+  if (cachedDirectMacInstallDecision === null) {
+    cachedDirectMacInstallDecision = shouldUseDirectMacInstall(probeMacAppSignature(appBundlePath));
+  }
+  return { direct: cachedDirectMacInstallDecision, appBundlePath };
+}
+
+// ── Backend adoption (session survival across UI restarts) ──────────────────
+
+function stopAdoptedBackendWatchdog(): void {
+  if (adoptedBackendWatchdogTimer) {
+    clearInterval(adoptedBackendWatchdogTimer);
+    adoptedBackendWatchdogTimer = null;
+  }
+}
+
+// An adopted backend has no ChildProcess handle, so exit detection is poll-based. If it
+// dies, respawn on the SAME port/token: the renderer's cached WS URL stays valid and its
+// standard reconnect logic takes over.
+function startAdoptedBackendWatchdog(): void {
+  stopAdoptedBackendWatchdog();
+  adoptedBackendWatchdogTimer = setInterval(() => {
+    if (adoptedBackendPid === null || isProcessAlive(adoptedBackendPid)) {
+      return;
+    }
+    writeDesktopLogHeader(`adopted backend pid=${adoptedBackendPid} exited; respawning`);
+    adoptedBackendPid = null;
+    adoptedBackendVersion = null;
+    stopAdoptedBackendWatchdog();
+    clearBackendAdoptionRecord(app.getPath("userData"));
+    setUpdateState({ backendVersion: app.getVersion() });
+    if (!isQuitting) {
+      startBackend();
+    }
+  }, 5_000);
+  adoptedBackendWatchdogTimer.unref();
+}
+
+/**
+ * Adopts the backend from a previous shell session when its adoption record checks out
+ * (pid alive + /health ready). Returns true when adopted; the caller then skips spawning.
+ */
+async function tryAdoptExistingBackend(): Promise<boolean> {
+  if (!backendSurvivalSupported()) {
+    return false;
+  }
+  const userDataDir = app.getPath("userData");
+  const record = readBackendAdoptionRecord(userDataDir);
+  if (!record) {
+    return false;
+  }
+  if (!isProcessAlive(record.pid) || !(await probeBackendHealth(record.port))) {
+    clearBackendAdoptionRecord(userDataDir);
+    return false;
+  }
+
+  adoptedBackendPid = record.pid;
+  adoptedBackendVersion = record.version;
+  backendAuthToken = record.token;
+  applyBackendEndpoint(record.port, "adopting surviving backend");
+  startAdoptedBackendWatchdog();
+  writeDesktopLogHeader(
+    `adopted backend pid=${record.pid} port=${record.port} version=${record.version}`,
+  );
+  return true;
+}
+
+function persistBackendAdoptionRecord(pid: number | undefined): void {
+  // Only a runtime-copy-backed backend may be adopted later: an in-bundle backend cannot
+  // safely outlive a bundle swap, so it must never leave an adoption record behind.
+  if (!backendSurvivalSupported() || !pid || backendRuntimeDir === null) {
+    return;
+  }
+  try {
+    writeBackendAdoptionRecord(app.getPath("userData"), {
+      pid,
+      port: backendPort,
+      token: backendAuthToken,
+      version: app.getVersion(),
+      startedAt: new Date().toISOString(),
+    });
+  } catch (error) {
+    // Survival is an enhancement: a failed record write only costs adoption next launch.
+    console.warn(
+      `[desktop] Could not persist backend adoption record: ${formatErrorMessage(error)}`,
+    );
+  }
+}
+
+async function stopAdoptedBackend(timeoutMs = BACKEND_SHUTDOWN_TIMEOUT_MS): Promise<void> {
+  const pid = adoptedBackendPid;
+  if (pid === null) {
+    return;
+  }
+  stopAdoptedBackendWatchdog();
+  adoptedBackendPid = null;
+  adoptedBackendVersion = null;
+  clearBackendAdoptionRecord(app.getPath("userData"));
+  try {
+    process.kill(pid, "SIGTERM");
+  } catch {
+    return;
+  }
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (!isProcessAlive(pid)) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 200));
+  }
+  try {
+    process.kill(pid, "SIGKILL");
+  } catch {
+    // Already exited.
+  }
+}
+
+/**
+ * "Finish update": stops the surviving previous-version backend (ending its sessions with
+ * the user's explicit consent) and spawns the current version on the same port/token so
+ * the renderer reconnects without a URL change.
+ */
+async function restartBackendForUpdate(): Promise<void> {
+  writeDesktopLogHeader("restart backend requested to finish update");
+  if (adoptedBackendPid !== null) {
+    await stopAdoptedBackend();
+  } else {
+    await stopBackendAndWaitForExit();
+  }
+  setUpdateState({ backendVersion: app.getVersion() });
+  if (!isQuitting) {
+    startBackend();
+  }
+}
+
 // quitAndInstall() is a fire-and-forget void call with no success signal: when
 // the OS installer silently fails the app never quits and the user is left with
 // no feedback (the "update doesn't work for some people" report). If the process
@@ -658,8 +850,15 @@ function armInstallWatchdog(): void {
       return;
     }
     clearUpdaterInstallInFlightAfterError();
-    // The backend was already stopped before quitAndInstall(); since the app is
-    // not actually quitting, bring it back so the recovered app is functional
+    // A survival quit that never exited must not leave the flag armed, or the next
+    // ordinary quit would leak the backend.
+    backendSurvivalQuit = false;
+    if (adoptedBackendPid !== null) {
+      startAdoptedBackendWatchdog();
+    }
+    // The backend was already stopped before quitAndInstall() (unless it was kept for
+    // session survival, in which case startBackend() is a guarded no-op); since the app
+    // is not actually quitting, bring it back so the recovered app is functional
     // (renderer reconnects) instead of a zombie window with a dead backend.
     startBackend();
     // Polling was stopped before the install attempt; resume it so background
@@ -779,6 +978,14 @@ function resolveAboutCommitHash(): string | null {
 }
 
 function resolveBackendEntry(): string {
+  // Prefer the out-of-bundle runtime copy: it keeps the backend's files stable while an
+  // update swaps the app bundle underneath (see backendRuntimeCopy.ts).
+  if (backendRuntimeDir) {
+    const runtimeEntry = backendEntryFromRuntimeDir(backendRuntimeDir);
+    if (FS.existsSync(runtimeEntry)) {
+      return runtimeEntry;
+    }
+  }
   return Path.join(resolveAppRoot(), "apps/server/dist/index.mjs");
 }
 
@@ -1692,8 +1899,41 @@ async function installDownloadedUpdate(): Promise<{
   isUpdaterInstallPreparing = true;
   clearUpdatePollTimer();
   try {
-    await stopBackendAndWaitForExit();
+    // Session survival: when the backend runs from the out-of-bundle runtime copy it can
+    // keep running (with every agent session and terminal) while the shell quits for the
+    // install; the updated shell adopts it on relaunch. Without a runtime copy the backend
+    // executes from inside the bundle about to be swapped, so it must stop as before.
+    const canSurviveInstall =
+      backendSurvivalSupported() &&
+      backendRuntimeDir !== null &&
+      (backendProcess !== null ||
+        (adoptedBackendPid !== null && isProcessAlive(adoptedBackendPid)));
+    if (canSurviveInstall) {
+      backendSurvivalQuit = true;
+      stopAdoptedBackendWatchdog();
+      backendProcess?.unref();
+      writeDesktopLogHeader("update install leaving backend running for session survival");
+    } else {
+      await stopBackendAndWaitForExit();
+    }
     isUpdaterQuitAndInstallInFlight = true;
+    // Squirrel.Mac refuses apps without a real Developer ID signature, so unsigned/ad-hoc
+    // builds install by swapping the .app bundle directly from the verified update archive.
+    // Signed builds keep the standard Squirrel path.
+    const directMac = resolveDirectMacInstallDecision();
+    if (directMac.direct && directMac.appBundlePath && downloadedUpdateArchivePath) {
+      prepareDirectMacInstall({
+        zipPath: downloadedUpdateArchivePath,
+        appBundlePath: directMac.appBundlePath,
+        pid: process.pid,
+      });
+      armInstallWatchdog();
+      console.info(
+        "[desktop-updater] Installing via direct bundle swap (unsigned macOS build); quitting for the installer script.",
+      );
+      app.quit();
+      return { accepted: true, completed: true };
+    }
     autoUpdater.quitAndInstall();
     armInstallWatchdog();
     return { accepted: true, completed: true };
@@ -1847,6 +2087,9 @@ function configureAutoUpdater(): void {
       );
       return;
     }
+    // Kept for the unsigned-macOS direct install path, which swaps the bundle from this
+    // archive instead of handing it to Squirrel (see installDownloadedUpdate).
+    downloadedUpdateArchivePath = info.downloadedFile ?? null;
     setUpdateState(reduceDesktopUpdateStateOnDownloadComplete(updateState, info.version));
     console.info(`[desktop-updater] Update downloaded: ${info.version}`);
   });
@@ -1928,6 +2171,8 @@ async function restartBackendAfterCrash(reason: string): Promise<void> {
 
 function startBackend(): void {
   if (isQuitting || backendProcess) return;
+  // An adopted backend is already serving this endpoint; never spawn a competitor.
+  if (adoptedBackendPid !== null && isProcessAlive(adoptedBackendPid)) return;
 
   const backendEntry = resolveBackendEntry();
   if (!FS.existsSync(backendEntry)) {
@@ -1945,7 +2190,11 @@ function startBackend(): void {
       ELECTRON_RUN_AS_NODE: "1",
     },
     stdio: captureBackendLogs ? ["ignore", "pipe", "pipe"] : "inherit",
+    // Own session on macOS so the backend survives a shell quit during update installs
+    // (session survival); every other quit path still stops it explicitly.
+    detached: backendSurvivalSupported(),
   });
+  persistBackendAdoptionRecord(child.pid);
   const listeningDetector = new ServerListeningDetector();
   backendListeningDetector = listeningDetector;
   backendProcess = child;
@@ -2103,7 +2352,17 @@ async function shutdownDesktopRuntime(reason: string): Promise<void> {
       clearUpdatePollTimer();
       cancelBackendReadinessWait();
       await disposeBrowserUsePipeServerForShutdown(reason);
-      await stopBackendAndWaitForExit();
+      if (backendSurvivalQuit) {
+        // Update-install quit: the backend deliberately outlives this shell so agent
+        // sessions/terminals survive; the relaunched (updated) shell adopts it via the
+        // persisted adoption record.
+        stopAdoptedBackendWatchdog();
+        writeDesktopLogHeader(`${reason} leaving backend running for session survival`);
+      } else {
+        await stopBackendAndWaitForExit();
+        await stopAdoptedBackend();
+        clearBackendAdoptionRecord(app.getPath("userData"));
+      }
       browserManager.dispose();
       restoreStdIoCapture?.();
       writeDesktopLogHeader(`${reason} shutdown complete`);
@@ -2380,6 +2639,23 @@ function registerIpcHandlers(): void {
     } satisfies DesktopUpdateActionResult;
   });
 
+  ipcMain.removeHandler(UPDATE_RESTART_BACKEND_CHANNEL);
+  ipcMain.handle(UPDATE_RESTART_BACKEND_CHANNEL, async () => {
+    if (isQuitting) {
+      return {
+        accepted: false,
+        completed: false,
+        state: updateState,
+      } satisfies DesktopUpdateActionResult;
+    }
+    await restartBackendForUpdate();
+    return {
+      accepted: true,
+      completed: true,
+      state: updateState,
+    } satisfies DesktopUpdateActionResult;
+  });
+
   ipcMain.removeHandler(NOTIFICATIONS_IS_SUPPORTED_CHANNEL);
   ipcMain.handle(NOTIFICATIONS_IS_SUPPORTED_CHANNEL, async () => Notification.isSupported());
 
@@ -2628,13 +2904,47 @@ if (!hasSingleInstanceLock) {
 
 async function bootstrap(): Promise<void> {
   writeDesktopLogHeader("bootstrap start");
-  backendAuthToken = Crypto.randomBytes(24).toString("hex");
-  await reserveBackendEndpoint("bootstrap");
+
+  if (backendSurvivalSupported()) {
+    // Stage the per-version backend runtime copy so the backend never executes from inside
+    // the swappable app bundle; null falls back to the in-bundle entry (no survival).
+    backendRuntimeDir = await ensureBackendRuntimeCopy({
+      resourcesPath: process.resourcesPath,
+      userDataDir: app.getPath("userData"),
+      version: app.getVersion(),
+    });
+    writeDesktopLogHeader(
+      backendRuntimeDir
+        ? `bootstrap backend runtime copy ready at ${backendRuntimeDir}`
+        : "bootstrap backend runtime copy unavailable; using in-bundle backend",
+    );
+  }
+
+  const adopted = await tryAdoptExistingBackend();
+  if (!adopted) {
+    backendAuthToken = Crypto.randomBytes(24).toString("hex");
+    await reserveBackendEndpoint("bootstrap");
+  }
+  setUpdateState({ backendVersion: adoptedBackendVersion ?? app.getVersion() });
 
   registerIpcHandlers();
   writeDesktopLogHeader("bootstrap ipc handlers registered");
-  startBackend();
-  writeDesktopLogHeader("bootstrap backend start requested");
+  if (!adopted) {
+    startBackend();
+    writeDesktopLogHeader("bootstrap backend start requested");
+  } else {
+    writeDesktopLogHeader("bootstrap reusing adopted backend; spawn skipped");
+  }
+
+  // Keep the runtime copies for the running pair (current app + a possibly older adopted
+  // backend); drop everything else in the background.
+  if (backendSurvivalSupported()) {
+    const keepVersions = [
+      app.getVersion(),
+      ...(adoptedBackendVersion ? [adoptedBackendVersion] : []),
+    ];
+    void cleanupStaleBackendRuntimeCopies(app.getPath("userData"), keepVersions);
+  }
 
   if (isDevelopment) {
     void waitForBackendWindowReady(backendHttpUrl)

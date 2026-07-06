@@ -6032,6 +6032,36 @@ export default function Sidebar() {
       return;
     }
 
+    if (desktopUpdateButtonAction === "restart-backend") {
+      // Session-survival updates: the UI already runs the new version while the previous
+      // backend keeps sessions alive; this restarts the backend on the new version.
+      if (typeof bridge.restartBackend !== "function") return;
+      setInstallingDesktopUpdate(true);
+      persistAppStateNow();
+      void bridge
+        .restartBackend()
+        .then((result) => {
+          setDesktopUpdateState(result.state);
+          setInstallingDesktopUpdate(false);
+          if (result.completed) {
+            toastManager.add({
+              type: "success",
+              title: "Update finished",
+              description: `Sessions restarted on FCode ${result.state.currentVersion}.`,
+            });
+          }
+        })
+        .catch((error) => {
+          setInstallingDesktopUpdate(false);
+          surfaceDesktopUpdateError({
+            title: "Could not restart sessions",
+            description: error instanceof Error ? error.message : "An unexpected error occurred.",
+            state: desktopUpdateState,
+          });
+        });
+      return;
+    }
+
     if (desktopUpdateButtonAction === "install") {
       setInstallingDesktopUpdate(true);
       persistAppStateNow();

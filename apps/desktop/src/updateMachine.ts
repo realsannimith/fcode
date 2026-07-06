@@ -21,6 +21,7 @@ export function createInitialDesktopUpdateState(
     errorContext: null,
     canRetry: false,
     releaseUrl: null,
+    backendVersion: null,
   };
 }
 

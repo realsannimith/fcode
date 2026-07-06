@@ -32,6 +32,7 @@ const baseState: DesktopUpdateState = {
   errorContext: null,
   canRetry: false,
   releaseUrl: null,
+  backendVersion: null,
 };
 
 describe("desktop update button state", () => {
@@ -39,6 +40,39 @@ describe("desktop update button state", () => {
     expect(shouldShowDesktopUpdateButton(baseState)).toBe(false);
     expect(resolveDesktopUpdateButtonAction(baseState)).toBe("check");
     expect(getDesktopUpdateButtonTooltip(baseState)).toBe("Check for updates");
+  });
+
+  it("offers restart-backend after a session-survival update", () => {
+    const state: DesktopUpdateState = {
+      ...baseState,
+      status: "up-to-date",
+      backendVersion: "0.9.0",
+    };
+    expect(resolveDesktopUpdateButtonAction(state)).toBe("restart-backend");
+    expect(shouldShowDesktopUpdateButton(state)).toBe(true);
+    expect(getDesktopUpdateButtonPresentation(state).label).toBe("Finish update");
+    expect(getDesktopUpdateButtonTooltip(state)).toContain("restart sessions");
+  });
+
+  it("does not offer restart-backend when the backend already matches", () => {
+    const state: DesktopUpdateState = {
+      ...baseState,
+      status: "up-to-date",
+      backendVersion: baseState.currentVersion,
+    };
+    expect(resolveDesktopUpdateButtonAction(state)).toBe("check");
+    expect(shouldShowDesktopUpdateButton(state)).toBe(false);
+  });
+
+  it("lets a newer pending update supersede the restart-backend action", () => {
+    const state: DesktopUpdateState = {
+      ...baseState,
+      status: "downloaded",
+      availableVersion: "1.2.0",
+      downloadedVersion: "1.2.0",
+      backendVersion: "0.9.0",
+    };
+    expect(resolveDesktopUpdateButtonAction(state)).toBe("install");
   });
 
   it("shows a download action when an update is available", () => {
