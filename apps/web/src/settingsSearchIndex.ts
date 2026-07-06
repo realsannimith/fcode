@@ -184,6 +184,13 @@ export const SETTINGS_SEARCH_ENTRIES: readonly SettingsSearchEntry[] = [
 
   // ── Behavior ──────────────────────────────────────────────────────────────────
   {
+    id: "behavior:agent-launchers",
+    section: "behavior",
+    title: "Terminal quick-launch commands",
+    keywords:
+      "Agent launchers. One-click terminal buttons that start an AI CLI. claude codex launch dangerously-skip-permissions yolo custom command",
+  },
+  {
     id: "behavior:assistant-output",
     section: "behavior",
     title: "Assistant output",
@@ -237,7 +244,8 @@ export const SETTINGS_SEARCH_ENTRIES: readonly SettingsSearchEntry[] = [
     id: "models:git-writing-model",
     section: "models",
     title: "Git writing model",
-    keywords: "Used for generated commit messages, PR titles, and branch names.",
+    keywords:
+      "Used for generated commit messages, PR titles, and branch names. provider codex cursor kilo opencode",
   },
   {
     id: "models:saved-model-slugs",

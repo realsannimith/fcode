@@ -19,6 +19,7 @@ import {
   shouldPromptForTerminalClose,
 } from "~/lib/terminalCloseConfirmation";
 import { readNativeApi } from "~/nativeApi";
+import { runProjectCommandInTerminal } from "~/projectTerminalRunner";
 import { selectThreadTerminalState, useTerminalStateStore } from "~/terminalStateStore";
 import {
   disposeAndCloseTerminalSession,
@@ -82,6 +83,48 @@ export function useTerminalSurfaceController(threadId: ThreadId) {
       bumpFocusRequest();
     },
     [bumpFocusRequest, newTerminal, threadId],
+  );
+
+  // Open a fresh terminal group and type a quick-launch AI CLI command into it. The command
+  // is user-configured (Settings → Behavior → Agent launchers); provider icon/title are
+  // derived from the command by runProjectCommandInTerminal and persisted as metadata.
+  const launchAgentCommand = useCallback(
+    async (input: {
+      command: string;
+      label: string;
+      cwd: string;
+      projectCwd: string;
+      worktreePath: string | null;
+    }) => {
+      const api = readNativeApi();
+      if (!api || input.cwd.trim().length === 0 || input.projectCwd.trim().length === 0) {
+        return;
+      }
+      const terminalId = randomTerminalId();
+      newTerminal(threadId, terminalId);
+      bumpFocusRequest();
+      try {
+        const { metadata } = await runProjectCommandInTerminal({
+          api,
+          threadId,
+          terminalId,
+          project: { cwd: input.projectCwd },
+          cwd: input.cwd,
+          command: input.command,
+          worktreePath: input.worktreePath,
+        });
+        if (metadata) {
+          setTerminalMetadataStore(threadId, terminalId, {
+            cliKind: metadata.cliKind,
+            label: metadata.label,
+          });
+        }
+      } catch {
+        // These surfaces have no thread-error channel; a failed spawn just leaves the new
+        // (empty) terminal open, matching how a manual "new terminal" behaves on failure.
+      }
+    },
+    [bumpFocusRequest, newTerminal, setTerminalMetadataStore, threadId],
   );
 
   const activateTerminal = useCallback(
@@ -166,6 +209,7 @@ export function useTerminalSurfaceController(threadId: ThreadId) {
     splitRight,
     splitDown,
     createTerminalTab,
+    launchAgentCommand,
     moveTerminalToNewGroup,
     activateTerminal,
     closeTerminal,

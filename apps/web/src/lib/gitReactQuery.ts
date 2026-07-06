@@ -1,6 +1,7 @@
 import type {
   GitReadWorkingTreeDiffInput,
   GitStackedAction,
+  ModelSelection,
   NativeApi,
   ProviderStartOptions,
 } from "@t3tools/contracts";
@@ -205,6 +206,7 @@ export function gitSummarizeDiffQueryOptions(input: {
   cacheScope?: string | null;
   patch: string | null;
   model?: string | null;
+  modelSelection?: ModelSelection | null;
   codexHomePath?: string | null;
   providerOptions?: ProviderStartOptions | null;
   enabled?: boolean;
@@ -217,11 +219,14 @@ export function gitSummarizeDiffQueryOptions(input: {
       : null;
 
   const providerOptionsKey = input.providerOptions ? JSON.stringify(input.providerOptions) : null;
+  const modelKey = input.modelSelection
+    ? `${input.modelSelection.provider}:${input.modelSelection.model}`
+    : (input.model ?? null);
 
   return queryOptions({
     queryKey: gitQueryKeys.diffSummary(
       input.cacheScope ?? input.cwd,
-      input.model ?? null,
+      modelKey,
       input.codexHomePath ?? null,
       providerOptionsKey,
       patchKey,
@@ -236,6 +241,7 @@ export function gitSummarizeDiffQueryOptions(input: {
         patch: normalizedPatch,
         ...(input.codexHomePath ? { codexHomePath: input.codexHomePath } : {}),
         ...(input.model ? { textGenerationModel: input.model } : {}),
+        ...(input.modelSelection ? { textGenerationModelSelection: input.modelSelection } : {}),
         ...(input.providerOptions ? { providerOptions: input.providerOptions } : {}),
       });
     },
@@ -356,6 +362,7 @@ export function gitRunStackedActionMutationOptions(input: {
   cwd: string | null;
   queryClient: QueryClient;
   model?: string | null;
+  modelSelection?: ModelSelection | null;
   codexHomePath?: string | null;
   providerOptions?: ProviderStartOptions | null;
 }) {
@@ -383,6 +390,7 @@ export function gitRunStackedActionMutationOptions(input: {
         ...(filePaths ? { filePaths } : {}),
         ...(input.codexHomePath ? { codexHomePath: input.codexHomePath } : {}),
         ...(input.model ? { textGenerationModel: input.model } : {}),
+        ...(input.modelSelection ? { textGenerationModelSelection: input.modelSelection } : {}),
         ...(input.providerOptions ? { providerOptions: input.providerOptions } : {}),
       }),
   });

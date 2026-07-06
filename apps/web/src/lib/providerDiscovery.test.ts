@@ -82,7 +82,7 @@ describe("rankProviderDiscoveryItems", () => {
           interface: { displayName: "Check Code" },
         }),
       ],
-      "checctcode",
+      "checkcode",
       buildSkillSearchFields,
     );
 

@@ -12,6 +12,7 @@ import {
   DEFAULT_GIT_TEXT_GENERATION_MODEL,
   DEFAULT_SERVER_SETTINGS,
   TrimmedNonEmptyString,
+  type ModelSelection,
   ProviderKind,
   type ProviderStartOptions,
   type ServerSettings,
@@ -39,6 +40,13 @@ import {
   UI_DENSITY_MODES,
   normalizeUiDensity as normalizeUiDensityValue,
 } from "./lib/appDensity";
+import {
+  cloneDefaultAgentLaunchers,
+  MAX_AGENT_LAUNCHER_COMMAND_LENGTH,
+  MAX_AGENT_LAUNCHER_ID_LENGTH,
+  MAX_AGENT_LAUNCHER_LABEL_LENGTH,
+  normalizeAgentLaunchers,
+} from "./agentLaunchers";
 
 const APP_SETTINGS_STORAGE_KEY = "fcode:app-settings:v1";
 const SERVER_SETTINGS_MIGRATION_STORAGE_KEY = "t3code:server-settings-migrated:v1";
@@ -131,6 +139,13 @@ const withDefaults =
       Schema.withConstructorDefault(() => Option.some(fallback())),
       Schema.withDecodingDefault(() => fallback()),
     );
+
+// One user-defined quick-launch command for an AI CLI, typed into a managed terminal.
+export const AgentLauncherSchema = Schema.Struct({
+  id: TrimmedNonEmptyString.check(Schema.isMaxLength(MAX_AGENT_LAUNCHER_ID_LENGTH)),
+  label: TrimmedNonEmptyString.check(Schema.isMaxLength(MAX_AGENT_LAUNCHER_LABEL_LENGTH)),
+  command: TrimmedNonEmptyString.check(Schema.isMaxLength(MAX_AGENT_LAUNCHER_COMMAND_LENGTH)),
+});
 
 export const AppSettingsSchema = Schema.Struct({
   claudeBinaryPath: Schema.String.check(Schema.isMaxLength(4096)).pipe(withDefaults(() => "")),
@@ -229,6 +244,11 @@ export const AppSettingsSchema = Schema.Struct({
       slug: Schema.String,
     }),
   ).pipe(withDefaults(() => [])),
+  // Local-only UI preference: quick-launch commands for AI CLIs, surfaced as a dropdown in
+  // the terminal header so a coding agent can be started in a fresh terminal on one click.
+  agentLaunchers: Schema.Array(AgentLauncherSchema).pipe(
+    withDefaults(() => cloneDefaultAgentLaunchers()),
+  ),
 });
 export type AppSettings = typeof AppSettingsSchema.Type;
 
@@ -444,6 +464,7 @@ function normalizeAppSettings(settings: AppSettings): AppSettings {
     usageHiddenProviders: normalizeHiddenProviders(settings.usageHiddenProviders),
     providerOrder: normalizeProviderOrder(settings.providerOrder),
     hiddenModels: [],
+    agentLaunchers: normalizeAgentLaunchers(settings.agentLaunchers),
   };
 }
 
@@ -791,14 +812,18 @@ export function getGitTextGenerationModelOptions(
   settings: Pick<
     AppSettings,
     | "customCodexModels"
+    | "customCursorModels"
     | "customKiloModels"
     | "customOpenCodeModels"
     | "textGenerationModel"
     | "textGenerationProvider"
   >,
 ): AppModelOption[] {
+  // Only providers with a dedicated server-side TextGeneration implementation
+  // (see apps/server/src/git/Layers/ProviderTextGeneration.ts) are offered here.
   const options = [
     ...getAppModelOptions("codex", settings.customCodexModels),
+    ...getAppModelOptions("cursor", settings.customCursorModels),
     ...getAppModelOptions("kilo", settings.customKiloModels),
     ...getAppModelOptions("opencode", settings.customOpenCodeModels),
   ];
@@ -828,6 +853,21 @@ export function getGitTextGenerationModelOptions(
   }
 
   return deduped;
+}
+
+// Full provider-aware selection for git text generation RPCs. The raw model slug
+// alone cannot route to Kilo or Cursor server-side, so callers must send this.
+export function getGitTextGenerationModelSelection(
+  settings: Pick<AppSettings, "textGenerationModel" | "textGenerationProvider">,
+): ModelSelection {
+  const model = settings.textGenerationModel?.trim() || DEFAULT_GIT_TEXT_GENERATION_MODEL;
+  return {
+    provider: resolveTextGenerationProvider({
+      provider: settings.textGenerationProvider ?? null,
+      model,
+    }),
+    model,
+  } as ModelSelection;
 }
 
 export function resolveAppModelSelection(

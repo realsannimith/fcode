@@ -106,6 +106,7 @@ describe("getGitTextGenerationModelOptions", () => {
   it("merges codex and OpenCode model options for git writing settings", () => {
     const options = getGitTextGenerationModelOptions({
       customCodexModels: ["custom/codex-model"],
+      customCursorModels: [],
       customKiloModels: [],
       customOpenCodeModels: ["openrouter/gpt-oss-120b"],
       textGenerationModel: "openai/gpt-5",
@@ -117,9 +118,28 @@ describe("getGitTextGenerationModelOptions", () => {
     expect(options.some((option) => option.slug === "openrouter/gpt-oss-120b")).toBe(true);
   });
 
+  it("offers cursor models for git writing settings", () => {
+    const options = getGitTextGenerationModelOptions({
+      customCodexModels: [],
+      customCursorModels: ["custom-cursor-model"],
+      customKiloModels: [],
+      customOpenCodeModels: [],
+      textGenerationModel: "gpt-5.4-mini",
+      textGenerationProvider: "codex",
+    });
+
+    expect(options.some((option) => option.provider === "cursor")).toBe(true);
+    expect(
+      options.some(
+        (option) => option.provider === "cursor" && option.slug === "custom-cursor-model",
+      ),
+    ).toBe(true);
+  });
+
   it("preserves a currently selected transient git writing model", () => {
     const options = getGitTextGenerationModelOptions({
       customCodexModels: [],
+      customCursorModels: [],
       customKiloModels: [],
       customOpenCodeModels: [],
       textGenerationModel: "openrouter/custom-model",
@@ -137,6 +157,7 @@ describe("getGitTextGenerationModelOptions", () => {
   it("humanizes transient OpenCode git-writing models instead of showing the raw slug", () => {
     const options = getGitTextGenerationModelOptions({
       customCodexModels: [],
+      customCursorModels: [],
       customKiloModels: [],
       customOpenCodeModels: [],
       textGenerationModel: "opencode-go/kimi-k2.6",
@@ -226,7 +247,7 @@ describe("resolveAppModelSelection", () => {
         },
         "sonnet",
       ),
-    ).toBe("claude-sonnet-4-6");
+    ).toBe("claude-sonnet-5");
   });
 
   it("resolves transient selected custom models included in app model options", () => {

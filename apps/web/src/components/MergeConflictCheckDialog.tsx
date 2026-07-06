@@ -12,11 +12,13 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type {
   GitCheckMergeConflictsResult,
   GitMergeBranchResult,
+  ModelSelection,
   ThreadId,
 } from "@t3tools/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { useComposerDraftStore } from "~/composerDraftStore";
+import { ModelSelectionPicker } from "~/components/chat/ModelSelectionPicker";
 import { Button } from "~/components/ui/button";
 import { Checkbox } from "~/components/ui/checkbox";
 import {
@@ -42,6 +44,9 @@ import {
   gitCheckMergeConflictsMutationOptions,
   gitMergeBranchMutationOptions,
 } from "~/lib/gitReactQuery";
+
+import { useStore } from "~/store";
+import { createThreadSelector } from "~/storeSelectors";
 
 import {
   buildMergeConflictResolutionPrompt,
@@ -100,6 +105,24 @@ export function MergeConflictCheckDialog({
   const [mergeConflictChoices, setMergeConflictChoices] = useState<
     Record<string, MergeConflictSideChoice>
   >({});
+  // Which agent gets the resolution prompt; null means keep the thread's current
+  // composer selection untouched.
+  const [agentSelectionOverride, setAgentSelectionOverride] = useState<ModelSelection | null>(null);
+  const activeThread = useStore(
+    useMemo(() => createThreadSelector(activeThreadId), [activeThreadId]),
+  );
+  // Started threads keep their provider (same rule as the composer); fresh threads
+  // may hand the resolution to any provider.
+  const hasThreadStarted = Boolean(
+    activeThread &&
+    (activeThread.latestTurn !== null ||
+      activeThread.messages.length > 0 ||
+      activeThread.session !== null),
+  );
+  const lockedAgentProvider = hasThreadStarted
+    ? (activeThread?.session?.provider ?? activeThread?.modelSelection.provider ?? null)
+    : null;
+  const agentSelection = agentSelectionOverride ?? activeThread?.modelSelection ?? null;
 
   const currentBranchName = branchList?.branches.find((branch) => branch.current)?.name ?? null;
   const defaultBranchName =
@@ -165,6 +188,7 @@ export function MergeConflictCheckDialog({
     setPushSourceBranch(false);
     setPushTargetBranch(false);
     setMergeConflictChoices({});
+    setAgentSelectionOverride(null);
   }, [cwd, open, resetCheckMutation, resetMergeMutation]);
 
   const closeDialog = useCallback(() => {
@@ -232,6 +256,9 @@ export function MergeConflictCheckDialog({
       })),
       hasUncommittedChanges: conflictInfo.hasUncommittedChanges,
     });
+    if (agentSelectionOverride) {
+      useComposerDraftStore.getState().setModelSelection(activeThreadId, agentSelectionOverride);
+    }
     useComposerDraftStore.getState().setPrompt(activeThreadId, prompt);
     closeDialog();
     toastManager.add({
@@ -240,7 +267,7 @@ export function MergeConflictCheckDialog({
       description: "Review the merge instructions in the composer and send them to the agent.",
       data: { threadId: activeThreadId },
     });
-  }, [activeThreadId, closeDialog, conflictInfo, mergeConflictChoices]);
+  }, [activeThreadId, agentSelectionOverride, closeDialog, conflictInfo, mergeConflictChoices]);
 
   const isBusy = checkMutation.isPending || mergeMutation.isPending;
   const branchPickerReady = sourceBranch !== null && targetBranch !== null;
@@ -434,6 +461,17 @@ export function MergeConflictCheckDialog({
                   ))}
                 </div>
               </ScrollArea>
+              {agentSelection ? (
+                <div className="flex items-center justify-between gap-2 text-xs">
+                  <span className="text-muted-foreground">Resolve with</span>
+                  <ModelSelectionPicker
+                    value={agentSelection}
+                    cwd={cwd}
+                    lockedProvider={lockedAgentProvider}
+                    onChange={setAgentSelectionOverride}
+                  />
+                </div>
+              ) : null}
               {conflictInfo.hasUncommittedChanges ? (
                 <p className="text-muted-foreground text-xs">
                   Uncommitted working tree changes are not part of this simulation.

@@ -52,13 +52,13 @@ import {
   buildProviderOptionPatch,
   type ProviderOptions,
 } from "~/providerModelOptions";
+import { ModelSelectionPicker } from "~/components/chat/ModelSelectionPicker";
 import { ensureNativeApi } from "~/nativeApi";
 import { useStore } from "~/store";
 import {
   type AutomationFormState,
   AutomationApprovalBanner,
   AutomationDialog,
-  AutomationModelPicker,
   acknowledgedRiskIdsForFormWarnings,
   buildAutomationFormWarnings,
   canCancelAutomationRun,
@@ -704,9 +704,9 @@ function AutomationDetailView() {
                   </EditRow>
                 ) : null}
                 <EditRow label="Model">
-                  <AutomationModelPicker
+                  <ModelSelectionPicker
                     value={definition.modelSelection}
-                    projectCwd={project?.cwd ?? null}
+                    cwd={project?.cwd ?? null}
                     onChange={applyModelSelection}
                   />
                 </EditRow>

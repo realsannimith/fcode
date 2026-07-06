@@ -81,6 +81,7 @@ import { Select, SelectItem, SelectTrigger, SelectValue } from "../components/ui
 import { Switch } from "../components/ui/switch";
 import { toastManager } from "../components/ui/toast";
 import { ThemePackEditor } from "../components/ThemePackEditor";
+import { AgentLaunchersSettingsSection } from "../components/settings/AgentLaunchersSettingsSection";
 import { CodexAccountsSettingsSection } from "../components/settings/CodexAccountsSettingsSection";
 import { DebouncedSettingTextInput } from "../components/settings/DebouncedSettingTextInput";
 import {
@@ -840,6 +841,7 @@ function SettingsRouteView() {
   // doesn't rebuild these lists.
   const {
     customCodexModels,
+    customCursorModels,
     customKiloModels,
     customOpenCodeModels,
     textGenerationModel,
@@ -849,6 +851,7 @@ function SettingsRouteView() {
     () =>
       getGitTextGenerationModelOptions({
         customCodexModels,
+        customCursorModels,
         customKiloModels,
         customOpenCodeModels,
         textGenerationModel,
@@ -856,6 +859,7 @@ function SettingsRouteView() {
       }),
     [
       customCodexModels,
+      customCursorModels,
       customKiloModels,
       customOpenCodeModels,
       textGenerationModel,
@@ -2065,6 +2069,8 @@ function SettingsRouteView() {
 
   const renderBehaviorPanel = () => (
     <div className="space-y-6">
+      <AgentLaunchersSettingsSection />
+
       <SettingsSection title="Runtime behavior">
         {renderBooleanSettingRow({
           settingKey: "enableAssistantStreaming",

@@ -4027,6 +4027,24 @@ export default function ChatView({
       terminalState.terminalIds,
     ],
   );
+  // Quick-launch an AI CLI (from the terminal header dropdown) in a fresh terminal. Reuses the
+  // project-script path so terminal targeting, focus, and provider metadata all stay consistent;
+  // the launcher command is user-configured (Settings → Behavior → Agent launchers).
+  const launchAgentInTerminal = useCallback(
+    (launch: { command: string; label: string }) => {
+      void runProjectScript(
+        {
+          id: "agent-launcher",
+          name: launch.label,
+          command: launch.command,
+          icon: "play",
+          runOnWorktreeCreate: false,
+        },
+        { preferNewTerminal: true, rememberAsLastInvoked: false },
+      );
+    },
+    [runProjectScript],
+  );
   const stopActiveThreadSession = useCallback(async () => {
     const api = readNativeApi();
     if (
@@ -10016,6 +10034,7 @@ export default function ChatView({
                   {...terminalDrawerProps}
                   presentationMode="workspace"
                   isVisible={terminalWorkspaceTerminalTabActive}
+                  onLaunchAgentCommand={launchAgentInTerminal}
                   onTogglePresentationMode={
                     terminalState.workspaceLayout === "both" ? collapseTerminalWorkspace : undefined
                   }
@@ -10065,6 +10084,7 @@ export default function ChatView({
             key={activeThread.id}
             {...terminalDrawerProps}
             presentationMode="drawer"
+            onLaunchAgentCommand={launchAgentInTerminal}
             onTogglePresentationMode={expandTerminalWorkspace}
           />
         );

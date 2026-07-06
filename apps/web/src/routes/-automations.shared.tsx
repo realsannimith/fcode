@@ -9,20 +9,17 @@ import {
   type AutomationStreamEvent,
   type AutomationUpdateInput,
   type AutomationWorktreeMode,
-  type ModelSelection,
-  type ProviderKind,
   type RuntimeMode,
   type ThreadId,
 } from "@t3tools/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo } from "react";
 
-import { useAppSettings } from "~/appSettings";
 import {
   ComposerPickerMenuPopup,
   ComposerPickerMenuSubPopup,
 } from "~/components/chat/ComposerPickerMenuPopup";
-import { ProviderModelPicker } from "~/components/chat/ProviderModelPicker";
+import { ModelSelectionPicker } from "~/components/chat/ModelSelectionPicker";
 import { Alert, AlertDescription, AlertTitle } from "~/components/ui/alert";
 import { Button } from "~/components/ui/button";
 import { Dialog, DialogPopup, DialogTitle } from "~/components/ui/dialog";
@@ -82,13 +79,8 @@ import {
 } from "~/lib/automationForm";
 import { SkillCubeIcon, WorktreeIcon } from "~/lib/icons";
 import { CentralIcon } from "~/lib/central-icons";
-import { resolveProviderDiscoveryCwd } from "~/lib/providerDiscovery";
 import { cn } from "~/lib/utils";
-import { serverConfigQueryOptions } from "~/lib/serverReactQuery";
 import { ensureNativeApi } from "~/nativeApi";
-import { buildModelSelection } from "~/providerModelOptions";
-import { useProviderModelCatalog } from "~/hooks/useProviderModelCatalog";
-import { useProviderStatusesForLocalConfig } from "~/hooks/useProviderStatusesForLocalConfig";
 import { useStore } from "~/store";
 import { resolveThreadPickerTitle } from "./-chatThreadRoute.logic";
 
@@ -690,53 +682,6 @@ export function AutomationApprovalBanner({
   );
 }
 
-export function AutomationModelPicker({
-  value,
-  projectCwd,
-  onChange,
-}: {
-  readonly value: ModelSelection;
-  readonly projectCwd: string | null;
-  readonly onChange: (value: ModelSelection) => void;
-}) {
-  const { settings } = useAppSettings();
-  const serverConfigQuery = useQuery(serverConfigQueryOptions());
-  const providerStatuses = useProviderStatusesForLocalConfig();
-  const [open, setOpen] = useState(false);
-  const modelHintByProvider = useMemo<Partial<Record<ProviderKind, string | null>>>(
-    () => ({ [value.provider]: value.model }),
-    [value.model, value.provider],
-  );
-  const providerModelDiscoveryCwd = resolveProviderDiscoveryCwd({
-    activeThreadWorktreePath: null,
-    activeProjectCwd: projectCwd,
-    serverCwd: serverConfigQuery.data?.cwd ?? null,
-  });
-  const { modelOptionsByProvider, loadingModelProviders } = useProviderModelCatalog({
-    selectedProvider: value.provider,
-    discoveryEnabled: open,
-    cwd: providerModelDiscoveryCwd,
-    modelHintByProvider,
-  });
-
-  return (
-    <ProviderModelPicker
-      compact
-      provider={value.provider}
-      model={value.model}
-      lockedProvider={null}
-      providers={providerStatuses}
-      modelOptionsByProvider={modelOptionsByProvider}
-      loadingModelProviders={loadingModelProviders}
-      hiddenProviders={settings.hiddenProviders}
-      providerOrder={settings.providerOrder}
-      open={open}
-      onOpenChange={setOpen}
-      onProviderModelChange={(provider, model) => onChange(buildModelSelection(provider, model))}
-    />
-  );
-}
-
 export function AutomationDialog({
   open,
   editing,
@@ -966,9 +911,9 @@ export function AutomationDialog({
               </ComposerPickerMenuPopup>
             </Menu>
 
-            <AutomationModelPicker
+            <ModelSelectionPicker
               value={form.modelSelection}
-              projectCwd={selectedProject?.cwd ?? null}
+              cwd={selectedProject?.cwd ?? null}
               onChange={(value) => setField("modelSelection", value)}
             />
 

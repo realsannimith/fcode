@@ -29,6 +29,9 @@ const makeProviderTextGeneration = Effect.gen(function* () {
     if (input.modelSelection?.provider === "opencode") {
       return openCodeTextGeneration;
     }
+    if (input.modelSelection?.provider === "codex") {
+      return codexTextGeneration;
+    }
     return parseOpenCodeModelSlug(input.model) !== null
       ? openCodeTextGeneration
       : codexTextGeneration;

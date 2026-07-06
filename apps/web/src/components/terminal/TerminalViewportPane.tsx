@@ -31,6 +31,7 @@ import type {
   ThreadTerminalSplitNode,
 } from "../../types";
 import TerminalActivityIndicator from "./TerminalActivityIndicator";
+import { TerminalAgentLauncherMenu, type TerminalAgentLaunch } from "./TerminalAgentLauncherMenu";
 import TerminalIdentityIcon from "./TerminalIdentityIcon";
 // ponytail: importing two runtime control fns (not the xterm object) so a divider
 // drag can pause per-frame reflow; avoids threading callbacks through 3 layers.
@@ -52,6 +53,7 @@ interface TerminalViewportPaneProps {
   onSplitTerminalRight?: ((terminalId: string) => void) | undefined;
   onSplitTerminalDown?: ((terminalId: string) => void) | undefined;
   onNewTerminalTab?: ((terminalId: string) => void) | undefined;
+  onLaunchAgentCommand?: ((launch: TerminalAgentLaunch) => void) | undefined;
   onMoveTerminalToGroup?: ((terminalId: string) => void) | undefined;
   onCloseTerminal?: ((terminalId: string) => void) | undefined;
   presentationMode: ThreadTerminalPresentationMode;
@@ -117,6 +119,7 @@ export default function TerminalViewportPane({
   onSplitTerminalRight,
   onSplitTerminalDown,
   onNewTerminalTab,
+  onLaunchAgentCommand,
   onMoveTerminalToGroup,
   onCloseTerminal,
   presentationMode,
@@ -191,6 +194,10 @@ export default function TerminalViewportPane({
                 >
                   <Plus className="size-3.5" />
                 </PaneActionButton>
+              ) : null}
+
+              {onLaunchAgentCommand ? (
+                <TerminalAgentLauncherMenu onLaunch={onLaunchAgentCommand} />
               ) : null}
             </div>
 

@@ -41,7 +41,13 @@ export function DockTerminalPane(props: {
   }, [projectCwd, worktreePath]);
 
   const terminal = useTerminalSurfaceController(scopeId);
-  const { terminalState, openTerminalThreadPage, bumpFocusRequest, newTerminalGroup } = terminal;
+  const {
+    terminalState,
+    openTerminalThreadPage,
+    bumpFocusRequest,
+    newTerminalGroup,
+    launchAgentCommand,
+  } = terminal;
 
   // A dock terminal pane always shows a live terminal: ensure one is open on mount
   // and re-open if the user closes the last tab (normalize guarantees a default id).
@@ -67,6 +73,20 @@ export function DockTerminalPane(props: {
     terminalState.terminalOpen,
   ]);
 
+  const launchAgent = useCallback(
+    (launch: { command: string; label: string }) => {
+      if (!projectCwd) return;
+      void launchAgentCommand({
+        command: launch.command,
+        label: launch.label,
+        cwd,
+        projectCwd,
+        worktreePath,
+      });
+    },
+    [cwd, launchAgentCommand, projectCwd, worktreePath],
+  );
+
   return (
     <ThreadTerminalDrawer
       key={scopeId}
@@ -90,6 +110,7 @@ export function DockTerminalPane(props: {
       onSplitTerminalDown={terminal.splitDown}
       onNewTerminal={createTerminal}
       onNewTerminalTab={terminal.createTerminalTab}
+      onLaunchAgentCommand={projectCwd ? launchAgent : undefined}
       onMoveTerminalToGroup={terminal.moveTerminalToNewGroup}
       onActiveTerminalChange={terminal.activateTerminal}
       onCloseTerminal={terminal.closeTerminal}

@@ -58,6 +58,7 @@ import type {
   TerminalRuntimeViewState,
 } from "./terminal/terminalRuntimeTypes";
 import TerminalViewportPane from "./terminal/TerminalViewportPane";
+import { type TerminalAgentLaunch } from "./terminal/TerminalAgentLauncherMenu";
 import { useTerminalDrawerHeight } from "./terminal/useTerminalDrawerHeight";
 import { TerminalSearch } from "./TerminalSearch";
 import { TerminalScrollToBottom } from "./TerminalScrollToBottom";
@@ -549,6 +550,7 @@ interface ThreadTerminalDrawerProps {
   onSplitTerminalDown: () => void;
   onNewTerminal: () => void;
   onNewTerminalTab: (terminalId: string) => void;
+  onLaunchAgentCommand?: ((launch: TerminalAgentLaunch) => void) | undefined;
   onMoveTerminalToGroup: (terminalId: string) => void;
   splitShortcutLabel?: string | undefined;
   splitDownShortcutLabel?: string | undefined;
@@ -595,6 +597,7 @@ export default function ThreadTerminalDrawer({
   onSplitTerminalDown,
   onNewTerminal,
   onNewTerminalTab,
+  onLaunchAgentCommand,
   onMoveTerminalToGroup,
   splitShortcutLabel,
   splitDownShortcutLabel,
@@ -800,6 +803,7 @@ export default function ThreadTerminalDrawer({
                       onNewTerminalTab(terminalId);
                     }
               }
+              onLaunchAgentCommand={onLaunchAgentCommand}
               onMoveTerminalToGroup={isWorkspaceMode ? onMoveTerminalToGroup : undefined}
               onCloseTerminal={onCloseTerminal}
               presentationMode={presentationMode}

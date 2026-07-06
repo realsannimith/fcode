@@ -41,7 +41,11 @@ import {
   shouldOfferCreateBranchPrompt,
   summarizeGitResult,
 } from "./GitActionsControl.logic";
-import { getProviderStartOptions, useAppSettings } from "~/appSettings";
+import {
+  getGitTextGenerationModelSelection,
+  getProviderStartOptions,
+  useAppSettings,
+} from "~/appSettings";
 import { formatClockDuration } from "~/session-logic";
 import { Button } from "~/components/ui/button";
 import {
@@ -399,6 +403,7 @@ export default function GitActionsControl({
       queryClient,
       codexHomePath: settings.codexHomePath || null,
       model: settings.textGenerationModel ?? null,
+      modelSelection: getGitTextGenerationModelSelection(settings),
       ...(providerOptions ? { providerOptions } : {}),
     }),
   );

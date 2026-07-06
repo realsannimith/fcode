@@ -8,11 +8,16 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import type { GitCheckPullRequestConflictsResult, ThreadId } from "@t3tools/contracts";
+import type {
+  GitCheckPullRequestConflictsResult,
+  ModelSelection,
+  ThreadId,
+} from "@t3tools/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useDebouncedValue } from "@tanstack/react-pacer";
 
 import { useComposerDraftStore } from "~/composerDraftStore";
+import { ModelSelectionPicker } from "~/components/chat/ModelSelectionPicker";
 import { Button } from "~/components/ui/button";
 import {
   Dialog,
@@ -40,6 +45,8 @@ import {
 } from "~/lib/gitReactQuery";
 import { cn } from "~/lib/utils";
 import { parsePullRequestReference } from "~/pullRequestReference";
+import { useStore } from "~/store";
+import { createThreadSelector } from "~/storeSelectors";
 
 import {
   buildPullRequestConflictResolutionPrompt,
@@ -72,11 +79,29 @@ export function PullRequestConflictDialog({
   const [conflictChoices, setConflictChoices] = useState<
     Record<string, PullRequestConflictSideChoice>
   >({});
+  // Which agent gets the resolution prompt; null means keep the thread's current
+  // composer selection untouched.
+  const [agentSelectionOverride, setAgentSelectionOverride] = useState<ModelSelection | null>(null);
   const [debouncedReference, referenceDebouncer] = useDebouncedValue(
     reference,
     { wait: 450 },
     (debouncerState) => ({ isPending: debouncerState.isPending }),
   );
+  const activeThread = useStore(
+    useMemo(() => createThreadSelector(activeThreadId), [activeThreadId]),
+  );
+  // Started threads keep their provider (same rule as the composer); fresh threads
+  // may hand the resolution to any provider.
+  const hasThreadStarted = Boolean(
+    activeThread &&
+    (activeThread.latestTurn !== null ||
+      activeThread.messages.length > 0 ||
+      activeThread.session !== null),
+  );
+  const lockedAgentProvider = hasThreadStarted
+    ? (activeThread?.session?.provider ?? activeThread?.modelSelection.provider ?? null)
+    : null;
+  const agentSelection = agentSelectionOverride ?? activeThread?.modelSelection ?? null;
 
   const checkMutation = useMutation(
     gitCheckPullRequestConflictsMutationOptions({ cwd, queryClient }),
@@ -88,6 +113,7 @@ export function PullRequestConflictDialog({
     setReference(initialReference ?? "");
     setReferenceDirty(false);
     setConflictChoices({});
+    setAgentSelectionOverride(null);
     resetCheckMutation();
   }, [initialReference, open, resetCheckMutation]);
 
@@ -168,6 +194,9 @@ export function PullRequestConflictDialog({
         choice: conflictChoices[path] ?? "agent",
       })),
     });
+    if (agentSelectionOverride) {
+      useComposerDraftStore.getState().setModelSelection(activeThreadId, agentSelectionOverride);
+    }
     useComposerDraftStore.getState().setPrompt(activeThreadId, prompt);
     closeDialog();
     toastManager.add({
@@ -177,7 +206,7 @@ export function PullRequestConflictDialog({
         "Review the PR conflict instructions in the composer and send them to the agent.",
       data: { threadId: activeThreadId },
     });
-  }, [activeThreadId, closeDialog, conflictChoices, conflictResult]);
+  }, [activeThreadId, agentSelectionOverride, closeDialog, conflictChoices, conflictResult]);
 
   const validationMessage = !referenceDirty
     ? null
@@ -363,6 +392,17 @@ export function PullRequestConflictDialog({
                   ))}
                 </div>
               </ScrollArea>
+              {agentSelection ? (
+                <div className="flex items-center justify-between gap-2 text-xs">
+                  <span className="text-muted-foreground">Resolve with</span>
+                  <ModelSelectionPicker
+                    value={agentSelection}
+                    cwd={cwd}
+                    lockedProvider={lockedAgentProvider}
+                    onChange={setAgentSelectionOverride}
+                  />
+                </div>
+              ) : null}
             </div>
           ) : null}
         </DialogPanel>
