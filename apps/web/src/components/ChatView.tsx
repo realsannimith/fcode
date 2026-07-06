@@ -247,6 +247,7 @@ import {
   XIcon,
 } from "~/lib/icons";
 import { ComposerQueuedHeader } from "./chat/ComposerQueuedHeader";
+import { ConflictResolutionTrackerBanner } from "./chat/ConflictResolutionTrackerBanner";
 import { ComposerLiveChangesHeader } from "./chat/ComposerLiveChangesHeader";
 import { Button } from "./ui/button";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "./ui/menu";
@@ -9414,6 +9415,14 @@ export default function ChatView({
               onRemove={removeQueuedComposerTurn}
               onEdit={onEditQueuedComposerTurn}
               attachedToPrevious={showComposerLiveChangesHeader || showComposerActiveTaskListCard}
+            />
+            <ConflictResolutionTrackerBanner
+              threadId={threadId}
+              attachedToPrevious={
+                showComposerLiveChangesHeader ||
+                showComposerActiveTaskListCard ||
+                queuedComposerTurns.length > 0
+              }
             />
             <div
               className={cn(

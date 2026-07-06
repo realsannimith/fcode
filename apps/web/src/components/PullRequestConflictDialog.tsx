@@ -17,6 +17,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useDebouncedValue } from "@tanstack/react-pacer";
 
 import { useComposerDraftStore } from "~/composerDraftStore";
+import { useConflictResolutionStore } from "~/conflictResolutionStore";
 import { ModelSelectionPicker } from "~/components/chat/ModelSelectionPicker";
 import { Button } from "~/components/ui/button";
 import {
@@ -182,7 +183,7 @@ export function PullRequestConflictDialog({
   }, [checkMutation, parsedReference]);
 
   const resolveConflictsWithAgent = useCallback(() => {
-    if (!conflictResult || !activeThreadId) return;
+    if (!conflictResult || !activeThreadId || !cwd) return;
     const prompt = buildPullRequestConflictResolutionPrompt({
       prNumber: conflictResult.pullRequest.number,
       prTitle: conflictResult.pullRequest.title,
@@ -198,15 +199,37 @@ export function PullRequestConflictDialog({
       useComposerDraftStore.getState().setModelSelection(activeThreadId, agentSelectionOverride);
     }
     useComposerDraftStore.getState().setPrompt(activeThreadId, prompt);
+    // Track the handoff so the thread shows live status and auto re-checks the PR once the
+    // agent's turn completes (see ConflictResolutionTrackerBanner / ConflictResolutionWatcher).
+    useConflictResolutionStore.getState().startTracking({
+      threadId: activeThreadId,
+      cwd,
+      kind: "pr",
+      label: `PR #${conflictResult.pullRequest.number} — ${conflictResult.pullRequest.title}`,
+      sourceBranch: null,
+      targetBranch: null,
+      prReference: parsedReference ?? String(conflictResult.pullRequest.number),
+      handoffTurnId: activeThread?.latestTurn?.turnId ?? null,
+      initialFiles: conflictResult.conflictingFiles,
+    });
     closeDialog();
     toastManager.add({
       type: "success",
       title: "Resolution prompt ready",
       description:
-        "Review the PR conflict instructions in the composer and send them to the agent.",
+        "Review the PR conflict instructions in the composer and send them to the agent. Progress is tracked above the composer.",
       data: { threadId: activeThreadId },
     });
-  }, [activeThreadId, agentSelectionOverride, closeDialog, conflictChoices, conflictResult]);
+  }, [
+    activeThread?.latestTurn?.turnId,
+    activeThreadId,
+    agentSelectionOverride,
+    closeDialog,
+    conflictChoices,
+    conflictResult,
+    cwd,
+    parsedReference,
+  ]);
 
   const validationMessage = !referenceDirty
     ? null

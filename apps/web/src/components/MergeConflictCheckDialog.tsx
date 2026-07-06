@@ -18,6 +18,7 @@ import type {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { useComposerDraftStore } from "~/composerDraftStore";
+import { useConflictResolutionStore } from "~/conflictResolutionStore";
 import { ModelSelectionPicker } from "~/components/chat/ModelSelectionPicker";
 import { Button } from "~/components/ui/button";
 import { Checkbox } from "~/components/ui/checkbox";
@@ -246,7 +247,7 @@ export function MergeConflictCheckDialog({
   ]);
 
   const resolveMergeConflictsWithAgent = useCallback(() => {
-    if (!conflictInfo || !activeThreadId) return;
+    if (!conflictInfo || !activeThreadId || !cwd) return;
     const prompt = buildMergeConflictResolutionPrompt({
       sourceBranch: conflictInfo.sourceBranch,
       targetBranch: conflictInfo.targetBranch,
@@ -260,14 +261,36 @@ export function MergeConflictCheckDialog({
       useComposerDraftStore.getState().setModelSelection(activeThreadId, agentSelectionOverride);
     }
     useComposerDraftStore.getState().setPrompt(activeThreadId, prompt);
+    // Track the handoff so the thread shows live status and auto re-checks the merge once the
+    // agent's turn completes (see ConflictResolutionTrackerBanner / ConflictResolutionWatcher).
+    useConflictResolutionStore.getState().startTracking({
+      threadId: activeThreadId,
+      cwd,
+      kind: "merge",
+      label: `${conflictInfo.sourceBranch} → ${conflictInfo.targetBranch}`,
+      sourceBranch: conflictInfo.sourceBranch,
+      targetBranch: conflictInfo.targetBranch,
+      prReference: null,
+      handoffTurnId: activeThread?.latestTurn?.turnId ?? null,
+      initialFiles: conflictInfo.conflictingFiles,
+    });
     closeDialog();
     toastManager.add({
       type: "success",
       title: "Resolution prompt ready",
-      description: "Review the merge instructions in the composer and send them to the agent.",
+      description:
+        "Review the merge instructions in the composer and send them to the agent. Progress is tracked above the composer.",
       data: { threadId: activeThreadId },
     });
-  }, [activeThreadId, agentSelectionOverride, closeDialog, conflictInfo, mergeConflictChoices]);
+  }, [
+    activeThread?.latestTurn?.turnId,
+    activeThreadId,
+    agentSelectionOverride,
+    closeDialog,
+    conflictInfo,
+    cwd,
+    mergeConflictChoices,
+  ]);
 
   const isBusy = checkMutation.isPending || mergeMutation.isPending;
   const branchPickerReady = sourceBranch !== null && targetBranch !== null;
