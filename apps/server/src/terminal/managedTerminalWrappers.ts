@@ -232,7 +232,7 @@ function buildCodexWrapperScript(input: {
     "  ) &",
     "  T3CODE_CODEX_START_WATCHER_PID=$!",
     "fi",
-    `${shellQuote(targetPath)} --enable codex_hooks -c ${shellQuote(`notify=["bash",${JSON.stringify(notifyHookPath)}]`)} "$@"`,
+    `${shellQuote(targetPath)} --enable hooks -c ${shellQuote(`notify=["bash",${JSON.stringify(notifyHookPath)}]`)} "$@"`,
     "_t3code_status=$?",
     'if [ -n "${T3CODE_CODEX_START_WATCHER_PID:-}" ]; then',
     '  kill "$T3CODE_CODEX_START_WATCHER_PID" >/dev/null 2>&1 || true',

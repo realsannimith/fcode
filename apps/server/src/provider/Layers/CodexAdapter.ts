@@ -55,6 +55,7 @@ import { isNonFatalCodexErrorMessage } from "../../codexErrorClassification.ts";
 import { ServerConfig } from "../../config.ts";
 import { extractProposedPlanMarkdown } from "../planMode.ts";
 import { appendFileAttachmentsPromptBlock } from "../attachmentProjection.ts";
+import { buildProviderBrowserAndSkillPrompt } from "../browserUsePrompt.ts";
 import { fcodeSkillsDir } from "../skillsCatalog.ts";
 import { type EventNdjsonLogger, makeEventNdjsonLogger } from "./EventNdjsonLogger.ts";
 
@@ -1672,8 +1673,30 @@ const makeCodexAdapter = (options?: CodexAdapterLiveOptions) =>
         const nativeCodexAttachments = codexAttachments.filter(
           (attachment): attachment is NonNullable<typeof attachment> => attachment !== null,
         );
+        // Codex discovers the fcode-browser skill natively via skills/extraRoots,
+        // so this only prepends the short in-app browser routing nudge.
+        const browserRoutingPrompt = yield* Effect.tryPromise({
+          try: () =>
+            buildProviderBrowserAndSkillPrompt({
+              provider: PROVIDER,
+              fcodeBaseDir: serverConfig.baseDir,
+              skills: input.skills,
+              maxChars: 24_000,
+            }),
+          catch: (cause) =>
+            new ProviderAdapterRequestError({
+              provider: PROVIDER,
+              method: "turn/start",
+              detail: "Failed to prepare provider skill instructions.",
+              cause,
+            }),
+        });
+        const inputWithBrowserRouting =
+          [browserRoutingPrompt, input.input?.trim()]
+            .filter((text): text is string => Boolean(text?.trim()))
+            .join("\n\nUser request:\n") || undefined;
         const composedInput = composeCodexInputWithFileAttachments({
-          input: input.input,
+          input: inputWithBrowserRouting,
           attachments: input.attachments,
           attachmentsDir: serverConfig.attachmentsDir,
         });

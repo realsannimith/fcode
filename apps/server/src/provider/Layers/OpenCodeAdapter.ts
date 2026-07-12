@@ -39,6 +39,7 @@ import {
   ProviderAdapterSessionNotFoundError,
   ProviderAdapterValidationError,
 } from "../Errors.ts";
+import { buildProviderBrowserAndSkillPrompt } from "../browserUsePrompt.ts";
 import { KiloAdapter, type KiloAdapterShape } from "../Services/KiloAdapter.ts";
 import { OpenCodeAdapter, type OpenCodeAdapterShape } from "../Services/OpenCodeAdapter.ts";
 import {
@@ -3796,10 +3797,29 @@ export function makeOpenCodeAdapterLive(options?: OpenCodeAdapterLiveOptions) {
           });
         }
 
-        const text = withProviderPlanModePrompt({
+        const browserAndSkillPrompt = yield* Effect.tryPromise({
+          try: () =>
+            buildProviderBrowserAndSkillPrompt({
+              provider,
+              fcodeBaseDir: serverConfig.baseDir,
+              skills: input.skills,
+              maxChars: 24_000,
+            }),
+          catch: (cause) =>
+            new ProviderAdapterRequestError({
+              provider,
+              method: "sendTurn",
+              detail: "Failed to prepare provider skill instructions.",
+              cause,
+            }),
+        });
+        const requestedText = withProviderPlanModePrompt({
           text: input.input?.trim() ?? "",
           interactionMode: input.interactionMode,
         }).trim();
+        const text = [browserAndSkillPrompt, requestedText]
+          .filter((part) => part.trim().length > 0)
+          .join("\n\nUser request:\n");
         const fileParts = toOpenCodeFileParts({
           attachments: input.attachments,
           resolveAttachmentPath: (attachment) =>
@@ -3808,7 +3828,7 @@ export function makeOpenCodeAdapterLive(options?: OpenCodeAdapterLiveOptions) {
               attachment,
             }),
         });
-        if ((!text || text.length === 0) && fileParts.length === 0) {
+        if (requestedText.length === 0 && fileParts.length === 0) {
           return yield* new ProviderAdapterValidationError({
             provider,
             operation: "sendTurn",

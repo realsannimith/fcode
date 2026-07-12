@@ -226,6 +226,7 @@ import {
   MAX_TERMINALS_PER_GROUP,
   type ChatMessage,
   type Thread,
+  type ThreadTerminalDropPosition,
 } from "../types";
 import { useTheme } from "../hooks/useTheme";
 import { useThreadWorkspaceHandoff } from "../hooks/useThreadWorkspaceHandoff";
@@ -1189,6 +1190,9 @@ export default function ChatView({
   const storeSetActiveTerminal = useTerminalStateStore((s) => s.setActiveTerminal);
   const storeCloseTerminal = useTerminalStateStore((s) => s.closeTerminal);
   const storeCloseTerminalGroup = useTerminalStateStore((s) => s.closeTerminalGroup);
+  const storeMoveTerminalGroup = useTerminalStateStore((s) => s.moveTerminalGroup);
+  const storeMergeTerminalGroups = useTerminalStateStore((s) => s.mergeTerminalGroups);
+  const storeMoveTerminalToPane = useTerminalStateStore((s) => s.moveTerminalToPane);
   const storeResizeTerminalSplit = useTerminalStateStore((s) => s.resizeTerminalSplit);
   const storeClearTerminalState = useTerminalStateStore((s) => s.clearTerminalState);
 
@@ -3880,6 +3884,26 @@ export default function ChatView({
         if (!activeThreadId) return;
         storeCloseTerminalGroup(activeThreadId, groupId);
       },
+      onReorderTerminalGroups: (activeGroupId: string, overGroupId: string) => {
+        if (!activeThreadId) return;
+        storeMoveTerminalGroup(activeThreadId, activeGroupId, overGroupId);
+      },
+      onMergeTerminalGroups: (
+        sourceGroupId: string,
+        targetGroupId: string,
+        position: ThreadTerminalDropPosition,
+      ) => {
+        if (!activeThreadId) return;
+        storeMergeTerminalGroups(activeThreadId, sourceGroupId, targetGroupId, position);
+      },
+      onMoveTerminalToPane: (
+        terminalId: string,
+        targetTerminalId: string,
+        position: ThreadTerminalDropPosition,
+      ) => {
+        if (!activeThreadId) return;
+        storeMoveTerminalToPane(activeThreadId, terminalId, targetTerminalId, position);
+      },
       onHeightChange: setTerminalHeight,
       onResizeTerminalSplit: (groupId: string, splitId: string, weights: number[]) => {
         if (!activeThreadId) return;
@@ -3923,6 +3947,9 @@ export default function ChatView({
       splitTerminalShortcutLabel,
       splitTerminalDownShortcutLabel,
       storeCloseTerminalGroup,
+      storeMoveTerminalGroup,
+      storeMergeTerminalGroups,
+      storeMoveTerminalToPane,
       storeResizeTerminalSplit,
       storeSetTerminalActivity,
       storeSetTerminalMetadata,

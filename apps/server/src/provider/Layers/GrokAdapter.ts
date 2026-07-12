@@ -45,6 +45,7 @@ import type * as EffectAcpSchema from "effect-acp/schema";
 import { resolveAttachmentPath } from "../../attachmentStore.ts";
 import { ServerConfig, type ServerConfigShape } from "../../config.ts";
 import { appendFileAttachmentsPromptBlock } from "../attachmentProjection.ts";
+import { buildProviderBrowserAndSkillPrompt } from "../browserUsePrompt.ts";
 import { filterProviderPromptImageAttachments } from "../promptAttachments.ts";
 import {
   ProviderAdapterRequestError,
@@ -1355,15 +1356,34 @@ export function makeGrokAdapter(
             mapAcpToAdapterError(PROVIDER, input.threadId, method, cause),
         });
         const promptParts: Array<EffectAcpSchema.ContentBlock> = [];
+        const browserAndSkillPrompt = yield* Effect.tryPromise({
+          try: () =>
+            buildProviderBrowserAndSkillPrompt({
+              provider: PROVIDER,
+              fcodeBaseDir: serverConfig.baseDir,
+              skills: input.skills,
+              maxChars: 24_000,
+            }),
+          catch: (cause) =>
+            new ProviderAdapterRequestError({
+              provider: PROVIDER,
+              method: "session/prompt",
+              detail: "Failed to prepare provider skill instructions.",
+              cause,
+            }),
+        });
+        const requestedPromptText = input.input?.trim()
+          ? withGrokPlanModePrompt({
+              text: input.input.trim(),
+              ...(input.interactionMode !== undefined
+                ? { interactionMode: input.interactionMode }
+                : {}),
+            })
+          : undefined;
         const promptText = appendFileAttachmentsPromptBlock({
-          text: input.input?.trim()
-            ? withGrokPlanModePrompt({
-                text: input.input.trim(),
-                ...(input.interactionMode !== undefined
-                  ? { interactionMode: input.interactionMode }
-                  : {}),
-              })
-            : undefined,
+          text: [browserAndSkillPrompt, requestedPromptText]
+            .filter((text): text is string => Boolean(text?.trim()))
+            .join("\n\nUser request:\n"),
           attachments: input.attachments,
           attachmentsDir: serverConfig.attachmentsDir,
           include: "all-files",

@@ -291,6 +291,199 @@ describe("terminalStateStore actions", () => {
     ]);
   });
 
+  it("reorders terminal group tabs and keeps the flat terminal order aligned", () => {
+    const store = useTerminalStateStore.getState();
+    store.newTerminal(THREAD_ID, "terminal-2");
+    store.newTerminal(THREAD_ID, "terminal-3");
+
+    // Drag the last group tab (group-terminal-3) onto the first (group-default),
+    // so it lands at the front — the remove-then-insert model of the tab strip.
+    store.moveTerminalGroup(THREAD_ID, "group-terminal-3", "group-default");
+
+    const terminalState = selectThreadTerminalState(
+      useTerminalStateStore.getState().terminalStateByThreadId,
+      THREAD_ID,
+    );
+    expect(summarizeTerminalGroups(terminalState.terminalGroups)).toEqual([
+      { id: "group-terminal-3", activeTerminalId: "terminal-3", terminalIds: ["terminal-3"] },
+      { id: "group-default", activeTerminalId: "default", terminalIds: ["default"] },
+      { id: "group-terminal-2", activeTerminalId: "terminal-2", terminalIds: ["terminal-2"] },
+    ]);
+    expect(terminalState.terminalIds).toEqual(["terminal-3", "default", "terminal-2"]);
+    // Reordering tabs must not change which terminal is active.
+    expect(terminalState.activeTerminalId).toBe("terminal-3");
+  });
+
+  it("ignores a group reorder onto itself or an unknown group", () => {
+    const store = useTerminalStateStore.getState();
+    store.newTerminal(THREAD_ID, "terminal-2");
+
+    const before = selectThreadTerminalState(
+      useTerminalStateStore.getState().terminalStateByThreadId,
+      THREAD_ID,
+    );
+    store.moveTerminalGroup(THREAD_ID, "group-terminal-2", "group-terminal-2");
+    store.moveTerminalGroup(THREAD_ID, "group-terminal-2", "group-missing");
+
+    const after = selectThreadTerminalState(
+      useTerminalStateStore.getState().terminalStateByThreadId,
+      THREAD_ID,
+    );
+    expect(summarizeTerminalGroups(after.terminalGroups)).toEqual(
+      summarizeTerminalGroups(before.terminalGroups),
+    );
+    expect(after.terminalIds).toEqual(before.terminalIds);
+  });
+
+  it("merges a dragged group into the active group as an edge split", () => {
+    const store = useTerminalStateStore.getState();
+    store.newTerminal(THREAD_ID, "terminal-2");
+
+    // Drop group-terminal-2's tab on the right edge of group-default's viewport.
+    store.mergeTerminalGroups(THREAD_ID, "group-terminal-2", "group-default", "right");
+
+    const terminalState = selectThreadTerminalState(
+      useTerminalStateStore.getState().terminalStateByThreadId,
+      THREAD_ID,
+    );
+    expect(summarizeTerminalGroups(terminalState.terminalGroups)).toEqual([
+      {
+        id: "group-default",
+        activeTerminalId: "terminal-2",
+        terminalIds: ["default", "terminal-2"],
+      },
+    ]);
+    const layout = terminalState.terminalGroups[0]?.layout;
+    expect(layout?.type).toBe("split");
+    if (layout?.type === "split") {
+      expect(layout.direction).toBe("horizontal");
+      expect(collectTerminalIdsFromLayout(layout)).toEqual(["default", "terminal-2"]);
+    }
+    expect(terminalState.activeTerminalGroupId).toBe("group-default");
+    expect(terminalState.activeTerminalId).toBe("terminal-2");
+  });
+
+  it("merges a dragged group into the target's pane tabs on a center drop", () => {
+    const store = useTerminalStateStore.getState();
+    store.newTerminal(THREAD_ID, "terminal-2");
+
+    store.mergeTerminalGroups(THREAD_ID, "group-terminal-2", "group-default", "center");
+
+    const terminalState = selectThreadTerminalState(
+      useTerminalStateStore.getState().terminalStateByThreadId,
+      THREAD_ID,
+    );
+    expect(summarizeTerminalGroups(terminalState.terminalGroups)).toEqual([
+      {
+        id: "group-default",
+        activeTerminalId: "terminal-2",
+        terminalIds: ["default", "terminal-2"],
+      },
+    ]);
+    // A center drop stacks the terminals as tabs in one pane, not a split.
+    expect(terminalState.terminalGroups[0]?.layout.type).toBe("terminal");
+  });
+
+  it("moves a pane tab into another split pane on a center drop", () => {
+    const store = useTerminalStateStore.getState();
+    store.splitTerminal(THREAD_ID, "terminal-2");
+    store.newTerminalTab(THREAD_ID, "default", "claude-1");
+
+    // Drag claude-1 from the left pane onto the center of terminal-2's pane.
+    store.moveTerminalToPane(THREAD_ID, "claude-1", "terminal-2", "center");
+
+    const terminalState = selectThreadTerminalState(
+      useTerminalStateStore.getState().terminalStateByThreadId,
+      THREAD_ID,
+    );
+    const layout = terminalState.terminalGroups[0]?.layout;
+    expect(layout?.type).toBe("split");
+    if (layout?.type === "split") {
+      expect(layout.children.map((child) => collectTerminalIdsFromLayout(child))).toEqual([
+        ["default"],
+        ["terminal-2", "claude-1"],
+      ]);
+    }
+    expect(terminalState.activeTerminalId).toBe("claude-1");
+  });
+
+  it("splits another pane with a dragged pane tab on an edge drop", () => {
+    const store = useTerminalStateStore.getState();
+    store.splitTerminal(THREAD_ID, "terminal-2");
+    store.newTerminalTab(THREAD_ID, "default", "claude-1");
+
+    // Drag claude-1 onto the bottom edge of terminal-2's pane.
+    store.moveTerminalToPane(THREAD_ID, "claude-1", "terminal-2", "bottom");
+
+    const terminalState = selectThreadTerminalState(
+      useTerminalStateStore.getState().terminalStateByThreadId,
+      THREAD_ID,
+    );
+    const layout = terminalState.terminalGroups[0]?.layout;
+    expect(layout?.type).toBe("split");
+    if (layout?.type === "split") {
+      expect(layout.direction).toBe("horizontal");
+      expect(collectTerminalIdsFromLayout(layout.children[0]!)).toEqual(["default"]);
+      const rightChild = layout.children[1];
+      expect(rightChild?.type).toBe("split");
+      if (rightChild?.type === "split") {
+        expect(rightChild.direction).toBe("vertical");
+        expect(rightChild.children.map((child) => collectTerminalIdsFromLayout(child))).toEqual([
+          ["terminal-2"],
+          ["claude-1"],
+        ]);
+      }
+    }
+    expect(terminalState.activeTerminalId).toBe("claude-1");
+  });
+
+  it("ignores a pane move onto itself or an unknown terminal", () => {
+    const store = useTerminalStateStore.getState();
+    store.splitTerminal(THREAD_ID, "terminal-2");
+
+    const before = selectThreadTerminalState(
+      useTerminalStateStore.getState().terminalStateByThreadId,
+      THREAD_ID,
+    );
+    store.moveTerminalToPane(THREAD_ID, "terminal-2", "terminal-2", "right");
+    store.moveTerminalToPane(THREAD_ID, "terminal-2", "terminal-missing", "right");
+
+    const after = selectThreadTerminalState(
+      useTerminalStateStore.getState().terminalStateByThreadId,
+      THREAD_ID,
+    );
+    expect(summarizeTerminalGroups(after.terminalGroups)).toEqual(
+      summarizeTerminalGroups(before.terminalGroups),
+    );
+  });
+
+  it("ignores a group merge onto itself, an unknown group, or past the group limit", () => {
+    const store = useTerminalStateStore.getState();
+    store.newTerminal(THREAD_ID, "terminal-2");
+    // Fill group-default up to the per-group terminal limit.
+    store.setActiveTerminal(THREAD_ID, "default");
+    for (let index = 2; index <= 6; index += 1) {
+      store.newTerminalTab(THREAD_ID, "default", `tab-${index}`);
+    }
+
+    const before = selectThreadTerminalState(
+      useTerminalStateStore.getState().terminalStateByThreadId,
+      THREAD_ID,
+    );
+    store.mergeTerminalGroups(THREAD_ID, "group-terminal-2", "group-terminal-2", "right");
+    store.mergeTerminalGroups(THREAD_ID, "group-terminal-2", "group-missing", "right");
+    // group-default already holds 6 terminals, so merging one more must no-op.
+    store.mergeTerminalGroups(THREAD_ID, "group-terminal-2", "group-default", "right");
+
+    const after = selectThreadTerminalState(
+      useTerminalStateStore.getState().terminalStateByThreadId,
+      THREAD_ID,
+    );
+    expect(summarizeTerminalGroups(after.terminalGroups)).toEqual(
+      summarizeTerminalGroups(before.terminalGroups),
+    );
+  });
+
   it("stores terminal labels and removes them when a terminal closes", () => {
     const store = useTerminalStateStore.getState();
     store.newTerminal(THREAD_ID, "terminal-2");

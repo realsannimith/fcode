@@ -16,6 +16,7 @@ import {
   GitPullRequestIcon,
   GlobeIcon,
   type LucideIcon,
+  MessageCircleIcon,
   NewThreadIcon,
   PencilIcon,
   PinIcon,
@@ -163,6 +164,7 @@ import { ProviderIcon } from "./ProviderIcon";
 import { SidebarLeadingControls } from "./SidebarHeaderNavigationControls";
 import { ProjectSidebarIcon } from "./ProjectSidebarIcon";
 import { LocalServersMenu, type LocalServersTriggerState } from "./LocalServersMenu";
+import { SidebarChatPopout } from "./SidebarChatPopout";
 import { SidebarIconButton } from "./SidebarIconButton";
 import { SidebarLeadingIcon } from "./SidebarLeadingIcon";
 import { SidebarMetaChipStack } from "./SidebarMetaChip";
@@ -263,7 +265,6 @@ import {
   orderPinnedProjectsForSidebar,
   getNextVisibleSidebarThreadId,
   getSidebarThreadIdsToPrewarm,
-  getVisibleSidebarEntriesForPreview,
   groupSidebarThreadsByProjectId,
   isLatestPinnedProjectMutation,
   isLatestPinnedThreadMutation,
@@ -1323,6 +1324,9 @@ export default function Sidebar() {
     readDebugFeatureFlagsMenuVisibility,
   );
   const projects = useStore((store) => store.projects);
+  const removeDeletedProjectFromClientState = useStore(
+    (store) => store.removeDeletedProjectFromClientState,
+  );
   const threadsHydrated = useStore((store) => store.threadsHydrated);
   const sidebarThreadSummaryById = useStore((store) => store.sidebarThreadSummaryById);
   const sidebarThreadSummaryByIdRef = useRef(sidebarThreadSummaryById);
@@ -1533,9 +1537,9 @@ export default function Sidebar() {
   const [chatSectionExpanded, setChatSectionExpanded] = useState(
     () => readSidebarUiState().chatSectionExpanded,
   );
-  const [chatThreadListExpanded, setChatThreadListExpanded] = useState(
-    () => readSidebarUiState().chatThreadListExpanded,
-  );
+  // Kept only so the persisted sidebar UI shape stays stable; the popout list
+  // scrolls instead of paging, so nothing toggles this anymore.
+  const [chatThreadListExpanded] = useState(() => readSidebarUiState().chatThreadListExpanded);
   const [dismissedThreadStatusKeyByThreadId, setDismissedThreadStatusKeyByThreadId] = useState<
     Record<string, string>
   >(() => readSidebarUiState().dismissedThreadStatusKeyByThreadId);
@@ -2342,6 +2346,24 @@ export default function Sidebar() {
   const handleCreateHomeChat = useCallback(async () => {
     await handleNewChat({ fresh: true });
   }, [handleNewChat]);
+
+  const handleCloseChatPopout = useCallback(() => {
+    setChatSectionExpanded(false);
+  }, []);
+
+  const handleOpenChatFullView = useCallback(() => {
+    setChatSectionExpanded(false);
+    void handleCreateHomeChat();
+  }, [handleCreateHomeChat]);
+
+  const handleOpenChatThreadFullView = useCallback(
+    (threadId: ThreadId) => {
+      setChatSectionExpanded(false);
+      openChatThreadPage(threadId);
+      void navigate({ to: "/$threadId", params: { threadId } });
+    },
+    [navigate, openChatThreadPage],
+  );
 
   const beginWorkspaceRename = useCallback((workspaceId: string, title: string) => {
     setRenamingWorkspaceId(workspaceId);
@@ -3842,6 +3864,9 @@ export default function Sidebar() {
           commandId: newCommandId(),
           projectId,
         });
+        // Drop the row on the accepted command rather than waiting for the shell push:
+        // the tombstone also stops an in-flight snapshot read from resurrecting it.
+        removeDeletedProjectFromClientState(projectId);
         clearProjectDraftThreads(projectId);
         toastManager.add({
           type: "success",
@@ -3871,6 +3896,7 @@ export default function Sidebar() {
       handleStopProjectRun,
       navigate,
       projectById,
+      removeDeletedProjectFromClientState,
       sidebarThreads,
       toggleProjectPinned,
     ],
@@ -4003,28 +4029,11 @@ export default function Sidebar() {
     () => visibleChatThreadRows.map((row) => row.thread.id),
     [visibleChatThreadRows],
   );
-  const visibleChatPreviewEntries = useMemo(
-    () =>
-      visibleChatThreadRows.map((row) => ({
-        rowId: row.thread.id,
-        rootRowId: row.rootThreadId,
-        row,
-      })),
+  // The popout renders its own lightweight rows, so it only needs root chat
+  // threads (subagent children stay reachable through the full thread view).
+  const popoutChatThreads = useMemo(
+    () => visibleChatThreadRows.filter((row) => row.depth === 0).map((row) => row.thread),
     [visibleChatThreadRows],
-  );
-  const activeChatPreviewEntry =
-    activeSidebarThreadId === undefined
-      ? null
-      : (visibleChatPreviewEntries.find((entry) => entry.rowId === activeSidebarThreadId) ?? null);
-  const { hasHiddenEntries: hasHiddenChatThreads, visibleEntries: renderedChatEntries } = useMemo(
-    () =>
-      getVisibleSidebarEntriesForPreview({
-        entries: visibleChatPreviewEntries,
-        activeEntryId: activeChatPreviewEntry?.rowId,
-        isExpanded: chatThreadListExpanded,
-        previewLimit: THREAD_PREVIEW_LIMIT,
-      }),
-    [activeChatPreviewEntry?.rowId, chatThreadListExpanded, visibleChatPreviewEntries],
   );
   const standardProjectsBase = useMemo(
     () =>
@@ -5223,17 +5232,6 @@ export default function Sidebar() {
     );
   }
 
-  function renderChatItem(row: (typeof visibleChatThreadRows)[number]) {
-    return renderThreadRow(
-      row.thread,
-      visibleChatThreadIds,
-      row.depth,
-      row.childCount,
-      row.isExpanded,
-      true,
-    );
-  }
-
   function renderProjectItem(
     project: (typeof sortedProjects)[number],
     dragHandleProps: SortableProjectHandleProps | null,
@@ -6275,6 +6273,14 @@ export default function Sidebar() {
                       label="New thread"
                       onClick={handlePrimaryNewThread}
                     />
+                    {chatsSectionVisible ? (
+                      <SidebarPrimaryAction
+                        icon={MessageCircleIcon}
+                        label="Chat"
+                        active={chatSectionExpanded}
+                        onClick={() => setChatSectionExpanded((current) => !current)}
+                      />
+                    ) : null}
                     <SidebarPrimaryAction
                       icon={SearchIcon}
                       label="Search"
@@ -6614,88 +6620,21 @@ export default function Sidebar() {
 
       <SidebarFooter className="gap-2 p-2 font-system-ui">
         {!isOnSettings && chatsSectionVisible ? (
-          <div className="group/collapsible">
-            <div className="group/project-header relative">
-              <SidebarMenuButton
-                size="sm"
-                className={cn(
-                  SIDEBAR_HEADER_ROW_CLASS_NAME,
-                  SIDEBAR_ROW_IDLE_TEXT_CLASS_NAME,
-                  SIDEBAR_ROW_HOVER_CLASS_NAME,
-                  "cursor-pointer",
-                )}
-                onClick={() => setChatSectionExpanded((current) => !current)}
-                onKeyDown={(event) => {
-                  if (event.key !== "Enter" && event.key !== " ") return;
-                  event.preventDefault();
-                  setChatSectionExpanded((current) => !current);
+          <SidebarChatPopout
+            open={chatSectionExpanded}
+            onClose={handleCloseChatPopout}
+            onOpenFullView={handleOpenChatFullView}
+            onOpenThreadFullView={handleOpenChatThreadFullView}
+            chatThreads={popoutChatThreads}
+            headerActions={
+              <ChatSortMenu
+                threadSortOrder={appSettings.sidebarThreadSortOrder}
+                onThreadSortOrderChange={(sortOrder) => {
+                  updateSettings({ sidebarThreadSortOrder: sortOrder });
                 }}
-              >
-                <div className="flex min-w-0 flex-1 items-baseline gap-2 overflow-hidden">
-                  <span className="truncate font-system-ui text-[length:var(--app-font-size-ui,12px)] font-normal text-muted-foreground/79">
-                    Chats
-                  </span>
-                </div>
-              </SidebarMenuButton>
-              <SidebarSectionToolbar placement="overlay" revealOnHover>
-                <ChatSortMenu
-                  threadSortOrder={appSettings.sidebarThreadSortOrder}
-                  onThreadSortOrderChange={(sortOrder) => {
-                    updateSettings({ sidebarThreadSortOrder: sortOrder });
-                  }}
-                />
-                <SidebarIconButton
-                  icon={NewThreadIcon}
-                  label="Open new chat home"
-                  onClick={(event) => {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    void handleCreateHomeChat();
-                  }}
-                  tooltip={newChatShortcutLabel ? `New chat (${newChatShortcutLabel})` : "New chat"}
-                  tooltipSide="top"
-                />
-              </SidebarSectionToolbar>
-            </div>
-
-            <div className={cn(disclosureShellClassName(chatSectionExpanded), "pt-1")}>
-              <div className={DISCLOSURE_INNER_CLASS}>
-                <SidebarMenu
-                  className={cn("gap-1", disclosureContentClassName(chatSectionExpanded))}
-                >
-                  {visibleChatThreadRows.length > 0 ? (
-                    renderedChatEntries.map((entry) => renderChatItem(entry.row))
-                  ) : (
-                    <div className="px-2 py-2 text-[length:var(--app-font-size-ui,12px)] text-muted-foreground/48">
-                      No chats yet
-                    </div>
-                  )}
-                  {hasHiddenChatThreads && !chatThreadListExpanded ? (
-                    <SidebarMenuItem className="w-full">
-                      <SidebarMenuButton
-                        size="sm"
-                        className="h-7 w-full justify-start rounded-lg pr-2 pl-8 text-left text-[length:var(--app-font-size-ui,12px)] font-normal text-muted-foreground/79 hover:bg-[var(--sidebar-accent)]"
-                        onClick={() => setChatThreadListExpanded(true)}
-                      >
-                        <span>Show more</span>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  ) : null}
-                  {hasHiddenChatThreads && chatThreadListExpanded ? (
-                    <SidebarMenuItem className="w-full">
-                      <SidebarMenuButton
-                        size="sm"
-                        className="h-7 w-full justify-start rounded-lg pr-2 pl-8 text-left text-[length:var(--app-font-size-ui,12px)] font-normal text-muted-foreground/79 hover:bg-[var(--sidebar-accent)]"
-                        onClick={() => setChatThreadListExpanded(false)}
-                      >
-                        <span>Show less</span>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  ) : null}
-                </SidebarMenu>
-              </div>
-            </div>
-          </div>
+              />
+            }
+          />
         ) : null}
         <SidebarMenu>
           <SidebarMenuItem>

@@ -11,6 +11,21 @@
 import type { ReactNode } from "react";
 
 import type { ResolvedTerminalVisualIdentity } from "@t3tools/shared/terminalThreads";
+import {
+  type CollisionDetection,
+  DndContext,
+  type DragEndEvent,
+  type DragStartEvent,
+  PointerSensor,
+  closestCenter,
+  pointerWithin,
+  useDraggable,
+  useDroppable,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+import { SortableContext, horizontalListSortingStrategy, useSortable } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 
 import { IconButton } from "~/components/ui/icon-button";
 import { Popover, PopoverPopup, PopoverTrigger } from "~/components/ui/popover";
@@ -19,6 +34,7 @@ import { cn } from "~/lib/utils";
 import { selectRepresentativeTerminalVisualIdentity } from "~/terminalVisualIdentity";
 
 import { DOCK_HEADER_ICON_BUTTON_CLASS, SurfaceTabChip } from "../chat/chatHeaderControls";
+import type { ThreadTerminalDropPosition } from "../../types";
 import type { ResolvedTerminalGroupLayout } from "./TerminalLayout";
 import TerminalActivityIndicator from "./TerminalActivityIndicator";
 import TerminalIdentityIcon from "./TerminalIdentityIcon";
@@ -63,6 +79,281 @@ export function TerminalChromeActions(props: {
   );
 }
 
+// Drag-id namespaces. Group tabs drag under their plain group id (they are
+// @dnd-kit sortable items); pane tabs drag under a prefixed id so the shared
+// context can tell the two gestures apart.
+const TERMINAL_GROUP_DROP_ZONE_ID_PREFIX = "terminal-group-drop:";
+const TERMINAL_PANE_TAB_DRAG_ID_PREFIX = "terminal-tab:";
+const TERMINAL_PANE_DROP_ZONE_ID_PREFIX = "terminal-pane-drop:";
+
+export type TerminalSurfaceDragState =
+  | { kind: "group"; groupId: string }
+  | { kind: "terminal"; terminalId: string };
+
+function isDropPosition(position: string): position is ThreadTerminalDropPosition {
+  return (
+    position === "top" ||
+    position === "right" ||
+    position === "bottom" ||
+    position === "left" ||
+    position === "center"
+  );
+}
+
+function terminalGroupDropZoneId(position: ThreadTerminalDropPosition): string {
+  return `${TERMINAL_GROUP_DROP_ZONE_ID_PREFIX}${position}`;
+}
+
+function parseTerminalGroupDropZoneId(id: string): ThreadTerminalDropPosition | null {
+  if (!id.startsWith(TERMINAL_GROUP_DROP_ZONE_ID_PREFIX)) {
+    return null;
+  }
+  const position = id.slice(TERMINAL_GROUP_DROP_ZONE_ID_PREFIX.length);
+  return isDropPosition(position) ? position : null;
+}
+
+function terminalPaneTabDragId(terminalId: string): string {
+  return `${TERMINAL_PANE_TAB_DRAG_ID_PREFIX}${terminalId}`;
+}
+
+function parseTerminalPaneTabDragId(id: string): string | null {
+  return id.startsWith(TERMINAL_PANE_TAB_DRAG_ID_PREFIX)
+    ? id.slice(TERMINAL_PANE_TAB_DRAG_ID_PREFIX.length)
+    : null;
+}
+
+// Position comes before the terminal id so parsing stays unambiguous even if a
+// terminal id ever contains ":".
+function terminalPaneDropZoneId(targetTerminalId: string, position: ThreadTerminalDropPosition) {
+  return `${TERMINAL_PANE_DROP_ZONE_ID_PREFIX}${position}:${targetTerminalId}`;
+}
+
+function parseTerminalPaneDropZoneId(
+  id: string,
+): { targetTerminalId: string; position: ThreadTerminalDropPosition } | null {
+  if (!id.startsWith(TERMINAL_PANE_DROP_ZONE_ID_PREFIX)) {
+    return null;
+  }
+  const rest = id.slice(TERMINAL_PANE_DROP_ZONE_ID_PREFIX.length);
+  const separatorIndex = rest.indexOf(":");
+  if (separatorIndex < 0) {
+    return null;
+  }
+  const position = rest.slice(0, separatorIndex);
+  const targetTerminalId = rest.slice(separatorIndex + 1);
+  if (!isDropPosition(position) || targetTerminalId.length === 0) {
+    return null;
+  }
+  return { targetTerminalId, position };
+}
+
+// Shared drag context for the terminal surface. It spans the group tab bar
+// (sortable reorder + drop-on-viewport) and the per-pane tab strips (drag a
+// pane tab onto another pane to move or split, cmux-style), so it must wrap
+// both — the drawer mounts it around the whole terminal surface. Zones win
+// over tabs when the pointer is inside one; otherwise the nearest tab keeps
+// the familiar reorder behavior.
+export function TerminalDndContext(props: {
+  onReorderGroups?: ((activeGroupId: string, overGroupId: string) => void) | undefined;
+  onDropGroupOnViewport?:
+    | ((groupId: string, position: ThreadTerminalDropPosition) => void)
+    | undefined;
+  onDropTerminalOnPane?:
+    | ((terminalId: string, targetTerminalId: string, position: ThreadTerminalDropPosition) => void)
+    | undefined;
+  onDragStateChange: (dragState: TerminalSurfaceDragState | null) => void;
+  children: ReactNode;
+}) {
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
+
+  const collisionDetection: CollisionDetection = (args) => {
+    const withinPointer = pointerWithin(args);
+    return withinPointer.length > 0 ? withinPointer : closestCenter(args);
+  };
+
+  const handleDragStart = (event: DragStartEvent) => {
+    const activeId = String(event.active.id);
+    const draggedTerminalId = parseTerminalPaneTabDragId(activeId);
+    props.onDragStateChange(
+      draggedTerminalId
+        ? { kind: "terminal", terminalId: draggedTerminalId }
+        : { kind: "group", groupId: activeId },
+    );
+  };
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    props.onDragStateChange(null);
+    const { active, over } = event;
+    if (!over) return;
+    const activeId = String(active.id);
+    const overId = String(over.id);
+
+    const draggedTerminalId = parseTerminalPaneTabDragId(activeId);
+    if (draggedTerminalId) {
+      const paneDrop = parseTerminalPaneDropZoneId(overId);
+      if (paneDrop) {
+        props.onDropTerminalOnPane?.(
+          draggedTerminalId,
+          paneDrop.targetTerminalId,
+          paneDrop.position,
+        );
+      }
+      return;
+    }
+
+    const groupDropPosition = parseTerminalGroupDropZoneId(overId);
+    if (groupDropPosition) {
+      props.onDropGroupOnViewport?.(activeId, groupDropPosition);
+      return;
+    }
+    if (activeId === overId || parseTerminalPaneDropZoneId(overId)) return;
+    props.onReorderGroups?.(activeId, overId);
+  };
+
+  return (
+    <DndContext
+      sensors={sensors}
+      collisionDetection={collisionDetection}
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
+      onDragCancel={() => props.onDragStateChange(null)}
+    >
+      {props.children}
+    </DndContext>
+  );
+}
+
+interface TerminalGroupDropZoneSpec {
+  position: ThreadTerminalDropPosition;
+  // Pointer hit area — the five areas partition the viewport without overlap.
+  hitClassName: string;
+  // Highlight showing where the dropped group's pane would land.
+  previewClassName: string;
+}
+
+const TERMINAL_GROUP_DROP_ZONES: readonly TerminalGroupDropZoneSpec[] = [
+  {
+    position: "left",
+    hitClassName: "inset-y-0 left-0 w-1/4",
+    previewClassName: "inset-y-0 left-0 w-1/2",
+  },
+  {
+    position: "right",
+    hitClassName: "inset-y-0 right-0 w-1/4",
+    previewClassName: "inset-y-0 right-0 w-1/2",
+  },
+  {
+    position: "top",
+    hitClassName: "top-0 left-1/4 right-1/4 h-1/3",
+    previewClassName: "inset-x-0 top-0 h-1/2",
+  },
+  {
+    position: "bottom",
+    hitClassName: "bottom-0 left-1/4 right-1/4 h-1/3",
+    previewClassName: "inset-x-0 bottom-0 h-1/2",
+  },
+  {
+    position: "center",
+    hitClassName: "left-1/4 right-1/4 top-1/3 bottom-1/3",
+    previewClassName: "inset-1",
+  },
+];
+
+function TerminalDropZone(props: TerminalGroupDropZoneSpec & { id: string }) {
+  const { setNodeRef, isOver } = useDroppable({ id: props.id });
+  return (
+    <>
+      <div ref={setNodeRef} className={cn("absolute", props.hitClassName)} />
+      {isOver ? (
+        <div
+          className={cn(
+            "pointer-events-none absolute rounded-md bg-primary/15 ring-1 ring-inset ring-primary/50",
+            props.previewClassName,
+          )}
+        />
+      ) : null}
+    </>
+  );
+}
+
+// Overlay rendered above the active group's viewport while a group tab drag is
+// in flight. Edges split the group in that direction; the center merges the
+// dragged terminals in as pane tabs.
+export function TerminalGroupDropZones() {
+  return (
+    <div className="absolute inset-0 z-30">
+      {TERMINAL_GROUP_DROP_ZONES.map((zone) => (
+        <TerminalDropZone
+          key={zone.position}
+          id={terminalGroupDropZoneId(zone.position)}
+          {...zone}
+        />
+      ))}
+    </div>
+  );
+}
+
+// Overlay rendered above one pane while a pane tab drag is in flight. Edges
+// split that pane with the dragged terminal; the center moves it into the
+// pane's tab strip. targetTerminalId anchors the drop in the layout tree — it
+// must be a terminal already in the pane and not the dragged one.
+export function TerminalPaneDropZones(props: { targetTerminalId: string }) {
+  return (
+    <div className="absolute inset-0 z-30">
+      {TERMINAL_GROUP_DROP_ZONES.map((zone) => (
+        <TerminalDropZone
+          key={zone.position}
+          id={terminalPaneDropZoneId(props.targetTerminalId, zone.position)}
+          {...zone}
+        />
+      ))}
+    </div>
+  );
+}
+
+// Makes a pane-local tab chip draggable within the shared TerminalDndContext.
+// Like SortableTerminalGroupTab, the chip's own activate/close buttons keep
+// working because the PointerSensor only claims the gesture past its
+// activation distance.
+export function DraggableTerminalPaneTab(props: { terminalId: string; children: ReactNode }) {
+  const { setNodeRef, attributes, listeners, transform, isDragging } = useDraggable({
+    id: terminalPaneTabDragId(props.terminalId),
+  });
+  return (
+    <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Translate.toString(transform) }}
+      className={cn("flex shrink-0", isDragging && "z-10 opacity-70")}
+      {...attributes}
+      {...listeners}
+    >
+      {props.children}
+    </div>
+  );
+}
+
+// A single draggable group tab. Wrapping the shared SurfaceTabChip in a
+// @dnd-kit sortable node keeps the chip's own activate/close buttons intact
+// (the PointerSensor only claims the gesture past its activation distance, so a
+// plain click still selects/closes the tab) while the whole chip acts as the
+// drag handle for reordering and for the viewport drop zones.
+function SortableTerminalGroupTab(props: { id: string; children: ReactNode }) {
+  const { setNodeRef, attributes, listeners, transform, transition, isDragging } = useSortable({
+    id: props.id,
+  });
+  return (
+    <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Translate.toString(transform), transition }}
+      className={cn("flex shrink-0", isDragging && "z-10 opacity-70")}
+      {...attributes}
+      {...listeners}
+    >
+      {props.children}
+    </div>
+  );
+}
+
 export function TerminalWorkspaceTabBar(props: {
   terminalGroups: ResolvedTerminalGroupLayout[];
   activeGroupId: string;
@@ -70,54 +361,77 @@ export function TerminalWorkspaceTabBar(props: {
   actions: ReadonlyArray<TerminalChromeActionItem>;
   onActiveGroupChange: (groupId: string) => void;
   onCloseGroup: (groupId: string) => void;
+  onReorderGroups?: ((activeGroupId: string, overGroupId: string) => void) | undefined;
 }) {
   const canCloseGroups = props.terminalGroups.length > 1;
+  const canReorderGroups = Boolean(props.onReorderGroups) && props.terminalGroups.length > 1;
+
+  const renderGroupTab = (terminalGroup: ResolvedTerminalGroupLayout) => {
+    const isActive = terminalGroup.id === props.activeGroupId;
+    const visualIdentity = selectRepresentativeTerminalVisualIdentity({
+      activeTerminalId: terminalGroup.activeTerminalId,
+      terminalIds: terminalGroup.terminalIds,
+      terminalVisualIdentityById: props.terminalVisualIdentityById,
+    })?.identity;
+    const groupTitle = visualIdentity?.title ?? "Terminal";
+    const closeTabLabel = `Close ${visualIdentity?.title ?? "Terminal tab"}`;
+    return (
+      <SurfaceTabChip
+        active={isActive}
+        title={groupTitle}
+        label={groupTitle}
+        labelClassName="max-w-40"
+        icon={
+          <TerminalIdentityIcon
+            className="size-3.5"
+            iconKey={visualIdentity?.iconKey ?? "terminal"}
+          />
+        }
+        leading={
+          visualIdentity && visualIdentity.state !== "idle" ? (
+            <TerminalActivityIndicator
+              className="text-foreground/70"
+              state={visualIdentity.state}
+            />
+          ) : null
+        }
+        trailing={
+          terminalGroup.terminalIds.length > 1 ? (
+            <span className="shrink-0 text-[10px] text-current/55">
+              {terminalGroup.terminalIds.length}
+            </span>
+          ) : null
+        }
+        closeLabel={closeTabLabel}
+        onSelect={() => props.onActiveGroupChange(terminalGroup.id)}
+        onClose={canCloseGroups ? () => props.onCloseGroup(terminalGroup.id) : undefined}
+      />
+    );
+  };
+
   return (
     <div className="flex min-h-9 min-w-0 items-center gap-1 bg-[var(--color-background-surface)] px-1.5 py-1">
       <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        {props.terminalGroups.map((terminalGroup) => {
-          const isActive = terminalGroup.id === props.activeGroupId;
-          const visualIdentity = selectRepresentativeTerminalVisualIdentity({
-            activeTerminalId: terminalGroup.activeTerminalId,
-            terminalIds: terminalGroup.terminalIds,
-            terminalVisualIdentityById: props.terminalVisualIdentityById,
-          })?.identity;
-          const groupTitle = visualIdentity?.title ?? "Terminal";
-          const closeTabLabel = `Close ${visualIdentity?.title ?? "Terminal tab"}`;
-          return (
-            <SurfaceTabChip
-              key={terminalGroup.id}
-              active={isActive}
-              title={groupTitle}
-              label={groupTitle}
-              labelClassName="max-w-40"
-              icon={
-                <TerminalIdentityIcon
-                  className="size-3.5"
-                  iconKey={visualIdentity?.iconKey ?? "terminal"}
-                />
-              }
-              leading={
-                visualIdentity && visualIdentity.state !== "idle" ? (
-                  <TerminalActivityIndicator
-                    className="text-foreground/70"
-                    state={visualIdentity.state}
-                  />
-                ) : null
-              }
-              trailing={
-                terminalGroup.terminalIds.length > 1 ? (
-                  <span className="shrink-0 text-[10px] text-current/55">
-                    {terminalGroup.terminalIds.length}
-                  </span>
-                ) : null
-              }
-              closeLabel={closeTabLabel}
-              onSelect={() => props.onActiveGroupChange(terminalGroup.id)}
-              onClose={canCloseGroups ? () => props.onCloseGroup(terminalGroup.id) : undefined}
-            />
-          );
-        })}
+        {canReorderGroups ? (
+          // Sortable items only; the DndContext lives in an ancestor
+          // (TerminalGroupDndContext) so viewport drop zones share the drag.
+          <SortableContext
+            items={props.terminalGroups.map((terminalGroup) => terminalGroup.id)}
+            strategy={horizontalListSortingStrategy}
+          >
+            {props.terminalGroups.map((terminalGroup) => (
+              <SortableTerminalGroupTab key={terminalGroup.id} id={terminalGroup.id}>
+                {renderGroupTab(terminalGroup)}
+              </SortableTerminalGroupTab>
+            ))}
+          </SortableContext>
+        ) : (
+          props.terminalGroups.map((terminalGroup) => (
+            <div key={terminalGroup.id} className="flex shrink-0">
+              {renderGroupTab(terminalGroup)}
+            </div>
+          ))
+        )}
       </div>
       <div className="flex shrink-0 items-center">
         <TerminalChromeActions actions={props.actions} variant="workspace" />

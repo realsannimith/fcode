@@ -20,6 +20,12 @@ const FCODE_BROWSER_ROUTING_PROMPT = [
   "Prefer this in-app browser over external browsers, Playwright, headless fetches, or OS-level `open` commands for interactive web tasks so the user can follow along.",
 ].join("\n");
 
+// Providers that natively discover the FCode skills dir (Codex registers it via
+// skills/extraRoots/set) already load the skill content themselves; they only
+// need the routing nudge. Claude is excluded entirely — its adapter exposes the
+// browser through a dedicated MCP server instead of this prompt.
+const NATIVE_FCODE_SKILL_DISCOVERY_PROVIDERS: ReadonlySet<ProviderKind> = new Set(["codex"]);
+
 function browserSkillPath(fcodeBaseDir: string): string {
   return nodePath.join(fcodeSkillsDir(fcodeBaseDir), BROWSER_USE_SKILL_NAME, "SKILL.md");
 }
@@ -75,10 +81,12 @@ export async function buildProviderBrowserAndSkillPrompt(input: {
     return inlineSkillPrompt;
   }
 
-  const browserSkillPrompt = `${FCODE_BROWSER_ROUTING_PROMPT}\n\n${await readBrowserSkillBlock({
-    fcodeBaseDir: input.fcodeBaseDir,
-    maxChars: remainingChars - FCODE_BROWSER_ROUTING_PROMPT.length,
-  })}`;
+  const browserSkillPrompt = NATIVE_FCODE_SKILL_DISCOVERY_PROVIDERS.has(input.provider)
+    ? FCODE_BROWSER_ROUTING_PROMPT
+    : `${FCODE_BROWSER_ROUTING_PROMPT}\n\n${await readBrowserSkillBlock({
+        fcodeBaseDir: input.fcodeBaseDir,
+        maxChars: remainingChars - FCODE_BROWSER_ROUTING_PROMPT.length,
+      })}`;
 
   return [browserSkillPrompt, inlineSkillPrompt]
     .filter((text) => text.trim().length > 0)

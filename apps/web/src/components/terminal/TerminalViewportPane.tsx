@@ -25,6 +25,7 @@ import {
 import { cn } from "~/lib/utils";
 
 import { DOCK_HEADER_ICON_BUTTON_CLASS, SurfaceTabChip } from "../chat/chatHeaderControls";
+import { DraggableTerminalPaneTab, TerminalPaneDropZones } from "./TerminalChrome";
 import type {
   ThreadTerminalLayoutNode,
   ThreadTerminalPresentationMode,
@@ -56,10 +57,21 @@ interface TerminalViewportPaneProps {
   onLaunchAgentCommand?: ((launch: TerminalAgentLaunch) => void) | undefined;
   onMoveTerminalToGroup?: ((terminalId: string) => void) | undefined;
   onCloseTerminal?: ((terminalId: string) => void) | undefined;
+  // Terminal id of the pane tab currently being dragged (from the shared
+  // TerminalDndContext). While set, each pane shows drop zones so the tab can
+  // be dropped to move or split, cmux-style.
+  draggingTerminalId?: string | null | undefined;
   presentationMode: ThreadTerminalPresentationMode;
   onTogglePresentationMode?: (() => void) | undefined;
   onTogglePanel?: (() => void) | undefined;
   isPanelOpen?: boolean | undefined;
+  // When the workspace group tab bar is already showing this group's identity
+  // (multiple groups exist) and the group holds a single, unsplit terminal, the
+  // pane's lone tab chip is a duplicate of the group chip above it. Hide it so the
+  // pane header collapses to just its action controls instead of a redundant
+  // second tab row. Only affects the single-terminal case; split panes still
+  // render their chips so each pane stays identifiable.
+  hideSoleTabChip?: boolean | undefined;
 }
 
 function normalizeWeights(weights: number[]): number[] {
@@ -122,10 +134,12 @@ export default function TerminalViewportPane({
   onLaunchAgentCommand,
   onMoveTerminalToGroup,
   onCloseTerminal,
+  draggingTerminalId = null,
   presentationMode,
   onTogglePresentationMode,
   onTogglePanel,
   isPanelOpen,
+  hideSoleTabChip = false,
 }: TerminalViewportPaneProps) {
   const renderNode = (node: ThreadTerminalLayoutNode): ReactNode => {
     if (node.type === "terminal") {
@@ -139,6 +153,14 @@ export default function TerminalViewportPane({
         if (!onMoveTerminalToGroup) return;
         onMoveTerminalToGroup(activePaneTerminalId);
       };
+      // Anchor for this pane's drop zones: a terminal already in the pane that
+      // is not the dragged one. Without an anchor (the pane holds only the
+      // dragged tab) a drop here would be a no-op, so the zones stay hidden.
+      const paneDropAnchorTerminalId = !draggingTerminalId
+        ? null
+        : activePaneTerminalId !== draggingTerminalId
+          ? activePaneTerminalId
+          : (node.terminalIds.find((terminalId) => terminalId !== draggingTerminalId) ?? null);
 
       return (
         <div
@@ -152,40 +174,43 @@ export default function TerminalViewportPane({
         >
           <div className="flex min-h-9 items-center gap-1 bg-[var(--color-background-surface)] px-1.5 py-1">
             <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-              {node.terminalIds.map((terminalId) => {
-                const visualIdentity = terminalVisualIdentityById.get(terminalId);
-                const isActiveTab = terminalId === activePaneTerminalId;
-                const tabTitle = visualIdentity?.title ?? "Terminal";
-                const closeTabLabel = `Close ${visualIdentity?.title ?? "terminal"}`;
+              {hideSoleTabChip && node.terminalIds.length === 1
+                ? null
+                : node.terminalIds.map((terminalId) => {
+                    const visualIdentity = terminalVisualIdentityById.get(terminalId);
+                    const isActiveTab = terminalId === activePaneTerminalId;
+                    const tabTitle = visualIdentity?.title ?? "Terminal";
+                    const closeTabLabel = `Close ${visualIdentity?.title ?? "terminal"}`;
 
-                return (
-                  <SurfaceTabChip
-                    key={terminalId}
-                    active={isActiveTab}
-                    className={cn(isActiveTab && !isFocusedPane && "opacity-70")}
-                    title={tabTitle}
-                    label={tabTitle}
-                    labelClassName="max-w-40"
-                    icon={
-                      <TerminalIdentityIcon
-                        className="size-3.5"
-                        iconKey={visualIdentity?.iconKey ?? "terminal"}
-                      />
-                    }
-                    leading={
-                      visualIdentity && visualIdentity.state !== "idle" ? (
-                        <TerminalActivityIndicator
-                          className="text-foreground/70"
-                          state={visualIdentity.state}
+                    return (
+                      <DraggableTerminalPaneTab key={terminalId} terminalId={terminalId}>
+                        <SurfaceTabChip
+                          active={isActiveTab}
+                          className={cn(isActiveTab && !isFocusedPane && "opacity-70")}
+                          title={tabTitle}
+                          label={tabTitle}
+                          labelClassName="max-w-40"
+                          icon={
+                            <TerminalIdentityIcon
+                              className="size-3.5"
+                              iconKey={visualIdentity?.iconKey ?? "terminal"}
+                            />
+                          }
+                          leading={
+                            visualIdentity && visualIdentity.state !== "idle" ? (
+                              <TerminalActivityIndicator
+                                className="text-foreground/70"
+                                state={visualIdentity.state}
+                              />
+                            ) : null
+                          }
+                          closeLabel={closeTabLabel}
+                          onSelect={() => onActiveTerminalChange(terminalId)}
+                          onClose={onCloseTerminal ? () => onCloseTerminal(terminalId) : undefined}
                         />
-                      ) : null
-                    }
-                    closeLabel={closeTabLabel}
-                    onSelect={() => onActiveTerminalChange(terminalId)}
-                    onClose={onCloseTerminal ? () => onCloseTerminal(terminalId) : undefined}
-                  />
-                );
-              })}
+                      </DraggableTerminalPaneTab>
+                    );
+                  })}
 
               {onNewTerminalTab ? (
                 <PaneActionButton
@@ -262,6 +287,9 @@ export default function TerminalViewportPane({
           </div>
 
           <div className="relative min-h-0 min-w-0 flex-1 bg-[var(--color-background-surface)]">
+            {paneDropAnchorTerminalId ? (
+              <TerminalPaneDropZones targetTerminalId={paneDropAnchorTerminalId} />
+            ) : null}
             {node.terminalIds.map((terminalId) => {
               const isActiveTab = terminalId === activePaneTerminalId;
               return (

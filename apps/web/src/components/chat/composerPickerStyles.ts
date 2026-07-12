@@ -147,8 +147,10 @@ export const SIDEBAR_SEGMENTED_PICKER_ACTIVE_CLASS_NAME =
 export const APP_TRANSLUCENT_POPUP_SURFACE_BASE_CLASS_NAME =
   "relative overflow-hidden border border-border bg-popover/70 text-popover-foreground before:pointer-events-none before:absolute before:inset-0 before:-z-1 before:rounded-[inherit] before:backdrop-blur-2xl before:backdrop-saturate-150";
 
-/** Default floating popup shell (dropdown menus, selects, popovers). */
-export const APP_TRANSLUCENT_POPUP_SURFACE_CLASS_NAME = `${APP_TRANSLUCENT_POPUP_SURFACE_BASE_CLASS_NAME} rounded-2xl shadow-xl`;
+/** Default floating popup shell (dropdown menus, selects, popovers). Shares the
+ *  picker panel radius: these menus hold compact ~28px rows, and a larger radius
+ *  cuts into the first and last row's hover fill. */
+export const APP_TRANSLUCENT_POPUP_SURFACE_CLASS_NAME = `${APP_TRANSLUCENT_POPUP_SURFACE_BASE_CLASS_NAME} ${COMPOSER_PICKER_RADIUS_CLASS_NAME} shadow-xl`;
 
 /**
  * Frosted surface chrome shared by every plain tooltip (default TooltipPopup) and

@@ -27,6 +27,8 @@ interface FCodeBrowserUseRuntime {
   drainConsole: () => FCodeConsoleEntry[];
   // Renders the agent cursor at viewport coordinates; `click` adds a ripple.
   showCursor: (x: number, y: number, click: boolean) => void;
+  // Lights the viewport-edge control glow that marks "the agent is driving".
+  showControlGlow: () => void;
 }
 
 declare global {
@@ -37,12 +39,15 @@ declare global {
 
 // Keep in sync with FCODE_PAGE_CONTROLLER_INJECTION_VERSION written by
 // buildPageControllerInjection.mjs.
-const FCODE_BROWSER_USE_RUNTIME_VERSION = 4;
-// FCode's Claude brand accent (the `--claude` clay in the web app's theme). The
-// agent cursor uses it so automation reads as "FCode is acting" on any page.
-const FCODE_CURSOR_ACCENT = "#d97757";
-const FCODE_CURSOR_ACCENT_DARK = "#b45f42";
+const FCODE_BROWSER_USE_RUNTIME_VERSION = 5;
+// page-agent's original brand gradient (SimulatorMask cursor + ripple). The
+// control glow and click ripple reuse it so automation reads like the upstream
+// page-agent experience — minus its per-element highlight rectangles and its
+// input-blocking mask.
+const PAGE_AGENT_GRADIENT = "linear-gradient(45deg, rgb(57, 182, 255), rgb(189, 69, 251))";
+const PAGE_AGENT_RIPPLE_COLOR = "rgb(57, 182, 255)";
 const FCODE_CURSOR_FADE_MS = 1_500;
+const FCODE_CONTROL_GLOW_FADE_MS = 2_500;
 const CONSOLE_BUFFER_LIMIT = 200;
 const CONSOLE_TEXT_LIMIT = 2_000;
 const HOOKED_CONSOLE_LEVELS = ["log", "info", "warn", "error", "debug"] as const;
@@ -130,14 +135,76 @@ function removePageAgentHighlights(): void {
   document.querySelectorAll(".playwright-highlight-label").forEach((element) => element.remove());
 }
 
-// A passive, on-brand cursor overlay that shows where the agent is acting. It
-// never captures input (pointer-events: none) so the user can keep interacting —
+// A passive, viewport-edge glow that marks "the agent is in control" — the
+// original page-agent gradient wrapped around the page instead of its
+// per-element highlight rectangles. Never captures input (pointer-events: none)
+// and fades out shortly after the agent goes idle.
+function installControlGlow(): FCodeBrowserUseRuntime["showControlGlow"] {
+  const root = document.createElement("div");
+  root.setAttribute("data-fcode-control-glow", "true");
+  // Ignored by the page-controller DOM scan so it never becomes a click target.
+  root.setAttribute("data-page-agent-ignore", "true");
+  root.setAttribute("data-browser-use-ignore", "true");
+  Object.assign(root.style, {
+    position: "fixed",
+    inset: "0",
+    pointerEvents: "none",
+    zIndex: "2147483646",
+    opacity: "0",
+    transition: "opacity 300ms ease",
+    willChange: "opacity",
+  });
+  // Two gradient rings hugging the viewport edge: a blurred halo plus a crisp
+  // hairline. The mask keeps only the border band so page content stays clear.
+  const ringMask = [
+    "-webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)",
+    "-webkit-mask-composite: xor",
+    "mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)",
+    "mask-composite: exclude",
+  ].join(";");
+  root.innerHTML = `
+    <div style="position:absolute;inset:0;background:${PAGE_AGENT_GRADIENT};
+      padding:10px;${ringMask};filter:blur(10px);opacity:0.55;
+      animation:fcode-control-glow-breathe 2.4s ease-in-out infinite;"></div>
+    <div style="position:absolute;inset:0;background:${PAGE_AGENT_GRADIENT};
+      padding:2px;${ringMask};opacity:0.9;"></div>`;
+  const style = document.createElement("style");
+  style.setAttribute("data-fcode-control-glow-style", "true");
+  style.textContent = `@keyframes fcode-control-glow-breathe {
+    0%, 100% { opacity: 0.35; }
+    50% { opacity: 0.65; }
+  }`;
+
+  const attach = () => {
+    if (document.body && !root.isConnected) {
+      document.body.appendChild(root);
+    }
+    if (!style.isConnected) {
+      (document.head ?? document.documentElement)?.appendChild(style);
+    }
+  };
+  attach();
+  if (!root.isConnected) {
+    document.addEventListener("DOMContentLoaded", attach, { once: true });
+  }
+
+  let fadeTimer: ReturnType<typeof setTimeout> | undefined;
+  return () => {
+    attach();
+    root.style.opacity = "1";
+    if (fadeTimer) {
+      clearTimeout(fadeTimer);
+    }
+    fadeTimer = setTimeout(() => {
+      root.style.opacity = "0";
+    }, FCODE_CONTROL_GLOW_FADE_MS);
+  };
+}
+
+// A passive cursor overlay that shows where the agent is acting. It never
+// captures input (pointer-events: none) so the user can keep interacting —
 // unlike page-agent's SimulatorMask, which blocks the page during automation.
 function installAgentCursor(): FCodeBrowserUseRuntime["showCursor"] {
-  const prefersDark =
-    typeof matchMedia === "function" && matchMedia("(prefers-color-scheme: dark)").matches;
-  const accent = prefersDark ? FCODE_CURSOR_ACCENT_DARK : FCODE_CURSOR_ACCENT;
-
   const root = document.createElement("div");
   root.setAttribute("data-fcode-agent-cursor", "true");
   // Ignored by the page-controller DOM scan so it never becomes a click target.
@@ -156,15 +223,17 @@ function installAgentCursor(): FCodeBrowserUseRuntime["showCursor"] {
     transition: `opacity 200ms ease, left 120ms ease-out, top 120ms ease-out`,
     willChange: "left, top, opacity",
   });
-  // Arrow pointer tinted with the brand accent + a soft glow.
+  // Black-and-white arrow (black body, white border) like the original
+  // page-agent cursor's border colors — readable on any page background. The
+  // click ripple keeps page-agent's blue.
   root.innerHTML = `
     <svg width="26" height="26" viewBox="0 0 24 24" fill="none"
          style="filter: drop-shadow(0 1px 3px rgba(0,0,0,0.35));">
-      <path d="M5 3l14 7-6 1.5L10 18z" fill="${accent}" stroke="white" stroke-width="1.4"
+      <path d="M5 3l14 7-6 1.5L10 18z" fill="#000000" stroke="#ffffff" stroke-width="1.4"
             stroke-linejoin="round"/>
     </svg>
     <span data-ripple style="position:absolute;left:2px;top:2px;width:6px;height:6px;
-      border:2px solid ${accent};border-radius:50%;opacity:0;transform:scale(0);"></span>`;
+      border:2px solid ${PAGE_AGENT_RIPPLE_COLOR};border-radius:50%;opacity:0;transform:scale(0);"></span>`;
 
   const attach = () => {
     if (document.body && !root.isConnected) {
@@ -211,7 +280,13 @@ if (window.__fcodeBrowserUse?.version !== FCODE_BROWSER_USE_RUNTIME_VERSION) {
     highlightLabelOpacity: 0,
   });
   const drainConsole = installConsoleCapture();
-  const showCursor = installAgentCursor();
+  const showControlGlow = installControlGlow();
+  const showAgentCursor = installAgentCursor();
+  // Every visible agent action lights the control glow alongside the cursor.
+  const showCursor: FCodeBrowserUseRuntime["showCursor"] = (x, y, click) => {
+    showControlGlow();
+    showAgentCursor(x, y, click);
+  };
   // Surface the cursor at an indexed element's on-screen center before clicking
   // it. page-controller keeps element refs only in its private `selectorMap`, so
   // this reads that field defensively — the cursor is decorative and silently
@@ -256,8 +331,12 @@ if (window.__fcodeBrowserUse?.version !== FCODE_BROWSER_USE_RUNTIME_VERSION) {
     clickElement: (index) => clickElementWithCursor(index),
     inputText: (index, text) => inputTextWithCursor(index, text),
     selectOption: (index, optionText) => selectOptionWithCursor(index, optionText),
-    scroll: (options) => controller.scroll(options),
+    scroll: (options) => {
+      showControlGlow();
+      return controller.scroll(options);
+    },
     drainConsole,
     showCursor,
+    showControlGlow,
   };
 }

@@ -69,6 +69,7 @@ export interface AppState {
   turnDiffIdsByThreadId?: Record<ThreadId, TurnId[]>;
   turnDiffSummaryByThreadId?: Record<ThreadId, Record<TurnId, Thread["turnDiffSummaries"][number]>>;
   deletedThreadIdsById?: Record<ThreadId, true>;
+  deletedProjectIdsById?: Record<Project["id"], true>;
 }
 
 type ReadModelProject = OrchestrationReadModel["projects"][number];
@@ -157,6 +158,7 @@ const initialState: AppState = {
   turnDiffIdsByThreadId: {},
   turnDiffSummaryByThreadId: {},
   deletedThreadIdsById: {},
+  deletedProjectIdsById: {},
 };
 const persistedExpandedProjectCwds = new Set<string>();
 const persistedProjectOrderCwds: string[] = [];
@@ -774,6 +776,9 @@ function upsertProjectFromReadModel(state: AppState, incoming: ReadModelProject)
 }
 
 function upsertProjectFromShell(state: AppState, incoming: ShellSnapshotProject): AppState {
+  if (state.deletedProjectIdsById?.[incoming.id] === true) {
+    return removeProjectState(state, incoming.id);
+  }
   const existingProject =
     state.projects.find((project) => project.id === incoming.id) ??
     state.projects.find(
@@ -2509,6 +2514,29 @@ function removeProjectState(state: AppState, projectId: Project["id"]): AppState
       };
 }
 
+// Removes a successfully deleted project from every client-side projection immediately.
+// The tombstone matters as much as the removal: snapshot reads that were already in flight
+// when the delete committed still carry the project, and would otherwise resurrect the row.
+export function removeDeletedProjectFromClientState(
+  state: AppState,
+  projectId: Project["id"],
+): AppState {
+  const deletedProjectIdsById =
+    state.deletedProjectIdsById?.[projectId] === true
+      ? state.deletedProjectIdsById
+      : {
+          ...(state.deletedProjectIdsById ?? {}),
+          [projectId]: true,
+        };
+  const nextState = removeProjectState(state, projectId);
+  return nextState.deletedProjectIdsById === deletedProjectIdsById
+    ? nextState
+    : {
+        ...nextState,
+        deletedProjectIdsById,
+      };
+}
+
 function commitThreadProjection(
   state: AppState,
   threadId: ThreadId,
@@ -3155,18 +3183,9 @@ function applyOrchestrationEvent(
       });
     }
 
-    case "project.deleted": {
-      const existingIndex = state.projects.findIndex(
-        (project) => project.id === event.payload.projectId,
-      );
-      if (existingIndex < 0) {
-        return state;
-      }
-      return {
-        ...state,
-        projects: state.projects.filter((project) => project.id !== event.payload.projectId),
-      };
-    }
+    case "project.deleted":
+      // Deletion is terminal: tombstone so an in-flight snapshot cannot re-add the row.
+      return removeDeletedProjectFromClientState(state, event.payload.projectId);
 
     case "thread.deleted":
       // Deletion is terminal for both active sidebar rows and archived settings rows.
@@ -3974,10 +3993,15 @@ export function syncServerShellSnapshot(
   rememberProjectUiState(state.projects);
   rememberProjectLocalNames(state.projects);
   const deletedThreadIdsById = state.deletedThreadIdsById ?? {};
+  const deletedProjectIdsById = state.deletedProjectIdsById ?? {};
   const snapshotThreads = snapshot.threads.filter(
-    (thread) => deletedThreadIdsById[thread.id] !== true,
+    (thread) =>
+      deletedThreadIdsById[thread.id] !== true && deletedProjectIdsById[thread.projectId] !== true,
   );
-  const projects = mapProjectsFromShellSnapshot(snapshot.projects, state.projects);
+  const projects = mapProjectsFromShellSnapshot(
+    snapshot.projects.filter((project) => deletedProjectIdsById[project.id] !== true),
+    state.projects,
+  );
   const nextThreadIds = new Set(snapshotThreads.map((thread) => thread.id));
 
   let normalizedState: AppState = {
@@ -4082,7 +4106,9 @@ export function applyShellEvent(state: AppState, event: OrchestrationShellStream
     case "project-upserted":
       return upsertProjectFromShell(state, event.project);
     case "project-removed":
-      return removeProjectState(state, event.projectId);
+      // Unlike thread removals, a project removal is never a draft rollback: it only
+      // follows a committed `project.deleted`, so it is safe to tombstone here.
+      return removeDeletedProjectFromClientState(state, event.projectId);
     case "thread-upserted": {
       if (state.deletedThreadIdsById?.[event.thread.id] === true) {
         return removeThreadState(state, event.thread.id);
@@ -4103,13 +4129,21 @@ export function syncServerReadModel(state: AppState, readModel: OrchestrationRea
   rememberProjectUiState(state.projects);
   rememberProjectLocalNames(state.projects);
   const deletedThreadIdsById = state.deletedThreadIdsById ?? {};
+  const deletedProjectIdsById = state.deletedProjectIdsById ?? {};
   const projects = mapProjectsFromReadModel(
-    readModel.projects.filter((project) => project.deletedAt === null),
+    readModel.projects.filter(
+      (project) => project.deletedAt === null && deletedProjectIdsById[project.id] !== true,
+    ),
     state.projects,
   );
   const existingThreadById = new Map(state.threads.map((thread) => [thread.id, thread] as const));
   const nextThreads = readModel.threads
-    .filter((thread) => thread.deletedAt === null && deletedThreadIdsById[thread.id] !== true)
+    .filter(
+      (thread) =>
+        thread.deletedAt === null &&
+        deletedThreadIdsById[thread.id] !== true &&
+        deletedProjectIdsById[thread.projectId] !== true,
+    )
     .map((thread) => {
       const existing = existingThreadById.get(thread.id);
       return normalizeThreadFromReadModel(thread, existing);
@@ -4385,6 +4419,7 @@ interface AppStore extends AppState {
   applyOrchestrationEvents: (events: ReadonlyArray<OrchestrationEvent>) => void;
   applyOrchestrationEventsHotPath: (events: ReadonlyArray<OrchestrationEvent>) => void;
   removeDeletedThreadFromClientState: (threadId: ThreadId) => void;
+  removeDeletedProjectFromClientState: (projectId: Project["id"]) => void;
   markThreadVisited: (threadId: ThreadId, visitedAt?: string) => void;
   markThreadUnread: (threadId: ThreadId) => void;
   toggleProject: (projectId: Project["id"]) => void;
@@ -4415,6 +4450,8 @@ export const useStore = create<AppStore>((set) => ({
     ),
   removeDeletedThreadFromClientState: (threadId) =>
     set((state) => removeDeletedThreadFromClientState(state, threadId)),
+  removeDeletedProjectFromClientState: (projectId) =>
+    set((state) => removeDeletedProjectFromClientState(state, projectId)),
   markThreadVisited: (threadId, visitedAt) =>
     set((state) => markThreadVisited(state, threadId, visitedAt)),
   markThreadUnread: (threadId) => set((state) => markThreadUnread(state, threadId)),

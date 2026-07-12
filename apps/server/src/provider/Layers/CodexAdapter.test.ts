@@ -27,6 +27,13 @@ import { CodexAdapter } from "../Services/CodexAdapter.ts";
 import { ProviderSessionDirectory } from "../Services/ProviderSessionDirectory.ts";
 import { makeCodexAdapterLive } from "./CodexAdapter.ts";
 
+// When FCode itself launches the test shell, desktop browser-use pipe vars leak
+// into process.env and would flip on browser prompt injection; clear them so
+// sendTurn input assertions stay hermetic.
+vi.stubEnv("FCODE_BROWSER_USE_PIPE_PATH", "");
+vi.stubEnv("DPCODE_BROWSER_USE_PIPE_PATH", "");
+vi.stubEnv("T3CODE_BROWSER_USE_PIPE_PATH", "");
+
 const asThreadId = (value: string): ThreadId => ThreadId.makeUnsafe(value);
 const asTurnId = (value: string): TurnId => TurnId.makeUnsafe(value);
 const asEventId = (value: string): EventId => EventId.makeUnsafe(value);

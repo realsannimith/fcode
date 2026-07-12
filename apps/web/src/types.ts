@@ -45,6 +45,9 @@ export type ProjectScript = ContractProjectScript;
 
 export type ThreadTerminalSplitDirection = "horizontal" | "vertical";
 export type ThreadTerminalSplitPosition = "top" | "right" | "bottom" | "left";
+// Where a dragged terminal group tab lands on the active viewport: an edge
+// splits in that direction, "center" merges the terminals in as pane tabs.
+export type ThreadTerminalDropPosition = ThreadTerminalSplitPosition | "center";
 
 export interface ThreadTerminalLeafNode {
   type: "terminal";

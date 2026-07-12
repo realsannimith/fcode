@@ -28,6 +28,7 @@ import {
   collapseProjectsExcept,
   markThreadUnread,
   renameProjectLocally,
+  removeDeletedProjectFromClientState,
   removeDeletedThreadFromClientState,
   reorderProjects,
   setThreadWorkspace,
@@ -653,6 +654,73 @@ describe("store pure functions", () => {
     );
 
     expect(next.projects).toEqual([]);
+  });
+
+  it("keeps a deleted project hidden when a stale shell snapshot still lists it", () => {
+    const projectId = ProjectId.makeUnsafe("project-1");
+    const threadId = ThreadId.makeUnsafe("thread-stale-project");
+    const deleted = removeDeletedProjectFromClientState(
+      {
+        projects: [makeProject({ id: projectId })],
+        threads: [],
+        sidebarThreadSummaryById: {},
+        threadsHydrated: true,
+      },
+      projectId,
+    );
+
+    expect(deleted.projects).toEqual([]);
+    expect(deleted.deletedProjectIdsById?.[projectId]).toBe(true);
+
+    // A snapshot read that was already in flight when `project.delete` committed.
+    const afterStaleSnapshot = syncServerShellSnapshot(
+      deleted,
+      makeShellSnapshot({
+        id: threadId,
+        projectId,
+        title: "Stale thread in a removed project",
+        modelSelection: {
+          provider: "codex",
+          model: "gpt-5.3-codex",
+        },
+        runtimeMode: DEFAULT_RUNTIME_MODE,
+        interactionMode: DEFAULT_INTERACTION_MODE,
+        envMode: "local",
+        branch: null,
+        worktreePath: null,
+        forkSourceThreadId: null,
+        sidechatSourceThreadId: null,
+        latestTurn: null,
+        createdAt: "2026-02-27T00:00:00.000Z",
+        updatedAt: "2026-02-27T00:00:30.000Z",
+        handoff: null,
+        session: null,
+      }),
+    );
+
+    expect(afterStaleSnapshot.projects).toEqual([]);
+    expect(afterStaleSnapshot.threads).toHaveLength(0);
+  });
+
+  it("keeps a deleted project hidden when a stale read model still lists it", () => {
+    const projectId = ProjectId.makeUnsafe("project-1");
+    const deleted = removeDeletedProjectFromClientState(
+      {
+        projects: [makeProject({ id: projectId })],
+        threads: [],
+        sidebarThreadSummaryById: {},
+        threadsHydrated: true,
+      },
+      projectId,
+    );
+
+    const afterStaleReadModel = syncServerReadModel(
+      deleted,
+      makeReadModel(makeReadModelThread({ projectId })),
+    );
+
+    expect(afterStaleReadModel.projects).toEqual([]);
+    expect(afterStaleReadModel.threads).toHaveLength(0);
   });
 
   it("reuses the existing project slot for shell upserts that keep the same workspace root", () => {

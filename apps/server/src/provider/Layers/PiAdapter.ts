@@ -44,6 +44,7 @@ import {
 import { PiAdapter, type PiAdapterShape } from "../Services/PiAdapter.ts";
 import type { ProviderThreadSnapshot } from "../Services/ProviderAdapter.ts";
 import { appendFileAttachmentsPromptBlock } from "../attachmentProjection.ts";
+import { buildProviderBrowserAndSkillPrompt } from "../browserUsePrompt.ts";
 import { classifyPiTurnFailure } from "../piTurnFailure.ts";
 import { clampUsagePercent, nonNegativeFiniteNumber, positiveFiniteNumber } from "../tokenUsage.ts";
 import { type EventNdjsonLogger, makeEventNdjsonLogger } from "./EventNdjsonLogger.ts";
@@ -1847,7 +1848,34 @@ const makePiAdapter = (options?: PiAdapterLiveOptions) =>
             context.runtime.session.setThinkingLevel(thinkingLevel);
           }
         }
-        const payload = yield* buildPromptPayload(input);
+        // Pi commands like /reload must reach the runtime verbatim, so the
+        // browser/skill preamble only wraps regular prompts.
+        const rawInput = input.input?.trim() ?? "";
+        const browserAndSkillPrompt = isPiReloadCommand(rawInput)
+          ? ""
+          : yield* Effect.tryPromise({
+              try: () =>
+                buildProviderBrowserAndSkillPrompt({
+                  provider: PROVIDER,
+                  fcodeBaseDir: serverConfig.baseDir,
+                  skills: input.skills,
+                  maxChars: 24_000,
+                }),
+              catch: (cause) =>
+                new ProviderAdapterRequestError({
+                  provider: PROVIDER,
+                  method: "sendTurn",
+                  detail: "Failed to prepare provider skill instructions.",
+                  cause,
+                }),
+            });
+        const composedInput = [browserAndSkillPrompt, rawInput]
+          .filter((part) => part.trim().length > 0)
+          .join("\n\nUser request:\n");
+        const payload = yield* buildPromptPayload({
+          ...(composedInput.length > 0 ? { input: composedInput } : {}),
+          ...(input.attachments !== undefined ? { attachments: input.attachments } : {}),
+        });
         const turnId = TurnId.makeUnsafe(crypto.randomUUID());
         context.activeTurnId = turnId;
         context.turns.push({ id: turnId, items: [] });

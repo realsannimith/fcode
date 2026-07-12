@@ -143,6 +143,7 @@ async function fixupHomeChatProject(input: ServerWorkspacePaths): Promise<void> 
       commandId: newCommandId(),
       projectId: duplicateProjectId,
     });
+    useStore.getState().removeDeletedProjectFromClientState(duplicateProjectId);
   }
 }
 

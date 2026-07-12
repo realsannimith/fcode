@@ -14,6 +14,7 @@ import {
   DEFAULT_THREAD_TERMINAL_ID,
   MAX_TERMINALS_PER_GROUP,
   type ThreadPrimarySurface,
+  type ThreadTerminalDropPosition,
   type ThreadTerminalGroup,
   type ThreadTerminalSplitPosition,
   type ThreadTerminalPresentationMode,
@@ -24,6 +25,7 @@ import {
   addTerminalTabToGroupLayout,
   collectTerminalIdsFromLayout,
   createTerminalGroup,
+  mergeTerminalGroupIntoGroupLayout,
   normalizeTerminalPaneGroup,
   removeTerminalFromGroupLayout,
   resizeTerminalGroupLayout,
@@ -1042,6 +1044,164 @@ function closeThreadTerminalGroup(
   );
 }
 
+// Reorders a terminal group tab to sit where another group currently is, moving
+// the dragged tab and shifting the rest — the positional model @dnd-kit's
+// horizontal sortable strip produces. Group order lives purely in the array, so
+// this splices the groups and re-aligns the flat terminalIds order to match, so
+// every surface deriving order from either array stays consistent.
+function moveThreadTerminalGroup(
+  state: ThreadTerminalState,
+  activeGroupId: string,
+  overGroupId: string,
+): ThreadTerminalState {
+  const normalized = normalizeThreadTerminalState(state);
+  if (activeGroupId === overGroupId) {
+    return normalized;
+  }
+  const fromIndex = normalized.terminalGroups.findIndex((group) => group.id === activeGroupId);
+  const toIndex = normalized.terminalGroups.findIndex((group) => group.id === overGroupId);
+  if (fromIndex < 0 || toIndex < 0 || fromIndex === toIndex) {
+    return normalized;
+  }
+  const terminalGroups = copyTerminalGroups(normalized.terminalGroups);
+  const [movedGroup] = terminalGroups.splice(fromIndex, 1);
+  if (!movedGroup) {
+    return normalized;
+  }
+  terminalGroups.splice(toIndex, 0, movedGroup);
+  const groupedTerminalIds = terminalGroups.flatMap((group) =>
+    collectTerminalIdsFromLayout(group.layout),
+  );
+  const groupedTerminalIdSet = new Set(groupedTerminalIds);
+  const nextTerminalIds = [
+    ...groupedTerminalIds,
+    ...normalized.terminalIds.filter((terminalId) => !groupedTerminalIdSet.has(terminalId)),
+  ];
+  return normalizeThreadTerminalState({
+    ...normalized,
+    terminalIds: nextTerminalIds,
+    terminalGroups,
+  });
+}
+
+// Merges the source group into the target group — the drag-a-group-tab onto
+// the viewport gesture. An edge position splits the target's layout in that
+// direction; "center" folds the source terminals in as pane tabs. The source
+// group dissolves, so the merged group becomes the active one.
+function mergeThreadTerminalGroups(
+  state: ThreadTerminalState,
+  sourceGroupId: string,
+  targetGroupId: string,
+  position: ThreadTerminalDropPosition,
+): ThreadTerminalState {
+  const normalized = normalizeThreadTerminalState(state);
+  if (sourceGroupId === targetGroupId) {
+    return normalized;
+  }
+  const terminalGroups = copyTerminalGroups(normalized.terminalGroups);
+  const sourceIndex = terminalGroups.findIndex((group) => group.id === sourceGroupId);
+  const targetIndex = terminalGroups.findIndex((group) => group.id === targetGroupId);
+  const sourceGroup = terminalGroups[sourceIndex];
+  const targetGroup = terminalGroups[targetIndex];
+  if (sourceIndex < 0 || targetIndex < 0 || !sourceGroup || !targetGroup) {
+    return normalized;
+  }
+
+  const sourceTerminalIds = collectTerminalIdsFromLayout(sourceGroup.layout);
+  const targetTerminalIds = collectTerminalIdsFromLayout(targetGroup.layout);
+  if (sourceTerminalIds.length + targetTerminalIds.length > MAX_TERMINALS_PER_GROUP) {
+    return normalized;
+  }
+
+  const mergedGroup = mergeTerminalGroupIntoGroupLayout({
+    targetGroup,
+    sourceGroup,
+    position,
+    splitId: `split-merge-${sourceGroup.activeTerminalId}`,
+  });
+  if (mergedGroup === targetGroup) {
+    return normalized;
+  }
+  terminalGroups[targetIndex] = mergedGroup;
+  terminalGroups.splice(sourceIndex, 1);
+
+  return normalizeThreadTerminalState({
+    ...normalized,
+    activeTerminalId: mergedGroup.activeTerminalId,
+    terminalGroups,
+    activeTerminalGroupId: mergedGroup.id,
+  });
+}
+
+// Moves an existing terminal onto another pane — the drag-a-pane-tab gesture
+// (cmux/VS Code style). An edge position splits the target terminal's pane
+// with the moved terminal; "center" re-homes it as a tab in that pane. The
+// terminal keeps its id, so its xterm runtime survives the move.
+function moveThreadTerminalToPane(
+  state: ThreadTerminalState,
+  terminalId: string,
+  targetTerminalId: string,
+  position: ThreadTerminalDropPosition,
+): ThreadTerminalState {
+  const normalized = normalizeThreadTerminalState(state);
+  if (terminalId === targetTerminalId) {
+    return normalized;
+  }
+  const terminalGroups = copyTerminalGroups(normalized.terminalGroups);
+  const sourceGroupIndex = findGroupIndexByTerminalId(terminalGroups, terminalId);
+  const targetGroupIndex = findGroupIndexByTerminalId(terminalGroups, targetTerminalId);
+  if (sourceGroupIndex < 0 || targetGroupIndex < 0) {
+    return normalized;
+  }
+  const targetGroupBefore = terminalGroups[targetGroupIndex];
+  if (!targetGroupBefore) {
+    return normalized;
+  }
+  if (
+    sourceGroupIndex !== targetGroupIndex &&
+    collectTerminalIdsFromLayout(targetGroupBefore.layout).length >= MAX_TERMINALS_PER_GROUP
+  ) {
+    return normalized;
+  }
+
+  const sourceGroup = terminalGroups[sourceGroupIndex];
+  if (!sourceGroup) {
+    return normalized;
+  }
+  const sourceGroupAfterRemoval = removeTerminalFromGroupLayout(sourceGroup, terminalId);
+  if (sourceGroupAfterRemoval) {
+    terminalGroups[sourceGroupIndex] = sourceGroupAfterRemoval;
+  } else {
+    terminalGroups.splice(sourceGroupIndex, 1);
+  }
+
+  // Re-find the target group: removing the source group can shift indices, and
+  // a same-group move must build on the post-removal layout.
+  const nextTargetGroupIndex = findGroupIndexByTerminalId(terminalGroups, targetTerminalId);
+  const targetGroup = terminalGroups[nextTargetGroupIndex];
+  if (nextTargetGroupIndex < 0 || !targetGroup) {
+    return normalized;
+  }
+
+  terminalGroups[nextTargetGroupIndex] =
+    position === "center"
+      ? addTerminalTabToGroupLayout(targetGroup, targetTerminalId, terminalId)
+      : splitTerminalGroupLayout({
+          group: targetGroup,
+          targetTerminalId,
+          newTerminalId: terminalId,
+          position,
+          splitId: `split-move-${terminalId}`,
+        });
+
+  return normalizeThreadTerminalState({
+    ...normalized,
+    activeTerminalId: terminalId,
+    terminalGroups,
+    activeTerminalGroupId: terminalGroups[nextTargetGroupIndex]?.id ?? targetGroup.id,
+  });
+}
+
 function resizeThreadTerminalSplit(
   state: ThreadTerminalState,
   groupId: string,
@@ -1265,6 +1425,19 @@ interface TerminalStateStoreState {
   setActiveTerminal: (threadId: ThreadId, terminalId: string) => void;
   closeTerminal: (threadId: ThreadId, terminalId: string) => void;
   closeTerminalGroup: (threadId: ThreadId, groupId: string) => void;
+  moveTerminalGroup: (threadId: ThreadId, activeGroupId: string, overGroupId: string) => void;
+  mergeTerminalGroups: (
+    threadId: ThreadId,
+    sourceGroupId: string,
+    targetGroupId: string,
+    position: ThreadTerminalDropPosition,
+  ) => void;
+  moveTerminalToPane: (
+    threadId: ThreadId,
+    terminalId: string,
+    targetTerminalId: string,
+    position: ThreadTerminalDropPosition,
+  ) => void;
   resizeTerminalSplit: (
     threadId: ThreadId,
     groupId: string,
@@ -1360,6 +1533,18 @@ export const useTerminalStateStore = create<TerminalStateStoreState>()(
           updateTerminal(threadId, (state) => closeThreadTerminal(state, terminalId)),
         closeTerminalGroup: (threadId, groupId) =>
           updateTerminal(threadId, (state) => closeThreadTerminalGroup(state, groupId)),
+        moveTerminalGroup: (threadId, activeGroupId, overGroupId) =>
+          updateTerminal(threadId, (state) =>
+            moveThreadTerminalGroup(state, activeGroupId, overGroupId),
+          ),
+        mergeTerminalGroups: (threadId, sourceGroupId, targetGroupId, position) =>
+          updateTerminal(threadId, (state) =>
+            mergeThreadTerminalGroups(state, sourceGroupId, targetGroupId, position),
+          ),
+        moveTerminalToPane: (threadId, terminalId, targetTerminalId, position) =>
+          updateTerminal(threadId, (state) =>
+            moveThreadTerminalToPane(state, terminalId, targetTerminalId, position),
+          ),
         resizeTerminalSplit: (threadId, groupId, splitId, weights) =>
           updateTerminal(threadId, (state) =>
             resizeThreadTerminalSplit(state, groupId, splitId, weights),

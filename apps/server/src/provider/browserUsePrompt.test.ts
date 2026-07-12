@@ -62,4 +62,30 @@ describe("buildProviderBrowserAndSkillPrompt", () => {
       await rm(baseDir, { recursive: true, force: true });
     }
   });
+
+  it("injects only the routing nudge for providers with native fcode skill discovery", async () => {
+    const baseDir = await mkdtemp(path.join(os.tmpdir(), "fcode-browser-prompt-codex-"));
+    try {
+      await materializeBrowserUseSkill({
+        fcodeBaseDir: baseDir,
+        serverPort: 1234,
+        authToken: "token",
+        env: { [FCODE_BROWSER_USE_PIPE_ENV]: "/tmp/fcode-browser-test.sock" },
+      });
+
+      const prompt = await buildProviderBrowserAndSkillPrompt({
+        provider: "codex",
+        fcodeBaseDir: baseDir,
+        skills: undefined,
+        maxChars: 24_000,
+        env: { [FCODE_BROWSER_USE_PIPE_ENV]: "/tmp/fcode-browser-test.sock" },
+      });
+
+      expect(prompt).toContain("FCode has a built-in in-app browser panel");
+      expect(prompt).not.toContain('name="fcode-browser"');
+      expect(prompt).not.toContain("browser.mjs");
+    } finally {
+      await rm(baseDir, { recursive: true, force: true });
+    }
+  });
 });

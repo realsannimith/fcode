@@ -22,7 +22,7 @@ import { readNativeApi } from "~/nativeApi";
 import { runProjectCommandInTerminal } from "~/projectTerminalRunner";
 import { collectTerminalIdsFromLayout } from "~/terminalPaneLayout";
 import { selectThreadTerminalState, useTerminalStateStore } from "~/terminalStateStore";
-import { MAX_TERMINALS_PER_GROUP } from "~/types";
+import { MAX_TERMINALS_PER_GROUP, type ThreadTerminalDropPosition } from "~/types";
 import {
   disposeAndCloseTerminalSession,
   randomTerminalId,
@@ -48,6 +48,9 @@ export function useTerminalSurfaceController(threadId: ThreadId) {
   const setActiveTerminalStore = useTerminalStateStore((s) => s.setActiveTerminal);
   const closeTerminalStore = useTerminalStateStore((s) => s.closeTerminal);
   const closeTerminalGroupStore = useTerminalStateStore((s) => s.closeTerminalGroup);
+  const moveTerminalGroupStore = useTerminalStateStore((s) => s.moveTerminalGroup);
+  const mergeTerminalGroupsStore = useTerminalStateStore((s) => s.mergeTerminalGroups);
+  const moveTerminalToPaneStore = useTerminalStateStore((s) => s.moveTerminalToPane);
   const setTerminalHeightStore = useTerminalStateStore((s) => s.setTerminalHeight);
   const resizeTerminalSplitStore = useTerminalStateStore((s) => s.resizeTerminalSplit);
   const setTerminalMetadataStore = useTerminalStateStore((s) => s.setTerminalMetadata);
@@ -207,6 +210,24 @@ export function useTerminalSurfaceController(threadId: ThreadId) {
     [closeTerminalGroupStore, threadId],
   );
 
+  const moveTerminalGroup = useCallback(
+    (activeGroupId: string, overGroupId: string) =>
+      moveTerminalGroupStore(threadId, activeGroupId, overGroupId),
+    [moveTerminalGroupStore, threadId],
+  );
+
+  const mergeTerminalGroups = useCallback(
+    (sourceGroupId: string, targetGroupId: string, position: ThreadTerminalDropPosition) =>
+      mergeTerminalGroupsStore(threadId, sourceGroupId, targetGroupId, position),
+    [mergeTerminalGroupsStore, threadId],
+  );
+
+  const moveTerminalToPane = useCallback(
+    (terminalId: string, targetTerminalId: string, position: ThreadTerminalDropPosition) =>
+      moveTerminalToPaneStore(threadId, terminalId, targetTerminalId, position),
+    [moveTerminalToPaneStore, threadId],
+  );
+
   const setTerminalHeight = useCallback(
     (height: number) => setTerminalHeightStore(threadId, height),
     [setTerminalHeightStore, threadId],
@@ -245,6 +266,9 @@ export function useTerminalSurfaceController(threadId: ThreadId) {
     activateTerminal,
     closeTerminal,
     closeTerminalGroup,
+    moveTerminalGroup,
+    mergeTerminalGroups,
+    moveTerminalToPane,
     setTerminalHeight,
     resizeTerminalSplit,
     setTerminalMetadata,

@@ -33,13 +33,17 @@ import {
 import { readNativeApi } from "~/nativeApi";
 import {
   MAX_TERMINALS_PER_GROUP,
+  type ThreadTerminalDropPosition,
   type ThreadTerminalGroup,
   type ThreadTerminalPresentationMode,
 } from "../types";
 import { cn } from "~/lib/utils";
 import {
   type TerminalChromeActionItem,
+  TerminalDndContext,
+  TerminalGroupDropZones,
   TerminalSidebar,
+  type TerminalSurfaceDragState,
   TerminalWorkspaceTabBar,
 } from "./terminal/TerminalChrome";
 import { resolveThreadTerminalLayout } from "./terminal/TerminalLayout";
@@ -560,6 +564,13 @@ interface ThreadTerminalDrawerProps {
   onActiveTerminalChange: (terminalId: string) => void;
   onCloseTerminal: (terminalId: string) => void;
   onCloseTerminalGroup: (groupId: string) => void;
+  onReorderTerminalGroups?: ((activeGroupId: string, overGroupId: string) => void) | undefined;
+  onMergeTerminalGroups?:
+    | ((sourceGroupId: string, targetGroupId: string, position: ThreadTerminalDropPosition) => void)
+    | undefined;
+  onMoveTerminalToPane?:
+    | ((terminalId: string, targetTerminalId: string, position: ThreadTerminalDropPosition) => void)
+    | undefined;
   onHeightChange: (height: number) => void;
   onResizeTerminalSplit: (groupId: string, splitId: string, weights: number[]) => void;
   onTerminalMetadataChange: (
@@ -607,6 +618,9 @@ export default function ThreadTerminalDrawer({
   onActiveTerminalChange,
   onCloseTerminal,
   onCloseTerminalGroup,
+  onReorderTerminalGroups,
+  onMergeTerminalGroups,
+  onMoveTerminalToPane,
   onHeightChange,
   onResizeTerminalSplit,
   onTerminalMetadataChange,
@@ -731,25 +745,39 @@ export default function ThreadTerminalDrawer({
   ];
   const showTerminalGroupTabs = resolvedTerminalGroups.length > 1;
   const topTabBarActions = terminalChromeActions;
+  // Drag state for the drop-to-split gestures (group tabs and pane tabs).
+  // Group drop zones only appear when dropping is meaningful: a different
+  // group than the one on screen, and the merged group would stay within the
+  // per-group terminal limit. Pane-tab drops are anchored per-pane inside
+  // TerminalViewportPane.
+  const [dragState, setDragState] = useState<TerminalSurfaceDragState | null>(null);
+  const draggingGroup =
+    dragState?.kind === "group"
+      ? resolvedTerminalGroups.find((group) => group.id === dragState.groupId)
+      : undefined;
+  const dropTargetGroup = resolvedTerminalGroups.find(
+    (group) => group.id === resolvedActiveGroupId,
+  );
+  const showGroupDropZones = Boolean(
+    onMergeTerminalGroups &&
+    draggingGroup &&
+    dropTargetGroup &&
+    draggingGroup.id !== dropTargetGroup.id &&
+    draggingGroup.terminalIds.length + dropTargetGroup.terminalIds.length <=
+      MAX_TERMINALS_PER_GROUP,
+  );
+  const draggingTerminalId =
+    dragState?.kind === "terminal" && onMoveTerminalToPane ? dragState.terminalId : null;
+  // With the group tab bar visible, a group holding a single unsplit terminal would
+  // render an identical lone tab chip in its pane header — a redundant second tab row.
+  // Suppress that chip so the pane header collapses to just its action controls.
+  const hideSolePaneTabChip =
+    showTerminalGroupTabs &&
+    activeGroupLayout.type === "terminal" &&
+    activeGroupLayout.terminalIds.length === 1;
 
-  return (
-    <aside
-      className={cn(
-        "thread-terminal-drawer relative flex w-full min-w-0 flex-col overflow-hidden bg-[var(--color-background-surface)]",
-        isWorkspaceMode ? "h-full min-h-0" : "shrink-0 border-t border-border/70",
-      )}
-      style={isWorkspaceMode ? undefined : { height: `${drawerHeight}px` }}
-    >
-      {!isWorkspaceMode ? (
-        <div
-          className="absolute inset-x-0 top-0 z-20 h-1.5 cursor-row-resize"
-          onPointerDown={handleResizePointerDown}
-          onPointerMove={handleResizePointerMove}
-          onPointerUp={handleResizePointerEnd}
-          onPointerCancel={handleResizePointerEnd}
-        />
-      ) : null}
-
+  const terminalSurface = (
+    <>
       {showTerminalGroupTabs ? (
         <TerminalWorkspaceTabBar
           terminalGroups={resolvedTerminalGroups}
@@ -762,6 +790,7 @@ export default function ThreadTerminalDrawer({
             onActiveTerminalChange(nextGroup.activeTerminalId);
           }}
           onCloseGroup={onCloseTerminalGroup}
+          onReorderGroups={onReorderTerminalGroups}
         />
       ) : null}
 
@@ -772,7 +801,8 @@ export default function ThreadTerminalDrawer({
             hasTerminalSidebar && !isWorkspaceMode ? "gap-1.5" : "",
           )}
         >
-          <div className="min-w-0 flex-1 h-full">
+          <div className="relative min-w-0 flex-1 h-full">
+            {showGroupDropZones ? <TerminalGroupDropZones /> : null}
             <TerminalViewportPane
               groupId={resolvedActiveGroupId}
               layout={activeGroupLayout}
@@ -806,10 +836,12 @@ export default function ThreadTerminalDrawer({
               onLaunchAgentCommand={onLaunchAgentCommand}
               onMoveTerminalToGroup={isWorkspaceMode ? onMoveTerminalToGroup : undefined}
               onCloseTerminal={onCloseTerminal}
+              draggingTerminalId={draggingTerminalId}
               presentationMode={presentationMode}
               onTogglePresentationMode={onTogglePresentationMode}
               onTogglePanel={onTogglePanel}
               isPanelOpen={isPanelOpen}
+              hideSoleTabChip={hideSolePaneTabChip}
               renderViewport={(terminalId, options) => (
                 <TerminalViewport
                   key={terminalId}
@@ -847,6 +879,41 @@ export default function ThreadTerminalDrawer({
           ) : null}
         </div>
       </div>
+    </>
+  );
+
+  return (
+    <aside
+      className={cn(
+        "thread-terminal-drawer relative flex w-full min-w-0 flex-col overflow-hidden bg-[var(--color-background-surface)]",
+        isWorkspaceMode ? "h-full min-h-0" : "shrink-0 border-t border-border/70",
+      )}
+      style={isWorkspaceMode ? undefined : { height: `${drawerHeight}px` }}
+    >
+      {!isWorkspaceMode ? (
+        <div
+          className="absolute inset-x-0 top-0 z-20 h-1.5 cursor-row-resize"
+          onPointerDown={handleResizePointerDown}
+          onPointerMove={handleResizePointerMove}
+          onPointerUp={handleResizePointerEnd}
+          onPointerCancel={handleResizePointerEnd}
+        />
+      ) : null}
+
+      {/* The drag context spans the tab strips and the viewport so a group tab
+          or a pane tab can be dropped onto panes to split, merge, or move. */}
+      <TerminalDndContext
+        onReorderGroups={onReorderTerminalGroups}
+        onDropGroupOnViewport={(groupId, position) => {
+          onMergeTerminalGroups?.(groupId, resolvedActiveGroupId, position);
+        }}
+        onDropTerminalOnPane={(terminalId, targetTerminalId, position) => {
+          onMoveTerminalToPane?.(terminalId, targetTerminalId, position);
+        }}
+        onDragStateChange={setDragState}
+      >
+        {terminalSurface}
+      </TerminalDndContext>
     </aside>
   );
 }

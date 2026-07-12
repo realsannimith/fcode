@@ -5,6 +5,7 @@
 
 import {
   DEFAULT_THREAD_TERMINAL_ID,
+  type ThreadTerminalDropPosition,
   type ThreadTerminalGroup,
   type ThreadTerminalLayoutNode,
   type ThreadTerminalSplitDirection,
@@ -489,6 +490,63 @@ export function addTerminalTabToGroupLayout(
     ...group,
     activeTerminalId: newTerminalId,
     layout: result.node,
+  };
+}
+
+// Merges one group's whole layout subtree into another group (the drag-a-tab
+// onto-the-viewport gesture). An edge position wraps both layouts in a new
+// root split; "center" folds the source terminals into the target's active
+// leaf as pane tabs. Same-direction nesting introduced by the new root split
+// is flattened later by sanitizeLayoutNode during state normalization.
+export function mergeTerminalGroupIntoGroupLayout(input: {
+  targetGroup: ThreadTerminalGroup;
+  sourceGroup: ThreadTerminalGroup;
+  position: ThreadTerminalDropPosition;
+  splitId: string;
+}): ThreadTerminalGroup {
+  const sourceTerminalIds = collectTerminalIdsFromLayout(input.sourceGroup.layout);
+  if (sourceTerminalIds.length === 0) {
+    return input.targetGroup;
+  }
+  const nextActiveTerminalId = sourceTerminalIds.includes(input.sourceGroup.activeTerminalId)
+    ? input.sourceGroup.activeTerminalId
+    : (sourceTerminalIds[0] ?? DEFAULT_THREAD_TERMINAL_ID);
+
+  if (input.position === "center") {
+    const result = updateLeafNode(
+      input.targetGroup.layout,
+      input.targetGroup.activeTerminalId,
+      (node) => ({
+        ...node,
+        terminalIds: [
+          ...node.terminalIds,
+          ...sourceTerminalIds.filter((terminalId) => !node.terminalIds.includes(terminalId)),
+        ],
+        activeTerminalId: nextActiveTerminalId,
+      }),
+    );
+    if (!result.updated) {
+      return input.targetGroup;
+    }
+    return {
+      ...input.targetGroup,
+      activeTerminalId: nextActiveTerminalId,
+      layout: result.node,
+    };
+  }
+
+  return {
+    ...input.targetGroup,
+    activeTerminalId: nextActiveTerminalId,
+    layout: {
+      type: "split",
+      id: input.splitId,
+      direction: splitDirectionForPosition(input.position),
+      children: shouldInsertBefore(input.position)
+        ? [input.sourceGroup.layout, input.targetGroup.layout]
+        : [input.targetGroup.layout, input.sourceGroup.layout],
+      weights: [1, 1],
+    },
   };
 }
 

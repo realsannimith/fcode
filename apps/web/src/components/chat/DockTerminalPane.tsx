@@ -115,6 +115,9 @@ export function DockTerminalPane(props: {
       onActiveTerminalChange={terminal.activateTerminal}
       onCloseTerminal={terminal.closeTerminal}
       onCloseTerminalGroup={terminal.closeTerminalGroup}
+      onReorderTerminalGroups={terminal.moveTerminalGroup}
+      onMergeTerminalGroups={terminal.mergeTerminalGroups}
+      onMoveTerminalToPane={terminal.moveTerminalToPane}
       onHeightChange={terminal.setTerminalHeight}
       onResizeTerminalSplit={terminal.resizeTerminalSplit}
       onTerminalMetadataChange={terminal.setTerminalMetadata}

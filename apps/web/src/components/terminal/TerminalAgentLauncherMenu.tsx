@@ -21,8 +21,10 @@ export interface TerminalAgentLaunch {
 
 // Keep the highlighted-item hover behaviour consistent with the terminal chrome (no accent
 // swap on plain hover, only on keyboard/focus) — mirrors ProjectScriptsControl's menu rows.
+// The default menu surface applies no row padding, so set it here: without it the label
+// sits flush against the panel edge and the hover fill hugs the text.
 const menuItemClassName =
-  "gap-2 data-highlighted:bg-transparent data-highlighted:text-foreground hover:bg-[var(--sidebar-accent)] hover:text-foreground focus-visible:bg-[var(--sidebar-accent)] focus-visible:text-foreground";
+  "min-h-7 gap-2 px-2 py-1 data-highlighted:bg-transparent data-highlighted:text-foreground hover:bg-[var(--sidebar-accent)] hover:text-foreground focus-visible:bg-[var(--sidebar-accent)] focus-visible:text-foreground";
 
 export function TerminalAgentLauncherMenu({
   onLaunch,
