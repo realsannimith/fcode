@@ -38,7 +38,7 @@ describe("TerminalWorkspaceTabs", () => {
     expect(markup).toContain("Chat");
   });
 
-  it("uses the shared generating ring while chat is working", () => {
+  it("uses the shared dot loader while chat is working", () => {
     const markup = renderToStaticMarkup(
       <TerminalWorkspaceTabs
         activeTab="terminal"
@@ -50,7 +50,6 @@ describe("TerminalWorkspaceTabs", () => {
     );
 
     expect(markup).toContain('aria-label="Chat agent is generating"');
-    expect(markup).toContain("motion-safe:animate-spin");
-    expect(markup).not.toContain("agent-progress-dot");
+    expect(markup.match(/agent-progress-dot/g)).toHaveLength(8);
   });
 });

@@ -8,12 +8,11 @@ import { describe, expect, it } from "vitest";
 import TerminalActivityIndicator from "./TerminalActivityIndicator";
 
 describe("TerminalActivityIndicator", () => {
-  it("uses the shared progress ring while a terminal agent is generating", () => {
+  it("uses the shared dot loader while a terminal agent is generating", () => {
     const markup = renderToStaticMarkup(<TerminalActivityIndicator state="running" />);
 
     expect(markup).toContain('aria-label="Terminal agent is generating"');
-    expect(markup).toContain("motion-safe:animate-spin");
-    expect(markup).not.toContain("agent-progress-dot");
+    expect(markup.match(/agent-progress-dot/g)).toHaveLength(8);
     expect(markup).not.toContain("animate-ping");
   });
 
