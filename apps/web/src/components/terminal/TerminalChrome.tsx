@@ -378,6 +378,7 @@ export function TerminalWorkspaceTabBar(props: {
     return (
       <SurfaceTabChip
         active={isActive}
+        className="rounded-md"
         title={groupTitle}
         label={groupTitle}
         labelClassName="max-w-40"

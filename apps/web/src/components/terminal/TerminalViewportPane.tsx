@@ -186,7 +186,10 @@ export default function TerminalViewportPane({
                       <DraggableTerminalPaneTab key={terminalId} terminalId={terminalId}>
                         <SurfaceTabChip
                           active={isActiveTab}
-                          className={cn(isActiveTab && !isFocusedPane && "opacity-70")}
+                          className={cn(
+                            "rounded-md",
+                            isActiveTab && !isFocusedPane && "opacity-70",
+                          )}
                           title={tabTitle}
                           label={tabTitle}
                           labelClassName="max-w-40"

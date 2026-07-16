@@ -143,6 +143,7 @@ import { dispatchThreadRename } from "../lib/threadRename";
 import { useHandleNewChat } from "../hooks/useHandleNewChat";
 import { useComposerDropzone } from "../hooks/useComposerDropzone";
 import { useDiffRouteSearch } from "../hooks/useDiffRouteSearch";
+import { resolveAgentLauncherTerminalTarget } from "../agentLaunchers";
 import {
   buildThreadBreadcrumbs,
   enrichSubagentWorkEntries,
@@ -3974,6 +3975,7 @@ export default function ChatView({
       hasRightDockPanes,
     ],
   );
+  const launchingAgentTerminalIdsRef = useRef<Set<string>>(new Set());
   const runProjectScript = useCallback(
     async (
       script: ProjectScript,
@@ -3998,14 +4000,27 @@ export default function ChatView({
         terminalState.activeTerminalId ||
         terminalState.terminalIds[0] ||
         DEFAULT_THREAD_TERMINAL_ID;
-      const { shouldCreateNewTerminal, terminalId: targetTerminalId } =
-        resolveProjectScriptTerminalTarget({
-          baseTerminalId,
-          createTerminalId: randomTerminalId,
-          hasRunningTerminal: terminalState.runningTerminalIds.length > 0,
-          preferNewTerminal: options?.preferNewTerminal,
-          terminalOpen: terminalState.terminalOpen,
-        });
+      const target =
+        script.id === "agent-launcher"
+          ? resolveAgentLauncherTerminalTarget({
+              baseTerminalId,
+              createTerminalId: randomTerminalId,
+              hasRunningTerminal:
+                terminalState.runningTerminalIds.length > 0 ||
+                launchingAgentTerminalIdsRef.current.size > 0,
+              hasLaunchedAgent: Object.keys(terminalState.terminalCliKindsById).length > 0,
+            })
+          : resolveProjectScriptTerminalTarget({
+              baseTerminalId,
+              createTerminalId: randomTerminalId,
+              hasRunningTerminal: terminalState.runningTerminalIds.length > 0,
+              preferNewTerminal: options?.preferNewTerminal,
+              terminalOpen: terminalState.terminalOpen,
+            });
+      const { shouldCreateNewTerminal, terminalId: targetTerminalId } = target;
+      if (script.id === "agent-launcher") {
+        launchingAgentTerminalIdsRef.current.add(targetTerminalId);
+      }
 
       setTerminalOpen(true);
       if (shouldCreateNewTerminal) {
@@ -4047,6 +4062,10 @@ export default function ChatView({
           activeThreadId,
           error instanceof Error ? error.message : `Failed to run script "${script.name}".`,
         );
+      } finally {
+        if (script.id === "agent-launcher") {
+          launchingAgentTerminalIdsRef.current.delete(targetTerminalId);
+        }
       }
     },
     [
@@ -4063,14 +4082,15 @@ export default function ChatView({
       storeSetTerminalMetadata,
       setLastInvokedScriptByProjectId,
       terminalState.activeTerminalId,
+      terminalState.terminalCliKindsById,
       terminalState.terminalOpen,
       terminalState.runningTerminalIds,
       terminalState.terminalIds,
     ],
   );
-  // Quick-launch an AI CLI (from the terminal header dropdown) in a fresh terminal. Reuses the
-  // project-script path so terminal targeting, focus, and provider metadata all stay consistent;
-  // the launcher command is user-configured (Settings → Behavior → Agent launchers).
+  // Quick-launch an AI CLI (from the terminal header dropdown). The first launcher reuses an
+  // untouched terminal; subsequent launches get a fresh tab so active agent sessions stay
+  // isolated. The launcher command is user-configured (Settings → Behavior → Agent launchers).
   const launchAgentInTerminal = useCallback(
     (launch: { command: string; label: string }) => {
       void runProjectScript(
@@ -4081,7 +4101,7 @@ export default function ChatView({
           icon: "play",
           runOnWorktreeCreate: false,
         },
-        { preferNewTerminal: true, rememberAsLastInvoked: false },
+        { rememberAsLastInvoked: false },
       );
     },
     [runProjectScript],

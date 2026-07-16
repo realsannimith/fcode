@@ -18,6 +18,30 @@ export interface AgentLauncher {
   command: string;
 }
 
+/**
+ * Choose the terminal target for a one-click agent launcher.
+ *
+ * A plain terminal is a safe first target: the launcher can reuse it without
+ * surprising the user with a second tab. Once that terminal has a running
+ * subprocess or an identified agent session, preserve its context and create
+ * a fresh terminal for the next launch.
+ */
+export function resolveAgentLauncherTerminalTarget(options: {
+  baseTerminalId: string;
+  createTerminalId: () => string;
+  hasRunningTerminal: boolean;
+  hasLaunchedAgent: boolean;
+}): { shouldCreateNewTerminal: boolean; terminalId: string } {
+  const shouldCreateNewTerminal =
+    options.baseTerminalId.trim().length === 0 ||
+    options.hasRunningTerminal ||
+    options.hasLaunchedAgent;
+  return {
+    shouldCreateNewTerminal,
+    terminalId: shouldCreateNewTerminal ? options.createTerminalId() : options.baseTerminalId,
+  };
+}
+
 export const MAX_AGENT_LAUNCHERS = 24;
 export const MAX_AGENT_LAUNCHER_LABEL_LENGTH = 60;
 export const MAX_AGENT_LAUNCHER_COMMAND_LENGTH = 512;

@@ -108,7 +108,7 @@ export function AgentLaunchersSettingsSection() {
     <SettingsSection title="Agent launchers">
       <SettingsRow
         title="Terminal quick-launch commands"
-        description="One-click buttons in the terminal header that open a fresh terminal and run an AI CLI. Customize the command however you like — e.g. add --dangerously-skip-permissions or --yolo."
+        description="One-click buttons in the terminal header that run an AI CLI in an idle terminal or open a fresh tab when needed. Customize the command however you like — e.g. add --dangerously-skip-permissions or --yolo."
         resetAction={
           isDefault ? null : (
             <SettingResetButton label="agent launchers" onClick={resetToDefaults} />

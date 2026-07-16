@@ -1,6 +1,7 @@
 // FILE: TerminalAgentLauncherMenu.tsx
 // Purpose: Terminal-header dropdown that launches a user-configured AI CLI (Claude, Codex, …)
-//          in a fresh terminal on one click. The command list is the `agentLaunchers` app
+//          in an idle terminal or a fresh tab when one is already in use. The command list is
+//          the `agentLaunchers` app
 //          setting, editable in Settings → Behavior → Agent launchers.
 // Layer: Terminal presentation components
 

@@ -7,6 +7,7 @@ import {
   MAX_AGENT_LAUNCHERS,
   nextAgentLauncherId,
   normalizeAgentLaunchers,
+  resolveAgentLauncherTerminalTarget,
 } from "./agentLaunchers";
 
 describe("normalizeAgentLaunchers", () => {
@@ -71,6 +72,38 @@ describe("agentLauncherIconKey", () => {
     expect(agentLauncherIconKey("claude --dangerously-skip-permissions")).toBe("claude");
     expect(agentLauncherIconKey("codex --yolo")).toBe("openai");
     expect(agentLauncherIconKey("bun run dev")).toBe("terminal");
+  });
+});
+
+describe("resolveAgentLauncherTerminalTarget", () => {
+  it("reuses an untouched terminal for the first launcher", () => {
+    expect(
+      resolveAgentLauncherTerminalTarget({
+        baseTerminalId: "terminal-1",
+        createTerminalId: () => "terminal-2",
+        hasRunningTerminal: false,
+        hasLaunchedAgent: false,
+      }),
+    ).toEqual({ shouldCreateNewTerminal: false, terminalId: "terminal-1" });
+  });
+
+  it("creates a new terminal when an existing launch is active or has history", () => {
+    expect(
+      resolveAgentLauncherTerminalTarget({
+        baseTerminalId: "terminal-1",
+        createTerminalId: () => "terminal-2",
+        hasRunningTerminal: true,
+        hasLaunchedAgent: false,
+      }),
+    ).toEqual({ shouldCreateNewTerminal: true, terminalId: "terminal-2" });
+    expect(
+      resolveAgentLauncherTerminalTarget({
+        baseTerminalId: "terminal-1",
+        createTerminalId: () => "terminal-3",
+        hasRunningTerminal: false,
+        hasLaunchedAgent: true,
+      }),
+    ).toEqual({ shouldCreateNewTerminal: true, terminalId: "terminal-3" });
   });
 });
 

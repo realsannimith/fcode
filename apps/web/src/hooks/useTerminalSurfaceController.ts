@@ -10,9 +10,10 @@
 
 import { type ThreadId } from "@t3tools/contracts";
 import { type TerminalCliKind } from "@t3tools/shared/terminalThreads";
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 
 import { useAppSettings } from "~/appSettings";
+import { resolveAgentLauncherTerminalTarget } from "~/agentLaunchers";
 import {
   confirmTerminalTabClose,
   resolveTerminalCloseTitle,
@@ -55,6 +56,7 @@ export function useTerminalSurfaceController(threadId: ThreadId) {
   const resizeTerminalSplitStore = useTerminalStateStore((s) => s.resizeTerminalSplit);
   const setTerminalMetadataStore = useTerminalStateStore((s) => s.setTerminalMetadata);
   const setTerminalActivityStore = useTerminalStateStore((s) => s.setTerminalActivity);
+  const launchingAgentTerminalIdsRef = useRef<Set<string>>(new Set());
 
   const [focusRequestId, setFocusRequestId] = useState(0);
   const bumpFocusRequest = useCallback(() => setFocusRequestId((value) => value + 1), []);
@@ -90,9 +92,9 @@ export function useTerminalSurfaceController(threadId: ThreadId) {
     [bumpFocusRequest, newTerminal, threadId],
   );
 
-  // Open a fresh terminal group and type a quick-launch AI CLI command into it. The command
-  // is user-configured (Settings → Behavior → Agent launchers); provider icon/title are
-  // derived from the command by runProjectCommandInTerminal and persisted as metadata.
+  // Type a quick-launch AI CLI into an untouched terminal, then use a fresh tab once an agent
+  // session is already present. The command is user-configured (Settings → Behavior → Agent
+  // launchers); provider icon/title are derived by runProjectCommandInTerminal and persisted.
   const launchAgentCommand = useCallback(
     async (input: {
       command: string;
@@ -105,11 +107,20 @@ export function useTerminalSurfaceController(threadId: ThreadId) {
       if (!api || input.cwd.trim().length === 0 || input.projectCwd.trim().length === 0) {
         return;
       }
-      const terminalId = randomTerminalId();
-      // Launch into a new tab beside the active terminal (same pane tab row) instead of a
-      // whole new terminal group; only overflow past the per-group tab limit (or a missing
-      // anchor) falls back to a new group.
       const anchorTerminalId = terminalState.activeTerminalId || terminalState.terminalIds[0] || "";
+      const target = resolveAgentLauncherTerminalTarget({
+        baseTerminalId: anchorTerminalId,
+        createTerminalId: randomTerminalId,
+        hasRunningTerminal:
+          terminalState.runningTerminalIds.length > 0 ||
+          launchingAgentTerminalIdsRef.current.size > 0,
+        hasLaunchedAgent: Object.keys(terminalState.terminalCliKindsById).length > 0,
+      });
+      const terminalId = target.terminalId;
+      launchingAgentTerminalIdsRef.current.add(terminalId);
+      // Reuse an untouched terminal for the first launcher. Once the active terminal has a
+      // running subprocess or an identified agent session, launch into a new tab beside it;
+      // only overflow past the per-group tab limit (or a missing anchor) falls back to a group.
       const anchorGroup =
         terminalState.terminalGroups.find(
           (group) => group.id === terminalState.activeTerminalGroupId,
@@ -121,10 +132,12 @@ export function useTerminalSurfaceController(threadId: ThreadId) {
       const anchorGroupFull = anchorGroup
         ? collectTerminalIdsFromLayout(anchorGroup.layout).length >= MAX_TERMINALS_PER_GROUP
         : false;
-      if (anchorTerminalId.length === 0 || anchorGroupFull) {
+      if (target.shouldCreateNewTerminal && (anchorTerminalId.length === 0 || anchorGroupFull)) {
         newTerminal(threadId, terminalId);
-      } else {
+      } else if (target.shouldCreateNewTerminal) {
         newTerminalTab(threadId, anchorTerminalId, terminalId);
+      } else {
+        setActiveTerminalStore(threadId, terminalId);
       }
       bumpFocusRequest();
       try {
@@ -146,15 +159,20 @@ export function useTerminalSurfaceController(threadId: ThreadId) {
       } catch {
         // These surfaces have no thread-error channel; a failed spawn just leaves the new
         // (empty) terminal open, matching how a manual "new terminal" behaves on failure.
+      } finally {
+        launchingAgentTerminalIdsRef.current.delete(terminalId);
       }
     },
     [
       bumpFocusRequest,
       newTerminal,
       newTerminalTab,
+      setActiveTerminalStore,
       setTerminalMetadataStore,
       terminalState.activeTerminalGroupId,
       terminalState.activeTerminalId,
+      terminalState.runningTerminalIds,
+      terminalState.terminalCliKindsById,
       terminalState.terminalGroups,
       terminalState.terminalIds,
       threadId,
