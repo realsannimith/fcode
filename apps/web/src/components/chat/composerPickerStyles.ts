@@ -3,7 +3,19 @@
 // Layer: UI styling helper
 // Exports: surface/option/radius tokens; open panels via ComposerPickerMenuPopup / ComposerPickerSelectPopup
 
+import {
+  APP_POPUP_RADIUS_CLASS_NAME,
+  APP_TOOLTIP_SURFACE_CLASS_NAME,
+  APP_TRANSLUCENT_POPUP_SURFACE_BASE_CLASS_NAME,
+  APP_TRANSLUCENT_POPUP_SURFACE_CLASS_NAME,
+} from "../ui/floatingSurfaceStyles";
+
 export { COMPOSER_PICKER_SIZE, type ComposerPickerSize } from "./composerPickerSize";
+export {
+  APP_TOOLTIP_SURFACE_CLASS_NAME,
+  APP_TRANSLUCENT_POPUP_SURFACE_BASE_CLASS_NAME,
+  APP_TRANSLUCENT_POPUP_SURFACE_CLASS_NAME,
+} from "../ui/floatingSurfaceStyles";
 
 /** Soft, dispersed outer shadow for the composer input shell and floating pickers. */
 export const COMPOSER_SURFACE_SHADOW_CLASS_NAME =
@@ -34,7 +46,7 @@ export const COMPOSER_PICKER_MODEL_LIST_MAX_HEIGHT_CLASS_NAME =
 export const COMPOSER_PICKER_MODEL_LIST_SCROLL_CLASS_NAME = "composer-picker-scroll";
 
 /** Corner radius for picker panel chrome and panel-level surfaces. */
-export const COMPOSER_PICKER_RADIUS_CLASS_NAME = "rounded-[0.65rem]";
+export const COMPOSER_PICKER_RADIUS_CLASS_NAME = APP_POPUP_RADIUS_CLASS_NAME;
 
 /** Tighter corner radius for option rows / selection pills inside picker panels. */
 export const COMPOSER_PICKER_OPTION_RADIUS_CLASS_NAME = "rounded-[0.5rem]";
@@ -143,26 +155,6 @@ export const COMPOSER_INPUT_SURFACE_CLASS_NAME = `chat-composer-surface ${RAISED
 export const SIDEBAR_SEGMENTED_PICKER_ACTIVE_CLASS_NAME =
   "relative z-[1] text-[var(--color-text-foreground)]";
 
-/** Shadcn default-translucent shell for floating menus, pickers, and popovers. */
-export const APP_TRANSLUCENT_POPUP_SURFACE_BASE_CLASS_NAME =
-  "relative overflow-hidden border border-border bg-popover/70 text-popover-foreground before:pointer-events-none before:absolute before:inset-0 before:-z-1 before:rounded-[inherit] before:backdrop-blur-2xl before:backdrop-saturate-150";
-
-/** Default floating popup shell (dropdown menus, selects, popovers). Shares the
- *  picker panel radius: these menus hold compact ~28px rows, and a larger radius
- *  cuts into the first and last row's hover fill. */
-export const APP_TRANSLUCENT_POPUP_SURFACE_CLASS_NAME = `${APP_TRANSLUCENT_POPUP_SURFACE_BASE_CLASS_NAME} ${COMPOSER_PICKER_RADIUS_CLASS_NAME} shadow-xl`;
-
-/**
- * Frosted surface chrome shared by every plain tooltip (default TooltipPopup) and
- * the sidebar hover cards: the translucent shell at the tooltip's tighter
- * `rounded-lg` radius with a lifted shadow. The sidebar hover cards extend this
- * with their fixed width, so a plain tooltip, the thread card, and the project
- * card all read as one surface and can never drift apart. Composer-attached
- * picker tooltips deliberately stay on the picker chrome instead (see
- * COMPOSER_PICKER_TOOLTIP_SURFACE_CLASS_NAME) so they match the menus they open.
- */
-export const APP_TOOLTIP_SURFACE_CLASS_NAME = `${APP_TRANSLUCENT_POPUP_SURFACE_BASE_CLASS_NAME} rounded-lg shadow-xl`;
-
 /** Frosted backdrop layer inside composer picker dropdown panels. @deprecated Use APP_TRANSLUCENT_POPUP_SURFACE_BASE_CLASS_NAME instead. */
 export const COMPOSER_PICKER_MENU_BACKDROP_CLASS_NAME = "composer-picker-menu-surface";
 
@@ -198,7 +190,7 @@ export const COMPOSER_COMMAND_MENU_SURFACE_CLASS_NAME =
   "relative overflow-hidden rounded-xl border border-border bg-popover text-popover-foreground";
 
 /** Opaque Environment panel card — same rationale as the command menu (overlays transcript). */
-export const ENVIRONMENT_PANEL_SURFACE_CLASS_NAME = `relative overflow-hidden rounded-2xl border border-border bg-popover text-popover-foreground ${COMPOSER_SURFACE_SHADOW_CLASS_NAME}`;
+export const ENVIRONMENT_PANEL_SURFACE_CLASS_NAME = `relative overflow-hidden ${COMPOSER_PICKER_RADIUS_CLASS_NAME} border border-border bg-popover text-popover-foreground ${COMPOSER_SURFACE_SHADOW_CLASS_NAME}`;
 
 /** Slide + inset timing matched to `SIDEBAR_OFFCANVAS_MOTION_CLASS` (right dock / thread sidebar). */
 export const ENVIRONMENT_PANEL_MOTION_CLASS =

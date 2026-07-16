@@ -2079,3 +2079,14 @@ diffs-container {
   -webkit-background-clip: text;
   animation: ultrathink-rainbow 10s linear infinite;
 }
+
+/* Keep top-right notifications visible beside an open Environment panel instead
+   of covering its title and settings control. The 19.5rem offset matches the
+   panel's 18rem card plus its two 0.75rem edge gutters. Narrow windows keep the
+   requested top-right placement because there is not enough room for two columns. */
+@media (min-width: 48rem) {
+  body:has([data-environment-panel-open="true"])
+    [data-slot="toast-viewport"][data-position="top-right"] {
+    right: calc(var(--toast-inset) + 19.5rem);
+  }
+}

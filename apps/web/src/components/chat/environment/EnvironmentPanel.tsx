@@ -48,6 +48,7 @@ import { EnvironmentNotesSection } from "./EnvironmentNotesSection";
 import { EnvironmentPinnedSection } from "./EnvironmentPinnedSection";
 import { EnvironmentProjectInstructionsSection } from "./EnvironmentProjectInstructionsSection";
 import { ENVIRONMENT_PANEL_RECAP_MARKDOWN_CLASS_NAME } from "./environmentPanelStyles";
+import { shouldCloseEnvironmentPanelOnEscape } from "./environmentPanelInteraction";
 import {
   ENVIRONMENT_ROW_ICON_CLASS_NAME,
   EnvironmentCollapsibleSection,
@@ -64,9 +65,11 @@ import {
 export const ENVIRONMENT_DOCKED_CONTENT_INSET_PX = 312;
 
 const ENVIRONMENT_PANEL_OVERLAY_WRAPPER_CLASS_NAME =
-  "pointer-events-none absolute inset-y-0 right-0 z-20 flex flex-col p-3";
+  "pointer-events-none absolute inset-y-0 right-0 z-20 flex w-[min(19.5rem,100%)] flex-col p-3";
 
 export interface EnvironmentPanelProps {
+  /** Stable relationship between the panel and its header toggle. */
+  panelId: string;
   /** Drives the slide-in/out transition; the panel stays mounted so CSS can interpolate. */
   open: boolean;
   /**
@@ -187,6 +190,7 @@ function EnvironmentRecapSection({
 }
 
 export function EnvironmentPanel({
+  panelId,
   open,
   variant,
   gitCwd,
@@ -406,21 +410,43 @@ export function EnvironmentPanel({
   // content; floating overlays only without stealing flex width from the narrow chat pane.
   return (
     <div
+      id={panelId}
       className={ENVIRONMENT_PANEL_OVERLAY_WRAPPER_CLASS_NAME}
+      data-environment-panel-open={open ? "true" : "false"}
       data-environment-panel-variant={variant}
+      role="region"
+      aria-label="Environment"
       aria-hidden={!open}
+      inert={!open}
+      onKeyDown={(event) => {
+        if (
+          !shouldCloseEnvironmentPanelOnEscape({
+            defaultPrevented: event.defaultPrevented,
+            key: event.key,
+            open,
+          })
+        ) {
+          return;
+        }
+        event.preventDefault();
+        event.stopPropagation();
+        onClose();
+        window.requestAnimationFrame(() => {
+          document.getElementById(`${panelId}-trigger`)?.focus();
+        });
+      }}
     >
       <div
         className={cn(
           ENVIRONMENT_PANEL_SURFACE_CLASS_NAME,
           ENVIRONMENT_PANEL_MOTION_CLASS,
-          "flex max-h-full w-72 flex-col",
+          "flex max-h-full w-full flex-col",
           open
             ? "pointer-events-auto translate-x-0 opacity-100"
             : "pointer-events-none translate-x-full opacity-0",
         )}
       >
-        <div className="min-h-0 overflow-y-auto">{content}</div>
+        <div className="min-h-0 overflow-y-auto overscroll-contain">{content}</div>
       </div>
     </div>
   );

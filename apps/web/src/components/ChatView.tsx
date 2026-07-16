@@ -52,6 +52,7 @@ import { deriveAssociatedWorktreeMetadata } from "@t3tools/shared/threadWorkspac
 import {
   useCallback,
   useEffect,
+  useId,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -3806,6 +3807,7 @@ export default function ChatView({
   // threads; disposable (temporary/draft) threads keep the legacy inline controls.
   const isDisposableThread = useIsDisposableThread(threadId);
   const environmentEnabled = !isDisposableThread && !isEditorRail;
+  const environmentPanelId = useId();
   const environmentUsesFloatingOverlay =
     isMobileViewport || rightDockOpen || surfaceMode === "split";
   const environmentDefaultOpen = resolveDefaultEnvironmentPanelOpen({
@@ -9351,6 +9353,7 @@ export default function ChatView({
   // Shared inputs for both Environment panel surfaces (the header Popover when the dock is
   // open, and the docked right column when it is closed) so the two never drift.
   const environmentPanelProps: Omit<EnvironmentPanelProps, "open" | "variant"> = {
+    panelId: environmentPanelId,
     gitCwd: threadWorkspaceCwd,
     openInTarget: threadWorkspaceCwd,
     githubRepository: githubRepositoryQuery.data?.repository ?? null,
@@ -9399,6 +9402,7 @@ export default function ChatView({
   const environmentOverlayVariant = environmentUsesFloatingOverlay ? "floating" : "docked";
   const environmentHeaderState = environmentEnabled
     ? {
+        panelId: environmentPanelId,
         open: environmentPanelVisible,
         onOpenChange: (open: boolean) => {
           setEnvironmentPanelActionDismissedThreadId(null);

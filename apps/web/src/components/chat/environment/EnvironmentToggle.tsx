@@ -12,8 +12,10 @@ import { cn } from "~/lib/utils";
 import { Toggle } from "../../ui/toggle";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../../ui/tooltip";
 import { CHAT_HEADER_TOGGLE_CLASS_NAME, SurfaceChipIcon } from "../chatHeaderControls";
+import { shouldCloseEnvironmentPanelOnEscape } from "./environmentPanelInteraction";
 
 export interface EnvironmentToggleState {
+  panelId: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
@@ -30,10 +32,27 @@ export function EnvironmentToggle({ environment }: { environment: EnvironmentTog
       <TooltipTrigger
         render={
           <Toggle
+            id={`${environment.panelId}-trigger`}
             className={TOGGLE_CLASS_NAME}
             pressed={environment.open}
             onPressedChange={environment.onOpenChange}
+            onKeyDown={(event) => {
+              if (
+                !shouldCloseEnvironmentPanelOnEscape({
+                  defaultPrevented: event.defaultPrevented,
+                  key: event.key,
+                  open: environment.open,
+                })
+              ) {
+                return;
+              }
+              event.preventDefault();
+              event.stopPropagation();
+              environment.onOpenChange(false);
+            }}
             aria-label="Toggle environment panel"
+            aria-controls={environment.panelId}
+            aria-expanded={environment.open}
             variant="default"
             size="xs"
           >
