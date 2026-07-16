@@ -12,7 +12,8 @@ describe("TerminalActivityIndicator", () => {
     const markup = renderToStaticMarkup(<TerminalActivityIndicator state="running" />);
 
     expect(markup).toContain('aria-label="Terminal agent is generating"');
-    expect(markup.match(/agent-progress-dot/g)).toHaveLength(10);
+    expect(markup).toContain("motion-safe:animate-spin");
+    expect(markup).not.toContain("agent-progress-dot");
     expect(markup).not.toContain("animate-ping");
   });
 
