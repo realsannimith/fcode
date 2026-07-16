@@ -321,6 +321,32 @@
   }
 }
 
+@keyframes agent-progress-dot {
+  0%,
+  55%,
+  100% {
+    opacity: 0.28;
+    transform: scale(0.72);
+  }
+
+  18% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.agent-progress-dot {
+  animation: agent-progress-dot 1.05s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-progress-dot {
+    animation: none;
+    opacity: 0.78;
+    transform: none;
+  }
+}
+
 .chat-pane-enter {
   animation: chat-pane-enter 220ms cubic-bezier(0.22, 1, 0.36, 1);
   will-change: opacity, transform;

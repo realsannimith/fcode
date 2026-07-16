@@ -26,7 +26,7 @@ export default function TerminalActivityIndicator({
   if (state === "running") {
     return (
       <AgentProgressIndicator
-        className={cn("size-3 text-sky-500 dark:text-sky-300/90", className)}
+        className={className}
         label="Terminal agent is generating"
       />
     );

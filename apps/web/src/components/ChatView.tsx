@@ -9280,7 +9280,7 @@ export default function ChatView({
               }
             >
               {isSendBusy ? (
-                <AgentProgressIndicator className="size-3" label="Sending message" />
+                <AgentProgressIndicator label="Sending message" />
               ) : (
                 <ComposerSendArrowIcon aria-hidden="true" className="size-5 shrink-0" />
               )}

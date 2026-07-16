@@ -50,6 +50,6 @@ describe("TerminalWorkspaceTabs", () => {
     );
 
     expect(markup).toContain('aria-label="Chat agent is generating"');
-    expect(markup).toContain("motion-safe:animate-spin");
+    expect(markup.match(/agent-progress-dot/g)).toHaveLength(10);
   });
 });

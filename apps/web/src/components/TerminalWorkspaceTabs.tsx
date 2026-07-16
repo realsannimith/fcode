@@ -71,7 +71,7 @@ export default function TerminalWorkspaceTabs({
           <span className="font-mono tracking-wide">Chat</span>
           {isWorking ? (
             <AgentProgressIndicator
-              className="ml-1.5 size-3 text-sky-500 dark:text-sky-300/90"
+              className="ml-1.5"
               label="Chat agent is generating"
             />
           ) : null}

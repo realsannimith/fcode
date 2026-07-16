@@ -1,5 +1,5 @@
 // FILE: agent-progress-indicator.tsx
-// Purpose: Shared compact progress ring for live AI-agent work across the app.
+// Purpose: Shared compact dot-matrix loader for live AI-agent work across the app.
 // Layer: UI primitive
 
 import { cn } from "~/lib/utils";
@@ -14,22 +14,22 @@ export function AgentProgressIndicator({
   label = "Agent is working",
 }: AgentProgressIndicatorProps) {
   return (
-    <svg
+    <span
       role="status"
       aria-label={label}
-      viewBox="0 0 14 14"
-      fill="none"
-      className={cn("size-3 shrink-0 motion-safe:animate-spin", className)}
+      className={cn(
+        "grid h-3.5 w-1.5 shrink-0 grid-cols-2 grid-rows-5 gap-x-0.5 gap-y-px text-emerald-500 dark:text-emerald-400",
+        className,
+      )}
     >
-      <circle
-        cx="7"
-        cy="7"
-        r="5.5"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeDasharray="20 12"
-      />
-    </svg>
+      {Array.from({ length: 10 }, (_, index) => (
+        <span
+          key={index}
+          aria-hidden="true"
+          className="agent-progress-dot size-0.5 self-center rounded-full bg-current motion-reduce:animate-none"
+          style={{ animationDelay: `${index * 70}ms` }}
+        />
+      ))}
+    </span>
   );
 }

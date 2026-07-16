@@ -519,10 +519,7 @@ function WorktreeBadgeGlyph({ className }: { className?: string }) {
 function ThreadStatusTrailingGlyph({ threadStatus }: { threadStatus: ThreadStatusPill }) {
   if (threadStatus.label === "Working") {
     return (
-      <AgentProgressIndicator
-        className={cn("size-3.5", threadStatus.colorClass)}
-        label="Agent is generating"
-      />
+      <AgentProgressIndicator label="Agent is generating" />
     );
   }
   if (threadStatus.label === "Completed") {
@@ -5312,25 +5309,15 @@ export default function Sidebar() {
               className={projectFolderIconClassName}
             >
               <ProjectSidebarIcon cwd={project.cwd} expanded={project.expanded} />
-              {projectStatus ? (
-                projectStatus.label === "Working" ? (
-                  <AgentProgressIndicator
-                    className={cn(
-                      "absolute -right-1 top-0 size-2.5 rounded-full bg-sidebar",
-                      projectStatus.colorClass,
-                    )}
-                    label={`${project.name} has an agent generating`}
-                  />
-                ) : (
-                  <span
-                    aria-hidden="true"
-                    title={projectStatus.label}
-                    className={cn(
-                      "absolute -right-0.5 top-0.5 size-1.5 rounded-full",
-                      projectStatus.dotClass,
-                    )}
-                  />
-                )
+              {projectStatus && projectStatus.label !== "Working" ? (
+                <span
+                  aria-hidden="true"
+                  title={projectStatus.label}
+                  className={cn(
+                    "absolute -right-0.5 top-0.5 size-1.5 rounded-full",
+                    projectStatus.dotClass,
+                  )}
+                />
               ) : null}
             </SidebarLeadingIcon>
             <div
