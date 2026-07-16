@@ -713,6 +713,62 @@ describe("TerminalManager", () => {
     await manager.dispose();
   });
 
+  it("infers live turns for recognized coding-agent CLIs without managed hooks", async () => {
+    let subprocessActivity: TerminalSubprocessActivity = {
+      cliKind: null,
+      hasNonProviderSubprocess: false,
+      hasProviderDescendant: false,
+      hasRunningSubprocess: false,
+    };
+    const { manager } = makeManager(5, {
+      subprocessChecker: async () => subprocessActivity,
+      subprocessPollIntervalMs: 20,
+    });
+    const events: TerminalEvent[] = [];
+    manager.on("event", (event) => {
+      events.push(event);
+    });
+
+    await manager.open(openInput());
+    await manager.write({ threadId: "thread-1", data: "opencode\r" });
+    subprocessActivity = {
+      cliKind: null,
+      hasNonProviderSubprocess: false,
+      hasProviderDescendant: true,
+      hasRunningSubprocess: true,
+    };
+
+    await waitFor(
+      () =>
+        events.some(
+          (event) =>
+            event.type === "activity" &&
+            event.cliKind === null &&
+            event.agentState === "running",
+        ),
+      1_200,
+    );
+
+    subprocessActivity = {
+      cliKind: null,
+      hasNonProviderSubprocess: false,
+      hasProviderDescendant: false,
+      hasRunningSubprocess: false,
+    };
+    await waitFor(
+      () =>
+        events.some(
+          (event) =>
+            event.type === "activity" &&
+            event.agentState === null &&
+            event.hasRunningSubprocess === false,
+        ),
+      1_200,
+    );
+
+    await manager.dispose();
+  });
+
   it("does not brand generic terminals from provider descendants", async () => {
     const { manager } = makeManager(5, {
       subprocessChecker: async () => ({

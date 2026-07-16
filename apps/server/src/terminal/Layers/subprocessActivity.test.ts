@@ -61,6 +61,22 @@ describe("inspectSubprocessActivity", () => {
     });
   });
 
+  it.each(["opencode", "pi", "kiro-cli", "agv", "aider", "gemini", "cursor-agent"])(
+    "detects the %s coding agent without misclassifying it as a generic subprocess",
+    (command) => {
+      const map = buildChildrenMap([
+        { ppid: 100, pid: 200, command: "zsh" },
+        { ppid: 200, pid: 300, command },
+      ]);
+      expect(inspectSubprocessActivity(100, map)).toEqual({
+        cliKind: null,
+        hasNonProviderSubprocess: false,
+        hasProviderDescendant: true,
+        hasRunningSubprocess: true,
+      });
+    },
+  );
+
   it("inspects multiple terminals against one shared snapshot", () => {
     // A single captured snapshot must yield independent, correct results per
     // terminal — this is the property the per-cycle batching relies on.

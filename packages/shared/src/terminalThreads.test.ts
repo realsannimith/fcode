@@ -5,11 +5,58 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  deriveTerminalCodingAgentKind,
   parseTerminalSessionOsc,
   resolveTerminalVisualIdentity,
   terminalCliResumeArgs,
   T3CODE_TERMINAL_SESSION_OSC_PREFIX,
 } from "./terminalThreads";
+
+describe("deriveTerminalCodingAgentKind", () => {
+  it.each([
+    ["codex", "codex"],
+    ["claude", "claude"],
+    ["opencode", "opencode"],
+    ["pi", "pi"],
+    ["kiro-cli", "kiro"],
+    ["/Users/test/.local/bin/kiro-cli-chat chat", "kiro"],
+    ["kiro", "kiro"],
+    ["agv", "agentenv"],
+    ["agentenv", "agentenv"],
+    ["aider", "aider"],
+    ["amp", "amp"],
+    ["gemini", "gemini"],
+    ["copilot", "copilot"],
+    ["goose", "goose"],
+    ["cursor-agent", "cursor"],
+    ["qwen", "qwen"],
+    ["crush", "crush"],
+    ["droid", "droid"],
+    ["kilo", "kilo"],
+    ["cline", "cline"],
+  ] as const)("detects the %s executable", (command, expected) => {
+    expect(deriveTerminalCodingAgentKind(command)).toBe(expected);
+  });
+
+  it.each([
+    ["npx @google/gemini-cli", "gemini"],
+    ["bunx opencode-ai", "opencode"],
+    ["pnpm dlx @earendil-works/pi-coding-agent", "pi"],
+    ["npm exec @ampcode/cli", "amp"],
+    ["python -m aider", "aider"],
+    ["node /usr/local/lib/node_modules/@anthropic-ai/claude-code/cli.js", "claude"],
+    ["node /usr/local/lib/node_modules/@kilocode/cli/dist/index.js", "kilo"],
+    ["/bin/sh /tmp/_managed-bin/codex --yolo", "codex"],
+  ] as const)("detects wrapped process command %s", (command, expected) => {
+    expect(deriveTerminalCodingAgentKind(command)).toBe(expected);
+  });
+
+  it("does not mistake prompt text or ordinary commands for an agent process", () => {
+    expect(deriveTerminalCodingAgentKind('echo "run opencode next"')).toBeNull();
+    expect(deriveTerminalCodingAgentKind("node build.js --message 'try claude'")).toBeNull();
+    expect(deriveTerminalCodingAgentKind("git status")).toBeNull();
+  });
+});
 
 describe("parseTerminalSessionOsc", () => {
   it("parses a codex session id from the OSC payload", () => {

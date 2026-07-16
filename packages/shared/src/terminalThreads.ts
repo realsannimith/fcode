@@ -5,6 +5,23 @@
 
 export const GENERIC_TERMINAL_THREAD_TITLE = "New terminal";
 export type TerminalCliKind = "codex" | "claude";
+export type TerminalCodingAgentKind =
+  | TerminalCliKind
+  | "opencode"
+  | "pi"
+  | "kiro"
+  | "agentenv"
+  | "aider"
+  | "amp"
+  | "gemini"
+  | "copilot"
+  | "goose"
+  | "cursor"
+  | "qwen"
+  | "crush"
+  | "droid"
+  | "kilo"
+  | "cline";
 export type TerminalIconKey = "terminal" | "openai" | "claude";
 export type TerminalActivityState = "running" | "attention" | "review";
 export type TerminalVisualState = "idle" | TerminalActivityState;
@@ -75,12 +92,74 @@ const MAX_TERMINAL_TITLE_LENGTH = 48;
 const WRAPPER_COMMANDS = new Set(["builtin", "command", "env", "noglob", "nocorrect", "sudo"]);
 const CODEX_COMMAND_NAMES = new Set(["codex", "codex-cli"]);
 const CLAUDE_COMMAND_NAMES = new Set(["claude", "claude-code", "claude_code"]);
+const CODING_AGENT_KIND_BY_COMMAND_NAME = new Map<string, TerminalCodingAgentKind>([
+  ...[...CODEX_COMMAND_NAMES].map((name) => [name, "codex"] as const),
+  ...[...CLAUDE_COMMAND_NAMES].map((name) => [name, "claude"] as const),
+  ["opencode", "opencode"],
+  ["opencode-ai", "opencode"],
+  ["pi", "pi"],
+  ["pi-coding-agent", "pi"],
+  ["kiro", "kiro"],
+  ["kiro-cli", "kiro"],
+  ["kiro-cli-chat", "kiro"],
+  ["agv", "agentenv"],
+  ["agentenv", "agentenv"],
+  ["aider", "aider"],
+  ["aider-chat", "aider"],
+  ["amp", "amp"],
+  ["gemini", "gemini"],
+  ["gemini-cli", "gemini"],
+  ["copilot", "copilot"],
+  ["goose", "goose"],
+  ["cursor-agent", "cursor"],
+  ["qwen", "qwen"],
+  ["qwen-code", "qwen"],
+  ["crush", "crush"],
+  ["droid", "droid"],
+  ["kilo", "kilo"],
+  ["kilocode", "kilo"],
+  ["cline", "cline"],
+]);
+const CODING_AGENT_RUNTIME_COMMANDS = new Set([
+  "bash",
+  "bun",
+  "cmd",
+  "deno",
+  "node",
+  "pipx",
+  "powershell",
+  "pwsh",
+  "python",
+  "python3",
+  "sh",
+  "tsx",
+  "uv",
+  "uvx",
+  "zsh",
+]);
+const CODING_AGENT_PROCESS_TEXT_PATTERNS: ReadonlyArray<
+  readonly [RegExp, TerminalCodingAgentKind]
+> = [
+  [/@openai[\\/]codex/i, "codex"],
+  [/@anthropic-ai[\\/]claude-code/i, "claude"],
+  [/(?:^|[\\/])opencode-ai(?:[\\/]|$)/i, "opencode"],
+  [/@(?:mariozechner|earendil-works)[\\/]pi-coding-agent/i, "pi"],
+  [/(?:^|[\\/])kiro-cli(?:[\\/]|$)/i, "kiro"],
+  [/(?:^|[\\/])kiro-cli-chat(?:[\\/]|$)/i, "kiro"],
+  [/(?:^|[\\/])agentenv(?:[\\/]|$)/i, "agentenv"],
+  [/(?:^|[\\/])aider(?:-chat|_chat)?(?:[\\/]|$)/i, "aider"],
+  [/@ampcode[\\/]cli/i, "amp"],
+  [/@google[\\/]gemini-cli/i, "gemini"],
+  [/@github[\\/]copilot/i, "copilot"],
+  [/(?:^|[\\/])cursor-agent(?:[\\/]|$)/i, "cursor"],
+  [/@(?:qwen-code|qwenlm)[\\/]/i, "qwen"],
+  [/@charmland[\\/]crush/i, "crush"],
+  [/@kilocode[\\/]cli/i, "kilo"],
+];
 const OUTPUT_CODEX_TEXT_PATTERNS = [/\bopenai codex\b(?:\s*\(|\s+v)/i, /\bcodex cli\b/i];
 const OUTPUT_CLAUDE_TEXT_PATTERNS = [/\bclaude code\b(?:\s+v\d|\s*$)/i];
 const TITLE_CODEX_TEXT_PATTERNS = [/\bopenai codex\b/i, /\bcodex cli\b/i];
 const TITLE_CLAUDE_TEXT_PATTERNS = [/\bclaude code\b/i];
-const PROCESS_CODEX_TEXT_PATTERNS = [/@openai\/codex/i];
-const PROCESS_CLAUDE_TEXT_PATTERNS = [/@anthropic-ai\/claude-code/i, /anthropic\/claude-code/i];
 const IGNORED_TERMINAL_TITLE_COMMANDS = new Set([
   ".",
   "alias",
@@ -150,6 +229,14 @@ function deriveCliKindFromNormalizedToken(token: string): TerminalCliKind | null
   return null;
 }
 
+function deriveCodingAgentKindFromNormalizedToken(
+  token: string,
+): TerminalCodingAgentKind | null {
+  const normalizedToken = stripScriptExtension(token.trim().toLowerCase());
+  if (normalizedToken.length === 0) return null;
+  return CODING_AGENT_KIND_BY_COMMAND_NAME.get(normalizedToken) ?? null;
+}
+
 function deriveCliKindFromTokenList(tokens: string[]): TerminalCliKind | null {
   for (const token of tokens) {
     const cliKind = deriveCliKindFromNormalizedToken(normalizeCommandToken(token));
@@ -184,15 +271,15 @@ function deriveCliKindFromOutputText(text: string | null | undefined): TerminalC
   );
 }
 
-function deriveCliKindFromProcessText(text: string | null | undefined): TerminalCliKind | null {
+function deriveCodingAgentKindFromProcessText(
+  text: string | null | undefined,
+): TerminalCodingAgentKind | null {
   const normalizedText = text?.trim();
-  if (!normalizedText) {
-    return null;
+  if (!normalizedText) return null;
+  for (const [pattern, kind] of CODING_AGENT_PROCESS_TEXT_PATTERNS) {
+    if (pattern.test(normalizedText)) return kind;
   }
-  return (
-    textMatchesCliPatterns(normalizedText, PROCESS_CODEX_TEXT_PATTERNS, "codex") ??
-    textMatchesCliPatterns(normalizedText, PROCESS_CLAUDE_TEXT_PATTERNS, "claude")
-  );
+  return null;
 }
 
 function isEnvAssignmentToken(token: string): boolean {
@@ -280,6 +367,38 @@ function unwrapExecutorCommand(tokens: string[]): string[] {
   return tokens;
 }
 
+/**
+ * Detect a coding-agent CLI from a live process command line. Only executable,
+ * runtime-script, and package-path positions are inspected so prompt text such
+ * as `echo "run opencode"` cannot brand a generic subprocess as an agent.
+ */
+export function deriveTerminalCodingAgentKind(
+  command: string | null | undefined,
+): TerminalCodingAgentKind | null {
+  const strippedCommand = command?.trim() ?? "";
+  if (strippedCommand.length === 0) return null;
+
+  const baseTokens = stripShellPrefixes(tokenizeShellCommand(strippedCommand));
+  const tokens = unwrapExecutorCommand(baseTokens);
+  const firstToken = normalizeCommandToken(tokens[0] ?? "");
+  const directKind = deriveCodingAgentKindFromNormalizedToken(firstToken);
+  if (directKind) return directKind;
+
+  const normalizedRuntime = stripScriptExtension(firstToken);
+  if (
+    CODING_AGENT_RUNTIME_COMMANDS.has(normalizedRuntime) ||
+    /^python\d+(?:\.\d+)?$/.test(normalizedRuntime)
+  ) {
+    for (const token of tokens.slice(1, 4)) {
+      if (token.startsWith("-")) continue;
+      const runtimeKind = deriveCodingAgentKindFromNormalizedToken(normalizeCommandToken(token));
+      if (runtimeKind) return runtimeKind;
+    }
+  }
+
+  return deriveCodingAgentKindFromProcessText(strippedCommand);
+}
+
 function derivePackageManagerTitle(tokens: string[]): string | null {
   const [first, second, third] = tokens.map(normalizeCommandToken);
   if (!first || !["bun", "npm", "pnpm", "yarn"].includes(first)) {
@@ -326,9 +445,9 @@ export function deriveTerminalProcessIdentity(
   if (strippedCommand.length === 0) {
     return null;
   }
+  const codingAgentKind = deriveTerminalCodingAgentKind(strippedCommand);
   const tokenCliKind =
-    deriveCliKindFromTokenList(tokenizeShellCommand(strippedCommand)) ??
-    deriveCliKindFromProcessText(strippedCommand);
+    codingAgentKind === "codex" || codingAgentKind === "claude" ? codingAgentKind : null;
   if (tokenCliKind === "codex") {
     return createTerminalCommandIdentity(defaultTerminalTitleForCliKind("codex"), "codex");
   }

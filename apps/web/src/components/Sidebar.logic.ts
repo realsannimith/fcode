@@ -465,8 +465,8 @@ export function resolveThreadStatusPill(input: {
 
 /**
  * Adds terminal-agent generation to the same status model used by provider-backed
- * chat sessions. The managed terminal hook is intentionally the source of truth:
- * a long-lived Codex or Claude process may be open while its agent is idle.
+ * chat sessions. Managed hooks are exact for Codex and Claude; recognized agent
+ * CLIs without hooks use the server's submitted-input and output-quiet inference.
  */
 export function resolveThreadStatusWithTerminalAgentActivity(input: {
   threadStatus: ThreadStatusPill | null;

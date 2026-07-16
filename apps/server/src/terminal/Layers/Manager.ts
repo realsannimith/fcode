@@ -19,6 +19,7 @@ import {
 import { describeErrorMessage } from "@t3tools/shared/errorMessages";
 import {
   consumeTerminalIdentityInput,
+  deriveTerminalCodingAgentKind,
   deriveTerminalProcessIdentity,
   parseTerminalSessionOsc,
   terminalCliKindFromValue,
@@ -88,6 +89,8 @@ const DEFAULT_OPEN_COLS = 120;
 const DEFAULT_OPEN_ROWS = 30;
 const PROVIDER_INPUT_ACTIVITY_GRACE_MS = 120_000;
 const PROVIDER_OUTPUT_ACTIVITY_GRACE_MS = 30_000;
+const UNMANAGED_AGENT_INPUT_ACTIVITY_GRACE_MS = 120_000;
+const UNMANAGED_AGENT_OUTPUT_ACTIVITY_GRACE_MS = 15_000;
 const MANAGED_AGENT_RUNNING_STALE_MS = 10_000;
 const POSIX_TREE_WALK_MAX_VISITED = 256;
 const TERMINAL_ENV_BLOCKLIST = new Set([
@@ -178,6 +181,22 @@ function isProviderSessionBusy(session: TerminalSessionState, now: number): bool
     return now - lastOutputAt <= PROVIDER_OUTPUT_ACTIVITY_GRACE_MS;
   }
   return now - lastInputAt <= PROVIDER_INPUT_ACTIVITY_GRACE_MS;
+}
+
+/**
+ * Infer turns for agent CLIs without lifecycle hooks. Enter starts a turn; once
+ * the agent produces output, distinct output keeps it live and a short quiet
+ * window returns it to idle. Repeated TUI repaint noise is filtered before
+ * lastOutputAt is refreshed.
+ */
+function isUnmanagedAgentSessionBusy(session: TerminalSessionState, now: number): boolean {
+  const lastSubmittedAt = session.lastSubmittedAt ?? 0;
+  if (lastSubmittedAt <= 0) return false;
+  const lastOutputAt = session.lastOutputAt ?? 0;
+  if (lastOutputAt >= lastSubmittedAt) {
+    return now - lastOutputAt <= UNMANAGED_AGENT_OUTPUT_ACTIVITY_GRACE_MS;
+  }
+  return now - lastSubmittedAt <= UNMANAGED_AGENT_INPUT_ACTIVITY_GRACE_MS;
 }
 
 // Backstop for a managed agent whose "running" hook never got a matching Stop — e.g. the
@@ -440,12 +459,12 @@ export function inspectSubprocessActivity(
   let hasRunningSubprocess = false;
   for (const child of children) {
     const nestedActivity = inspectSubprocessActivity(child.pid, childrenByParentPid);
-    const childCliKind = deriveTerminalProcessIdentity(child.command)?.cliKind ?? null;
-    if (childCliKind || nestedActivity.hasProviderDescendant) {
+    const childAgentKind = deriveTerminalCodingAgentKind(child.command);
+    if (childAgentKind || nestedActivity.hasProviderDescendant) {
       hasProviderDescendant = true;
     }
     if (
-      (!childCliKind && !isShellLikeProcessName(child.command)) ||
+      (!childAgentKind && !isShellLikeProcessName(child.command)) ||
       nestedActivity.hasNonProviderSubprocess
     ) {
       hasNonProviderSubprocess = true;
@@ -554,12 +573,12 @@ async function checkPosixSubprocessActivityByTreeWalk(
       const command = await readPosixCommand(childPid);
       if (!command) continue;
       const nestedActivity = await inspectPid(childPid);
-      const childCliKind = deriveTerminalProcessIdentity(command)?.cliKind ?? null;
-      if (childCliKind || nestedActivity.hasProviderDescendant) {
+      const childAgentKind = deriveTerminalCodingAgentKind(command);
+      if (childAgentKind || nestedActivity.hasProviderDescendant) {
         hasProviderDescendant = true;
       }
       if (
-        (!childCliKind && !isShellLikeProcessName(command)) ||
+        (!childAgentKind && !isShellLikeProcessName(command)) ||
         nestedActivity.hasNonProviderSubprocess
       ) {
         hasNonProviderSubprocess = true;
@@ -951,7 +970,8 @@ function cliKindFromRuntimeEnv(
 }
 
 function deriveActivityAgentState(session: TerminalSessionState): TerminalActivityState | null {
-  return session.managedAgentState;
+  if (session.managedAgentObserved) return session.managedAgentState;
+  return session.unmanagedAgentRunning ? "running" : null;
 }
 
 function agentStateFromHookEvent(
@@ -1099,6 +1119,7 @@ export class TerminalManagerRuntime extends EventEmitter<TerminalManagerEvents> 
           managedAgentState: null,
           managedAgentStateUpdatedAt: null,
           managedAgentObserved: false,
+          unmanagedAgentRunning: false,
           runtimeEnv: normalizedRuntimeEnv(input.env),
           pendingInputBuffer: "",
           modeReplayTracker: null,
@@ -1113,6 +1134,7 @@ export class TerminalManagerRuntime extends EventEmitter<TerminalManagerEvents> 
           outputUnackedBytes: 0,
           outputAckResumeTimer: null,
           lastInputAt: null,
+          lastSubmittedAt: null,
           lastOutputAt: null,
           lastOutputSignature: null,
           capturedSession: null,
@@ -1229,11 +1251,15 @@ export class TerminalManagerRuntime extends EventEmitter<TerminalManagerEvents> 
       this.emitActivityEvent(session);
     }
     const submittedPrompt = input.data.includes("\r") || input.data.includes("\n");
+    const now = Date.now();
+    if (submittedPrompt) {
+      session.lastSubmittedAt = now;
+    }
     if (submittedPrompt && session.detectedCliKind !== null && !session.hasRunningSubprocess) {
       session.hasRunningSubprocess = true;
       this.emitActivityEvent(session);
     }
-    session.lastInputAt = Date.now();
+    session.lastInputAt = now;
     // Typing may spawn a subprocess; restore fast subprocess polling promptly.
     this.bumpSubprocessPolling();
     session.process.write(input.data);
@@ -1319,6 +1345,7 @@ export class TerminalManagerRuntime extends EventEmitter<TerminalManagerEvents> 
           managedAgentState: null,
           managedAgentStateUpdatedAt: null,
           managedAgentObserved: false,
+          unmanagedAgentRunning: false,
           runtimeEnv: normalizedRuntimeEnv(input.env),
           pendingInputBuffer: "",
           modeReplayTracker: null,
@@ -1336,6 +1363,7 @@ export class TerminalManagerRuntime extends EventEmitter<TerminalManagerEvents> 
           outputAckResumeTimer: null,
           lastOutputSignature: null,
           lastInputAt: null,
+          lastSubmittedAt: null,
           lastOutputAt: null,
           capturedSession: null,
           capturedSessionProcessSeen: false,
@@ -1447,10 +1475,12 @@ export class TerminalManagerRuntime extends EventEmitter<TerminalManagerEvents> 
     session.managedAgentState = null;
     session.managedAgentStateUpdatedAt = null;
     session.managedAgentObserved = false;
+    session.unmanagedAgentRunning = false;
     session.pendingInputBuffer = "";
     this.resetOutputBackpressure(session);
     this.resetModeReplayTracker(session);
     session.lastInputAt = null;
+    session.lastSubmittedAt = null;
     session.lastOutputAt = null;
     session.lastOutputSignature = null;
     session.updatedAt = new Date().toISOString();
@@ -1552,6 +1582,7 @@ export class TerminalManagerRuntime extends EventEmitter<TerminalManagerEvents> 
       session.managedAgentState = null;
       session.managedAgentStateUpdatedAt = null;
       session.managedAgentObserved = false;
+      session.unmanagedAgentRunning = false;
       session.updatedAt = new Date().toISOString();
       this.evictInactiveSessionsIfNeeded();
       this.updateSubprocessPollingState();
@@ -1617,7 +1648,10 @@ export class TerminalManagerRuntime extends EventEmitter<TerminalManagerEvents> 
     }
     const latestHookEvent = sanitized.hookEvents.at(-1) ?? null;
     if (latestHookEvent) {
+      const hadManagedAgentObserved = session.managedAgentObserved;
+      const hadUnmanagedAgentRunning = session.unmanagedAgentRunning;
       session.managedAgentObserved = true;
+      session.unmanagedAgentRunning = false;
       // "Idle" (agent SessionStart) marks the session observed-but-not-working so the
       // launch banner never trips the output-busy heuristic — without the "review"
       // dot a real Stop would show. This mirrors CMUX, where SessionStart → idle.
@@ -1628,6 +1662,8 @@ export class TerminalManagerRuntime extends EventEmitter<TerminalManagerEvents> 
       const nextProviderDescendantObserved =
         latestHookEvent === "Stop" ? false : session.providerDescendantObserved;
       if (
+        !hadManagedAgentObserved ||
+        hadUnmanagedAgentRunning ||
         session.managedAgentRunning !== nextManagedAgentRunning ||
         session.managedAgentState !== nextManagedAgentState ||
         session.detectedCliKind !== nextDetectedCliKind ||
@@ -1850,7 +1886,9 @@ export class TerminalManagerRuntime extends EventEmitter<TerminalManagerEvents> 
     session.managedAgentState = null;
     session.managedAgentStateUpdatedAt = null;
     session.managedAgentObserved = false;
+    session.unmanagedAgentRunning = false;
     session.providerDescendantObserved = false;
+    session.lastSubmittedAt = null;
   }
 
   private feedModeReplayTracker(session: TerminalSessionState, data: string): void {
@@ -1899,7 +1937,9 @@ export class TerminalManagerRuntime extends EventEmitter<TerminalManagerEvents> 
     session.managedAgentState = null;
     session.managedAgentStateUpdatedAt = null;
     session.managedAgentObserved = false;
+    session.unmanagedAgentRunning = false;
     session.lastInputAt = null;
+    session.lastSubmittedAt = null;
     session.lastOutputAt = null;
     session.lastOutputSignature = null;
     this.resetOutputBackpressure(session);
@@ -1936,7 +1976,9 @@ export class TerminalManagerRuntime extends EventEmitter<TerminalManagerEvents> 
     session.managedAgentState = null;
     session.managedAgentStateUpdatedAt = null;
     session.managedAgentObserved = false;
+    session.unmanagedAgentRunning = false;
     session.lastInputAt = null;
+    session.lastSubmittedAt = null;
     session.lastOutputAt = null;
     session.lastOutputSignature = null;
     this.resetOutputBackpressure(session);
@@ -2356,6 +2398,7 @@ export class TerminalManagerRuntime extends EventEmitter<TerminalManagerEvents> 
         runningSessions.map(async (session) => {
           const terminalPid = session.pid;
           let hasRunningSubprocess = false;
+          let unmanagedAgentRunning = false;
           let shouldClearDetectedCliKind = false;
           let hasNonProviderSubprocess = false;
           let providerDescendantNow = false;
@@ -2393,6 +2436,9 @@ export class TerminalManagerRuntime extends EventEmitter<TerminalManagerEvents> 
               hasRunningSubprocess = subprocessActivity.hasProviderDescendant
                 ? subprocessActivity.hasNonProviderSubprocess
                 : subprocessActivity.hasRunningSubprocess;
+              unmanagedAgentRunning =
+                subprocessActivity.hasProviderDescendant &&
+                isUnmanagedAgentSessionBusy(session, Date.now());
             }
           } catch (error) {
             this.logger.warn("failed to check terminal subprocess activity", {
@@ -2444,6 +2490,7 @@ export class TerminalManagerRuntime extends EventEmitter<TerminalManagerEvents> 
             nextDetectedCliKind === null ? false : session.providerDescendantObserved;
           if (
             liveSession.hasRunningSubprocess === hasRunningSubprocess &&
+            liveSession.unmanagedAgentRunning === unmanagedAgentRunning &&
             liveSession.detectedCliKind === nextDetectedCliKind &&
             liveSession.providerDescendantObserved === nextProviderDescendantObserved
           ) {
@@ -2451,6 +2498,7 @@ export class TerminalManagerRuntime extends EventEmitter<TerminalManagerEvents> 
           }
 
           liveSession.hasRunningSubprocess = hasRunningSubprocess;
+          liveSession.unmanagedAgentRunning = unmanagedAgentRunning;
           liveSession.detectedCliKind = nextDetectedCliKind;
           liveSession.providerDescendantObserved = nextProviderDescendantObserved;
           liveSession.updatedAt = new Date().toISOString();

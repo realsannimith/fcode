@@ -62,6 +62,8 @@ export interface TerminalSessionState {
   managedAgentStateUpdatedAt: number | null;
   /** True once at least one hook event (Start/Stop/PermissionRequest) has been observed. */
   managedAgentObserved: boolean;
+  /** Best-effort turn state for recognized coding-agent CLIs that do not expose hooks. */
+  unmanagedAgentRunning: boolean;
   runtimeEnv: Record<string, string> | null;
   /** Buffered shell input used to detect canonical CLI commands at submit time. */
   pendingInputBuffer: string;
@@ -97,6 +99,8 @@ export interface TerminalSessionState {
   outputAckResumeTimer: ReturnType<typeof setTimeout> | null;
   /** Latest wall-clock timestamp when the user wrote to this PTY. */
   lastInputAt: number | null;
+  /** Latest wall-clock timestamp when Enter submitted input to this PTY. */
+  lastSubmittedAt: number | null;
   /** Latest wall-clock timestamp when the PTY emitted output. */
   lastOutputAt: number | null;
   /** Normalized visible output used to ignore redraw-only PTY noise. */
