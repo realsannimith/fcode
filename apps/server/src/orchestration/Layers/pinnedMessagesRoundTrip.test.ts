@@ -115,21 +115,30 @@ describe("pinned messages round-trip", () => {
           label: "Review this answer",
         }),
       );
+      await system.run(
+        system.engine.dispatch({
+          type: "thread.pinned-message.reorder",
+          commandId: CommandId.makeUnsafe("cmd-pin-reorder"),
+          threadId,
+          messageId: secondMessageId,
+          targetIndex: 0,
+        }),
+      );
 
       const detail = await system.run(system.query.getThreadDetailById(threadId));
       const thread = Option.getOrNull(detail);
       expect(thread).not.toBeNull();
       expect(thread?.pinnedMessages).toHaveLength(2);
       expect(thread?.pinnedMessages?.[0]).toMatchObject({
-        messageId,
-        label: "Review this answer",
-        done: true,
-      });
-      expect(thread?.pinnedMessages?.[0]?.pinnedAt).toEqual(expect.any(String));
-      expect(thread?.pinnedMessages?.[1]).toMatchObject({
         messageId: secondMessageId,
         label: null,
         done: false,
+      });
+      expect(thread?.pinnedMessages?.[0]?.pinnedAt).toEqual(expect.any(String));
+      expect(thread?.pinnedMessages?.[1]).toMatchObject({
+        messageId,
+        label: "Review this answer",
+        done: true,
       });
 
       // And via the full snapshot, which is what the client hydrates from on (re)connect.

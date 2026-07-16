@@ -2560,6 +2560,7 @@ export default function ChatView({
     handleTogglePinnedMessageDone,
     handleUnpinMessage,
     handleRenamePinnedMessage,
+    handleReorderPinnedMessage,
     handleNotesChange,
   } = usePinnedMessageActions({ activeThreadId, pinnedMessages });
   const handleTogglePinMessageGuarded = useCallback(
@@ -9386,6 +9387,7 @@ export default function ChatView({
     onTogglePinnedMessageDone: handleTogglePinnedMessageDone,
     onUnpinMessage: handleUnpinMessage,
     onRenamePinnedMessage: handleRenamePinnedMessage,
+    onReorderPinnedMessage: handleReorderPinnedMessage,
     onJumpToThreadMarker: handleJumpToThreadMarker,
     onToggleThreadMarkerDone: handleToggleThreadMarkerDone,
     onRemoveThreadMarker: handleRemoveThreadMarker,

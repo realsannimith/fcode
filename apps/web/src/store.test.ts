@@ -1223,6 +1223,7 @@ describe("store pure functions", () => {
     const initialState = makeState(makeThread());
     const firstMessageId = MessageId.makeUnsafe("assistant-pin-op-1");
     const secondMessageId = MessageId.makeUnsafe("assistant-pin-op-2");
+    const thirdMessageId = MessageId.makeUnsafe("assistant-pin-op-3");
 
     const next = applyOrchestrationEvents(initialState, [
       makeDomainEvent("thread.pinned-message-added", {
@@ -1257,6 +1258,22 @@ describe("store pure functions", () => {
         label: "Follow up",
         updatedAt: "2026-02-27T00:03:15.000Z",
       }),
+      makeDomainEvent("thread.pinned-message-added", {
+        threadId: ThreadId.makeUnsafe("thread-1"),
+        pin: {
+          messageId: thirdMessageId,
+          label: null,
+          done: false,
+          pinnedAt: "2026-02-27T00:03:18.000Z",
+        },
+        updatedAt: "2026-02-27T00:03:18.000Z",
+      }),
+      makeDomainEvent("thread.pinned-message-reordered", {
+        threadId: ThreadId.makeUnsafe("thread-1"),
+        messageId: thirdMessageId,
+        targetIndex: 0,
+        updatedAt: "2026-02-27T00:03:19.000Z",
+      }),
       makeDomainEvent("thread.pinned-message-removed", {
         threadId: ThreadId.makeUnsafe("thread-1"),
         messageId: secondMessageId,
@@ -1265,6 +1282,12 @@ describe("store pure functions", () => {
     ]);
 
     expect(next.threads[0]?.pinnedMessages).toEqual([
+      {
+        messageId: thirdMessageId,
+        label: null,
+        done: false,
+        pinnedAt: "2026-02-27T00:03:18.000Z",
+      },
       {
         messageId: firstMessageId,
         label: "Follow up",

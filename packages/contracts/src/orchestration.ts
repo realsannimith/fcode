@@ -985,6 +985,14 @@ const ThreadPinnedMessageLabelSetCommand = Schema.Struct({
   label: Schema.NullOr(PinnedMessageLabel),
 });
 
+const ThreadPinnedMessageReorderCommand = Schema.Struct({
+  type: Schema.Literal("thread.pinned-message.reorder"),
+  commandId: CommandId,
+  threadId: ThreadId,
+  messageId: MessageId,
+  targetIndex: NonNegativeInt,
+});
+
 const ThreadMarkerAddCommand = Schema.Struct({
   type: Schema.Literal("thread.marker.add"),
   commandId: CommandId,
@@ -1198,6 +1206,7 @@ const DispatchableClientOrchestrationCommand = Schema.Union([
   ThreadPinnedMessageRemoveCommand,
   ThreadPinnedMessageDoneSetCommand,
   ThreadPinnedMessageLabelSetCommand,
+  ThreadPinnedMessageReorderCommand,
   ThreadMarkerAddCommand,
   ThreadMarkerRemoveCommand,
   ThreadMarkerDoneSetCommand,
@@ -1231,6 +1240,7 @@ export const ClientOrchestrationCommand = Schema.Union([
   ThreadPinnedMessageRemoveCommand,
   ThreadPinnedMessageDoneSetCommand,
   ThreadPinnedMessageLabelSetCommand,
+  ThreadPinnedMessageReorderCommand,
   ThreadMarkerAddCommand,
   ThreadMarkerRemoveCommand,
   ThreadMarkerDoneSetCommand,
@@ -1359,6 +1369,7 @@ export const OrchestrationEventType = Schema.Literals([
   "thread.pinned-message-removed",
   "thread.pinned-message-done-set",
   "thread.pinned-message-label-set",
+  "thread.pinned-message-reordered",
   "thread.marker-added",
   "thread.marker-removed",
   "thread.marker-done-set",
@@ -1533,6 +1544,13 @@ export const ThreadPinnedMessageLabelSetPayload = Schema.Struct({
   threadId: ThreadId,
   messageId: MessageId,
   label: Schema.NullOr(PinnedMessageLabel),
+  updatedAt: IsoDateTime,
+});
+
+export const ThreadPinnedMessageReorderedPayload = Schema.Struct({
+  threadId: ThreadId,
+  messageId: MessageId,
+  targetIndex: NonNegativeInt,
   updatedAt: IsoDateTime,
 });
 
@@ -1782,6 +1800,11 @@ export const OrchestrationEvent = Schema.Union([
     ...EventBaseFields,
     type: Schema.Literal("thread.pinned-message-label-set"),
     payload: ThreadPinnedMessageLabelSetPayload,
+  }),
+  Schema.Struct({
+    ...EventBaseFields,
+    type: Schema.Literal("thread.pinned-message-reordered"),
+    payload: ThreadPinnedMessageReorderedPayload,
   }),
   Schema.Struct({
     ...EventBaseFields,

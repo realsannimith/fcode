@@ -295,6 +295,7 @@ function isThreadDetailEvent(event: OrchestrationEvent): event is Extract<
       | "thread.pinned-message-removed"
       | "thread.pinned-message-done-set"
       | "thread.pinned-message-label-set"
+      | "thread.pinned-message-reordered"
       | "thread.marker-added"
       | "thread.marker-removed"
       | "thread.marker-done-set"
@@ -316,6 +317,7 @@ function isThreadDetailEvent(event: OrchestrationEvent): event is Extract<
     event.type === "thread.pinned-message-removed" ||
     event.type === "thread.pinned-message-done-set" ||
     event.type === "thread.pinned-message-label-set" ||
+    event.type === "thread.pinned-message-reordered" ||
     event.type === "thread.marker-added" ||
     event.type === "thread.marker-removed" ||
     event.type === "thread.marker-done-set" ||

@@ -9,6 +9,7 @@ import {
   ThreadPinnedMessageRemovedPayload as ContractsThreadPinnedMessageRemovedPayloadSchema,
   ThreadPinnedMessageDoneSetPayload as ContractsThreadPinnedMessageDoneSetPayloadSchema,
   ThreadPinnedMessageLabelSetPayload as ContractsThreadPinnedMessageLabelSetPayloadSchema,
+  ThreadPinnedMessageReorderedPayload as ContractsThreadPinnedMessageReorderedPayloadSchema,
   ThreadMarkerAddedPayload as ContractsThreadMarkerAddedPayloadSchema,
   ThreadMarkerRemovedPayload as ContractsThreadMarkerRemovedPayloadSchema,
   ThreadMarkerDoneSetPayload as ContractsThreadMarkerDoneSetPayloadSchema,
@@ -45,6 +46,8 @@ export const ThreadPinnedMessageAddedPayload = ContractsThreadPinnedMessageAdded
 export const ThreadPinnedMessageRemovedPayload = ContractsThreadPinnedMessageRemovedPayloadSchema;
 export const ThreadPinnedMessageDoneSetPayload = ContractsThreadPinnedMessageDoneSetPayloadSchema;
 export const ThreadPinnedMessageLabelSetPayload = ContractsThreadPinnedMessageLabelSetPayloadSchema;
+export const ThreadPinnedMessageReorderedPayload =
+  ContractsThreadPinnedMessageReorderedPayloadSchema;
 export const ThreadMarkerAddedPayload = ContractsThreadMarkerAddedPayloadSchema;
 export const ThreadMarkerRemovedPayload = ContractsThreadMarkerRemovedPayloadSchema;
 export const ThreadMarkerDoneSetPayload = ContractsThreadMarkerDoneSetPayloadSchema;

@@ -17,7 +17,7 @@ import {
 
 import { Checkbox } from "~/components/ui/checkbox";
 import { IconButton } from "~/components/ui/icon-button";
-import { XIcon } from "~/lib/icons";
+import { ChevronDownIcon, ChevronUpIcon, XIcon } from "~/lib/icons";
 import { cn } from "~/lib/utils";
 import { displayLabelFor } from "~/pinnedMessages";
 
@@ -31,6 +31,7 @@ interface EnvironmentPinnedSectionProps {
   onToggleDone: (messageId: MessageId) => void;
   onUnpin: (messageId: MessageId) => void;
   onRename: (messageId: MessageId, label: string | null) => void;
+  onReorder: (messageId: MessageId, targetIndex: number) => void;
 }
 
 export function EnvironmentPinnedSection({
@@ -40,14 +41,18 @@ export function EnvironmentPinnedSection({
   onToggleDone,
   onUnpin,
   onRename,
+  onReorder,
 }: EnvironmentPinnedSectionProps) {
   if (pins.length === 0) {
     return null;
   }
   return (
-    <EnvironmentCollapsibleSection label="Pinned">
-      <ul className="flex flex-col">
-        {pins.map((pin) => (
+    <EnvironmentCollapsibleSection label={`Pinned · ${pins.length}`}>
+      <ul
+        className="flex max-h-56 flex-col overflow-y-auto overscroll-contain pr-0.5"
+        aria-label="Pinned messages"
+      >
+        {pins.map((pin, index) => (
           <PinnedMessageRow
             key={pin.messageId}
             pin={pin}
@@ -56,6 +61,9 @@ export function EnvironmentPinnedSection({
             onToggleDone={onToggleDone}
             onUnpin={onUnpin}
             onRename={onRename}
+            index={index}
+            total={pins.length}
+            onReorder={onReorder}
           />
         ))}
       </ul>
@@ -70,6 +78,9 @@ const PinnedMessageRow = memo(function PinnedMessageRow({
   onToggleDone,
   onUnpin,
   onRename,
+  index,
+  total,
+  onReorder,
 }: {
   pin: PinnedMessage;
   text: string | undefined;
@@ -77,6 +88,9 @@ const PinnedMessageRow = memo(function PinnedMessageRow({
   onToggleDone: (messageId: MessageId) => void;
   onUnpin: (messageId: MessageId) => void;
   onRename: (messageId: MessageId, label: string | null) => void;
+  index: number;
+  total: number;
+  onReorder: (messageId: MessageId, targetIndex: number) => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
@@ -171,7 +185,11 @@ const PinnedMessageRow = memo(function PinnedMessageRow({
   );
 
   return (
-    <li className="group/pin flex items-center gap-1.5 rounded-lg px-2 py-1 hover:bg-[var(--color-background-elevated-secondary)]">
+    <li
+      className="group/pin flex items-center gap-1.5 rounded-lg px-2 py-1 hover:bg-[var(--color-background-elevated-secondary)]"
+      aria-posinset={index + 1}
+      aria-setsize={total}
+    >
       <Checkbox
         className="size-3.5 sm:size-3.5"
         checked={pin.done}
@@ -218,6 +236,28 @@ const PinnedMessageRow = memo(function PinnedMessageRow({
           {displayLabel}
         </button>
       )}
+      <span className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover/pin:opacity-100 group-focus-within/pin:opacity-100">
+        <IconButton
+          label="Move pinned message up"
+          tooltip="Move up"
+          size="icon-xs"
+          disabled={index === 0}
+          className="size-5 disabled:opacity-30"
+          onClick={() => onReorder(pin.messageId, index - 1)}
+        >
+          <ChevronUpIcon className="size-3" />
+        </IconButton>
+        <IconButton
+          label="Move pinned message down"
+          tooltip="Move down"
+          size="icon-xs"
+          disabled={index === total - 1}
+          className="size-5 disabled:opacity-30"
+          onClick={() => onReorder(pin.messageId, index + 1)}
+        >
+          <ChevronDownIcon className="size-3" />
+        </IconButton>
+      </span>
       <IconButton
         label="Unpin message"
         tooltip="Unpin"

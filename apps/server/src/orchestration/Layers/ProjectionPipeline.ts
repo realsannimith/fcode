@@ -8,6 +8,7 @@ import {
 import {
   addPinnedMessage,
   removePinnedMessage,
+  reorderPinnedMessage,
   setPinnedMessageDone,
   setPinnedMessageLabel,
 } from "@t3tools/shared/pinnedMessages";
@@ -777,6 +778,25 @@ const makeOrchestrationProjectionPipeline = Effect.gen(function* () {
               existingRow.value.pinnedMessages,
               event.payload.messageId,
               event.payload.label,
+            ),
+            updatedAt: event.payload.updatedAt,
+          });
+          return;
+        }
+
+        case "thread.pinned-message-reordered": {
+          const existingRow = yield* projectionThreadRepository.getById({
+            threadId: event.payload.threadId,
+          });
+          if (Option.isNone(existingRow)) {
+            return;
+          }
+          yield* projectionThreadRepository.upsert({
+            ...existingRow.value,
+            pinnedMessages: reorderPinnedMessage(
+              existingRow.value.pinnedMessages,
+              event.payload.messageId,
+              event.payload.targetIndex,
             ),
             updatedAt: event.payload.updatedAt,
           });

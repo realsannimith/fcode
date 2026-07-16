@@ -40,6 +40,30 @@ export function removePinnedMessage(
   return nextPins.length === existingPins.length ? keepExistingPins(existingPins) : nextPins;
 }
 
+/** Move a pinned message to a new zero-based position without mutating the input list. */
+export function reorderPinnedMessage(
+  pins: readonly PinnedMessage[] | null | undefined,
+  messageId: MessageId,
+  targetIndex: number,
+): PinnedMessage[] {
+  const existingPins = pins ?? [];
+  const sourceIndex = existingPins.findIndex((pin) => pin.messageId === messageId);
+  if (sourceIndex < 0 || existingPins.length < 2) {
+    return keepExistingPins(existingPins);
+  }
+  const boundedTargetIndex = Math.max(0, Math.min(Math.trunc(targetIndex), existingPins.length - 1));
+  if (sourceIndex === boundedTargetIndex) {
+    return keepExistingPins(existingPins);
+  }
+  const nextPins = [...existingPins];
+  const [movedPin] = nextPins.splice(sourceIndex, 1);
+  if (!movedPin) {
+    return keepExistingPins(existingPins);
+  }
+  nextPins.splice(boundedTargetIndex, 0, movedPin);
+  return nextPins;
+}
+
 export function togglePinnedMessage(
   pins: readonly PinnedMessage[] | null | undefined,
   pin: PinnedMessage,

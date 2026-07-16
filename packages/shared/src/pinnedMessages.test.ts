@@ -7,6 +7,7 @@ import {
   clampThreadNotes,
   isMessagePinned,
   normalizePinLabel,
+  reorderPinnedMessage,
   removePinnedMessage,
   setPinnedMessageDone,
   setPinnedMessageLabel,
@@ -50,6 +51,15 @@ describe("pinnedMessages", () => {
     const toggled = togglePinnedMessageDone(setDone, m("a"));
     expect(toggled[0]?.done).toBe(false);
     expect(toggled[1]).toBe(setDone[1]);
+  });
+
+  it("reorders pins without mutating the source list", () => {
+    const pins = [pin("a"), pin("b"), pin("c"), pin("d")];
+    const reordered = reorderPinnedMessage(pins, m("c"), 0);
+
+    expect(reordered.map((entry) => entry.messageId)).toEqual([m("c"), m("a"), m("b"), m("d")]);
+    expect(pins.map((entry) => entry.messageId)).toEqual([m("a"), m("b"), m("c"), m("d")]);
+    expect(reorderPinnedMessage(reordered, m("c"), 0)).toBe(reordered);
   });
 
   it("normalizes and applies labels", () => {

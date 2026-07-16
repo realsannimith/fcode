@@ -14,6 +14,7 @@ import {
   isMessagePinned,
   normalizePinLabel,
   removePinnedMessage,
+  reorderPinnedMessage,
   setPinnedMessageDone,
   setPinnedMessageLabel,
   togglePinnedMessage,
@@ -68,6 +69,7 @@ export function displayLabelFor(pin: PinnedMessage, messageText: string | undefi
 }
 
 export { clampThreadNotes, isMessagePinned, normalizePinLabel };
+export { reorderPinnedMessage };
 
 export function addPin(
   pins: readonly PinnedMessage[] | undefined,
@@ -150,6 +152,12 @@ async function dispatchSidepanelCommand(
         readonly label: string | null;
       }
     | {
+        readonly type: "thread.pinned-message.reorder";
+        readonly threadId: ThreadId;
+        readonly messageId: MessageId;
+        readonly targetIndex: number;
+      }
+    | {
         readonly type: "thread.meta.update";
         readonly threadId: ThreadId;
         readonly notes: string;
@@ -199,6 +207,19 @@ export function dispatchPinnedMessageLabelSet(
     threadId,
     messageId,
     label: normalizePinLabel(label),
+  });
+}
+
+export function dispatchPinnedMessageReorder(
+  threadId: ThreadId,
+  messageId: MessageId,
+  targetIndex: number,
+): Promise<void> {
+  return dispatchSidepanelCommand({
+    type: "thread.pinned-message.reorder",
+    threadId,
+    messageId,
+    targetIndex,
   });
 }
 

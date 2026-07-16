@@ -143,6 +143,8 @@ export interface EnvironmentPanelProps {
   onUnpinMessage: (messageId: MessageId) => void;
   /** Set (`null` clears to auto) a pinned message's label. */
   onRenamePinnedMessage: (messageId: MessageId, label: string | null) => void;
+  /** Move a pinned message to a new checklist position. */
+  onReorderPinnedMessage: (messageId: MessageId, targetIndex: number) => void;
   /** Scroll the transcript to a text marker. */
   onJumpToThreadMarker: (marker: ThreadMarker) => void;
   /** Toggle a marker's done state. */
@@ -225,6 +227,7 @@ export function EnvironmentPanel({
   onTogglePinnedMessageDone,
   onUnpinMessage,
   onRenamePinnedMessage,
+  onReorderPinnedMessage,
   onJumpToThreadMarker,
   onToggleThreadMarkerDone,
   onRemoveThreadMarker,
@@ -358,6 +361,7 @@ export function EnvironmentPanel({
             onToggleDone={onTogglePinnedMessageDone}
             onUnpin={onUnpinMessage}
             onRename={onRenamePinnedMessage}
+            onReorder={onReorderPinnedMessage}
           />
         </>
       ) : null}

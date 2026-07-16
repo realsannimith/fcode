@@ -8,6 +8,7 @@ import {
 import {
   addPinnedMessage,
   removePinnedMessage,
+  reorderPinnedMessage,
   setPinnedMessageDone,
   setPinnedMessageLabel,
 } from "@t3tools/shared/pinnedMessages";
@@ -35,6 +36,7 @@ import {
   ThreadPinnedMessageDoneSetPayload,
   ThreadPinnedMessageLabelSetPayload,
   ThreadPinnedMessageRemovedPayload,
+  ThreadPinnedMessageReorderedPayload,
   ThreadMarkerAddedPayload,
   ThreadMarkerDoneSetPayload,
   ThreadMarkerLabelSetPayload,
@@ -542,6 +544,30 @@ export function projectEvent(
                 existingThread?.pinnedMessages,
                 payload.messageId,
                 payload.label,
+              ),
+              updatedAt: payload.updatedAt,
+            }),
+          };
+        }),
+      );
+
+    case "thread.pinned-message-reordered":
+      return decodeForEvent(
+        ThreadPinnedMessageReorderedPayload,
+        event.payload,
+        event.type,
+        "payload",
+      ).pipe(
+        Effect.map((payload) => {
+          const existingThread =
+            nextBase.threads.find((thread) => thread.id === payload.threadId) ?? null;
+          return {
+            ...nextBase,
+            threads: updateThread(nextBase.threads, payload.threadId, {
+              pinnedMessages: reorderPinnedMessage(
+                existingThread?.pinnedMessages,
+                payload.messageId,
+                payload.targetIndex,
               ),
               updatedAt: payload.updatedAt,
             }),

@@ -37,6 +37,7 @@ describe("EnvironmentPinnedSection", () => {
         onToggleDone={vi.fn()}
         onUnpin={vi.fn()}
         onRename={onRename}
+        onReorder={vi.fn()}
       />,
     );
 
@@ -60,6 +61,7 @@ describe("EnvironmentPinnedSection", () => {
         onToggleDone={vi.fn()}
         onUnpin={vi.fn()}
         onRename={onRename}
+        onReorder={vi.fn()}
       />,
     );
 

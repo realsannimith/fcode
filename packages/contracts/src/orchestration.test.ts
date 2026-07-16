@@ -462,6 +462,15 @@ it.effect("decodes pinned-message commands and events", () =>
     });
     assert.strictEqual(command.type, "thread.pinned-message.label.set");
 
+    const reorderCommand = yield* decodeClientOrchestrationCommand({
+      type: "thread.pinned-message.reorder",
+      commandId: "cmd-pin-reorder",
+      threadId: "thread-1",
+      messageId: "message-1",
+      targetIndex: 0,
+    });
+    assert.strictEqual(reorderCommand.type, "thread.pinned-message.reorder");
+
     const event = yield* decodeOrchestrationEvent({
       sequence: 1,
       eventId: "event-pin-added",
@@ -485,6 +494,26 @@ it.effect("decodes pinned-message commands and events", () =>
       },
     });
     assert.strictEqual(event.type, "thread.pinned-message-added");
+
+    const reorderedEvent = yield* decodeOrchestrationEvent({
+      sequence: 2,
+      eventId: "event-pin-reordered",
+      aggregateKind: "thread",
+      aggregateId: "thread-1",
+      type: "thread.pinned-message-reordered",
+      occurredAt: "2026-01-01T00:00:01.000Z",
+      commandId: "cmd-pin-reorder",
+      causationEventId: "event-pin-added",
+      correlationId: "cmd-pin-reorder",
+      metadata: {},
+      payload: {
+        threadId: "thread-1",
+        messageId: "message-1",
+        targetIndex: 0,
+        updatedAt: "2026-01-01T00:00:01.000Z",
+      },
+    });
+    assert.strictEqual(reorderedEvent.type, "thread.pinned-message-reordered");
   }),
 );
 

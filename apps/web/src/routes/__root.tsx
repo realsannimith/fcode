@@ -459,6 +459,7 @@ function isThreadDetailEventForThread(event: OrchestrationEvent, threadId: Threa
     event.type === "thread.pinned-message-removed" ||
     event.type === "thread.pinned-message-done-set" ||
     event.type === "thread.pinned-message-label-set" ||
+    event.type === "thread.pinned-message-reordered" ||
     event.type === "thread.marker-added" ||
     event.type === "thread.marker-removed" ||
     event.type === "thread.marker-done-set" ||

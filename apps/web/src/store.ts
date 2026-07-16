@@ -19,6 +19,7 @@ import { resolveThreadBranchRegressionGuard } from "@t3tools/shared/git";
 import {
   addPinnedMessage,
   removePinnedMessage,
+  reorderPinnedMessage,
   setPinnedMessageDone,
   setPinnedMessageLabel,
 } from "@t3tools/shared/pinnedMessages";
@@ -3405,6 +3406,29 @@ function applyOrchestrationEvent(
             thread.pinnedMessages,
             event.payload.messageId,
             event.payload.label,
+          );
+          const updatedAt = resolveEventUpdatedAt(thread, event.payload.updatedAt);
+          if (thread.pinnedMessages === pinnedMessages && thread.updatedAt === updatedAt) {
+            return thread;
+          }
+          return {
+            ...thread,
+            pinnedMessages,
+            updatedAt,
+          };
+        },
+        { ...options, updateSidebarSummary: false },
+      );
+
+    case "thread.pinned-message-reordered":
+      return applyThreadUpdate(
+        state,
+        event.payload.threadId,
+        (thread) => {
+          const pinnedMessages = reorderPinnedMessage(
+            thread.pinnedMessages,
+            event.payload.messageId,
+            event.payload.targetIndex,
           );
           const updatedAt = resolveEventUpdatedAt(thread, event.payload.updatedAt);
           if (thread.pinnedMessages === pinnedMessages && thread.updatedAt === updatedAt) {

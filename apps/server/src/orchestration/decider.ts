@@ -868,6 +868,43 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
       };
     }
 
+    case "thread.pinned-message.reorder": {
+      const thread = yield* requireThread({
+        readModel,
+        command,
+        threadId: command.threadId,
+      });
+      const sourceIndex = thread.pinnedMessages?.findIndex(
+        (pin) => pin.messageId === command.messageId,
+      ) ?? -1;
+      if (sourceIndex < 0) {
+        return yield* new OrchestrationCommandInvariantError({
+          commandType: command.type,
+          detail: `Pinned message '${command.messageId}' was not found in thread '${command.threadId}'.`,
+        });
+      }
+      const targetIndex = Math.min(
+        command.targetIndex,
+        Math.max(0, (thread.pinnedMessages?.length ?? 1) - 1),
+      );
+      const occurredAt = nowIso();
+      return {
+        ...withEventBase({
+          aggregateKind: "thread",
+          aggregateId: command.threadId,
+          occurredAt,
+          commandId: command.commandId,
+        }),
+        type: "thread.pinned-message-reordered",
+        payload: {
+          threadId: command.threadId,
+          messageId: command.messageId,
+          targetIndex,
+          updatedAt: occurredAt,
+        },
+      };
+    }
+
     case "thread.marker.add": {
       const thread = yield* requireThread({
         readModel,

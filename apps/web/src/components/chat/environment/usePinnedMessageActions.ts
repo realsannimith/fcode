@@ -18,10 +18,12 @@ import {
   dispatchPinnedMessageDoneSet,
   dispatchPinnedMessageLabelSet,
   dispatchPinnedMessageRemove,
+  dispatchPinnedMessageReorder,
   dispatchThreadNotes,
   isMessagePinned,
   normalizePinLabel,
   removePin,
+  reorderPinnedMessage,
   restorePinAtIndex,
   setPinDone,
   setPinLabel,
@@ -38,6 +40,7 @@ interface UsePinnedMessageActionsResult {
   readonly handleTogglePinnedMessageDone: (messageId: MessageId) => void;
   readonly handleUnpinMessage: (messageId: MessageId) => void;
   readonly handleRenamePinnedMessage: (messageId: MessageId, label: string | null) => void;
+  readonly handleReorderPinnedMessage: (messageId: MessageId, targetIndex: number) => void;
   readonly handleNotesChange: (threadId: ThreadId, notes: string) => Promise<void>;
 }
 
@@ -214,6 +217,28 @@ export function usePinnedMessageActions({
     [handlePinnedMessageDispatchError],
   );
 
+  const handleReorderPinnedMessage = useCallback(
+    (messageId: MessageId, targetIndex: number) => {
+      const threadId = activePinnedThreadIdRef.current;
+      if (!threadId) {
+        return;
+      }
+      const previousPins = pinnedMessagesRef.current;
+      const nextPins = reorderPinnedMessage(previousPins, messageId, targetIndex);
+      if (nextPins === previousPins) {
+        return;
+      }
+      pinnedMessagesRef.current = nextPins;
+      void dispatchPinnedMessageReorder(threadId, messageId, targetIndex).catch((error) => {
+        if (pinnedMessagesRef.current === nextPins) {
+          pinnedMessagesRef.current = previousPins;
+        }
+        handlePinnedMessageDispatchError(error);
+      });
+    },
+    [handlePinnedMessageDispatchError],
+  );
+
   const handleNotesChange = useCallback(
     async (threadId: ThreadId, notes: string) => {
       try {
@@ -231,6 +256,7 @@ export function usePinnedMessageActions({
     handleTogglePinnedMessageDone,
     handleUnpinMessage,
     handleRenamePinnedMessage,
+    handleReorderPinnedMessage,
     handleNotesChange,
   };
 }
