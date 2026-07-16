@@ -3,6 +3,7 @@
 // and survives zsh startup that rewrites PATH.
 
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 
 import {
@@ -15,6 +16,7 @@ import {
   type TerminalCliKind,
 } from "@t3tools/shared/terminalThreads";
 
+import { resolveBaseCodexHomePath } from "../codexHomePaths.ts";
 import { envPathKeyFor, resolveExecutableOnPath } from "../executableLookup.ts";
 
 export interface ManagedTerminalWrapperState {
@@ -135,6 +137,63 @@ function buildCodexHooksJson(notifyHookPath: string): string {
   );
 }
 
+/**
+ * The managed Codex home only overrides hooks.json. Everything else mirrors the
+ * user's effective Codex home so the terminal CLI keeps the same login, config,
+ * models, skills, and session state instead of opening as a fresh installation.
+ */
+function mirrorCodexHomeIntoManagedOverlay(input: {
+  sourceHomeDir: string;
+  managedHomeDir: string;
+}): void {
+  if (path.resolve(input.sourceHomeDir) === path.resolve(input.managedHomeDir)) {
+    return;
+  }
+
+  fs.mkdirSync(input.managedHomeDir, { recursive: true });
+  let sourceEntries: string[];
+  try {
+    sourceEntries = fs.readdirSync(input.sourceHomeDir);
+  } catch {
+    return;
+  }
+
+  for (const entryName of sourceEntries) {
+    if (entryName === "hooks.json") continue;
+
+    const sourcePath = path.join(input.sourceHomeDir, entryName);
+    const managedPath = path.join(input.managedHomeDir, entryName);
+    const sourceStat = fs.lstatSync(sourcePath);
+    let currentTarget: string | null = null;
+    try {
+      currentTarget = fs.readlinkSync(managedPath);
+    } catch {
+      currentTarget = null;
+    }
+    if (
+      currentTarget !== null &&
+      path.resolve(path.dirname(managedPath), currentTarget) === path.resolve(sourcePath)
+    ) {
+      continue;
+    }
+
+    fs.rmSync(managedPath, { recursive: true, force: true });
+    fs.symlinkSync(sourcePath, managedPath, sourceStat.isDirectory() ? "dir" : "file");
+  }
+}
+
+function resolveManagedTerminalCodexHome(baseEnv: NodeJS.ProcessEnv): string {
+  const configuredHome = resolveBaseCodexHomePath(baseEnv);
+  if (baseEnv.CODEX_HOME?.trim() || fs.existsSync(path.join(configuredHome, "auth.json"))) {
+    return configuredHome;
+  }
+
+  // Desktop verification and packaged shells can use an isolated HOME for app
+  // state. The native account still lives under the OS user's real home.
+  const nativeHome = path.join(os.userInfo().homedir, ".codex");
+  return fs.existsSync(path.join(nativeHome, "auth.json")) ? nativeHome : configuredHome;
+}
+
 function buildCodexWrapperScript(input: {
   codexHomeDir: string;
   notifyHookPath: string;
@@ -232,7 +291,13 @@ function buildCodexWrapperScript(input: {
     "  ) &",
     "  T3CODE_CODEX_START_WATCHER_PID=$!",
     "fi",
-    `${shellQuote(targetPath)} --enable hooks -c ${shellQuote(`notify=["bash",${JSON.stringify(notifyHookPath)}]`)} "$@"`,
+    // This overlay contains only FCode's generated hook. Pre-vet that known source on
+    // Codex versions that support it, without breaking older installed CLIs.
+    `if ${shellQuote(targetPath)} --help 2>&1 | grep -q -- '--dangerously-bypass-hook-trust'; then`,
+    `  ${shellQuote(targetPath)} --enable hooks --dangerously-bypass-hook-trust -c ${shellQuote(`notify=["bash",${JSON.stringify(notifyHookPath)}]`)} "$@"`,
+    "else",
+    `  ${shellQuote(targetPath)} --enable hooks -c ${shellQuote(`notify=["bash",${JSON.stringify(notifyHookPath)}]`)} "$@"`,
+    "fi",
     "_t3code_status=$?",
     'if [ -n "${T3CODE_CODEX_START_WATCHER_PID:-}" ]; then',
     '  kill "$T3CODE_CODEX_START_WATCHER_PID" >/dev/null 2>&1 || true',
@@ -386,7 +451,10 @@ export function prepareManagedTerminalWrappers(options: {
   const codexHomeDir = path.join(options.rootDir, "codex-home");
   const hookScriptPath = path.join(options.rootDir, "notify-hook.sh");
   const claudeSettingsPath = path.join(options.rootDir, "claude-settings.json");
-  fs.mkdirSync(codexHomeDir, { recursive: true });
+  mirrorCodexHomeIntoManagedOverlay({
+    sourceHomeDir: resolveManagedTerminalCodexHome(options.baseEnv),
+    managedHomeDir: codexHomeDir,
+  });
   writeFileIfChanged(hookScriptPath, buildNotifyHookScript(), 0o755);
   writeFileIfChanged(claudeSettingsPath, buildClaudeSettingsJson(hookScriptPath), 0o644);
   writeFileIfChanged(

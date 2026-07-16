@@ -6,6 +6,7 @@
 import type { TerminalVisualState } from "@t3tools/shared/terminalThreads";
 
 import { cn } from "~/lib/utils";
+import { AgentProgressIndicator } from "../ui/agent-progress-indicator";
 
 interface TerminalActivityIndicatorProps {
   className?: string;
@@ -20,15 +21,14 @@ export default function TerminalActivityIndicator({
     return null;
   }
 
-  // Running = the agent is actively working. A solid dot under an expanding "ping"
-  // ring reads as live without a heavy spinner. motion-safe keeps it static for
-  // users who prefer reduced motion.
+  // Running uses the shared generating ring so terminal-backed agents and native
+  // provider sessions communicate live work with exactly the same visual language.
   if (state === "running") {
     return (
-      <span aria-hidden="true" className={cn("relative inline-flex size-1.5 shrink-0", className)}>
-        <span className="absolute inline-flex h-full w-full rounded-full bg-sky-500 opacity-75 motion-safe:animate-ping dark:bg-sky-400/90" />
-        <span className="relative inline-flex size-1.5 rounded-full bg-sky-500 dark:bg-sky-400/90" />
-      </span>
+      <AgentProgressIndicator
+        className={cn("size-3 text-sky-500 dark:text-sky-300/90", className)}
+        label="Terminal agent is generating"
+      />
     );
   }
 

@@ -37,4 +37,19 @@ describe("TerminalWorkspaceTabs", () => {
     expect(markup).toContain("Terminal");
     expect(markup).toContain("Chat");
   });
+
+  it("uses the shared generating ring while chat is working", () => {
+    const markup = renderToStaticMarkup(
+      <TerminalWorkspaceTabs
+        activeTab="terminal"
+        isWorking
+        terminalCount={2}
+        workspaceLayout="both"
+        onSelectTab={vi.fn()}
+      />,
+    );
+
+    expect(markup).toContain('aria-label="Chat agent is generating"');
+    expect(markup).toContain("motion-safe:animate-spin");
+  });
 });

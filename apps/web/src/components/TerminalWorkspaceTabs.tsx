@@ -10,6 +10,7 @@
 import { cn } from "~/lib/utils";
 
 import { type ThreadTerminalWorkspaceLayout, type ThreadTerminalWorkspaceTab } from "../types";
+import { AgentProgressIndicator } from "./ui/agent-progress-indicator";
 
 interface TerminalWorkspaceTabsProps {
   activeTab: ThreadTerminalWorkspaceTab;
@@ -69,7 +70,10 @@ export default function TerminalWorkspaceTabs({
         >
           <span className="font-mono tracking-wide">Chat</span>
           {isWorking ? (
-            <span className="ml-1.5 inline-flex size-1.5 rounded-full bg-emerald-500/80" />
+            <AgentProgressIndicator
+              className="ml-1.5 size-3 text-sky-500 dark:text-sky-300/90"
+              label="Chat agent is generating"
+            />
           ) : null}
         </button>
       </div>

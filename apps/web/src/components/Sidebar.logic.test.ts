@@ -36,6 +36,7 @@ import {
   resolveSidebarNewThreadEnvMode,
   resolveThreadRowClassName,
   resolveThreadStatusPill,
+  resolveThreadStatusWithTerminalAgentActivity,
   shouldShowDebugFeatureFlagsMenu,
   shouldPrunePinnedThreads,
   shouldClearThreadSelectionOnMouseDown,
@@ -739,6 +740,40 @@ describe("resolveThreadStatusPill", () => {
         hasPendingUserInput: false,
       }),
     ).toBeNull();
+  });
+});
+
+describe("resolveThreadStatusWithTerminalAgentActivity", () => {
+  it("shows working while a managed terminal agent is generating", () => {
+    expect(
+      resolveThreadStatusWithTerminalAgentActivity({
+        threadStatus: null,
+        terminalAgentStates: { "terminal-1": "running" },
+      }),
+    ).toMatchObject({ label: "Working", pulse: true });
+  });
+
+  it("does not treat an idle terminal process as agent generation", () => {
+    expect(
+      resolveThreadStatusWithTerminalAgentActivity({
+        threadStatus: null,
+        terminalAgentStates: {},
+      }),
+    ).toBeNull();
+  });
+
+  it("keeps actionable chat status ahead of terminal generation", () => {
+    expect(
+      resolveThreadStatusWithTerminalAgentActivity({
+        threadStatus: {
+          label: "Pending Approval",
+          colorClass: "text-amber-600",
+          dotClass: "bg-amber-500",
+          pulse: false,
+        },
+        terminalAgentStates: { "terminal-1": "running" },
+      }),
+    ).toMatchObject({ label: "Pending Approval" });
   });
 });
 

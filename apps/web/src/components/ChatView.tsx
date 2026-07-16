@@ -256,6 +256,7 @@ import { Button } from "./ui/button";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "./ui/menu";
 import { disposeAndCloseTerminalSession, randomTerminalId } from "./terminal/terminalSession";
 import { cn, isMacPlatform, randomUUID } from "~/lib/utils";
+import { AgentProgressIndicator } from "./ui/agent-progress-indicator";
 import { toastManager } from "./ui/toast";
 import { decodeProjectScriptKeybindingRule } from "~/lib/projectScriptKeybindings";
 import { type NewProjectScriptInput } from "./ProjectScriptsControl";
@@ -9279,24 +9280,7 @@ export default function ChatView({
               }
             >
               {isSendBusy ? (
-                <svg
-                  width="12"
-                  height="12"
-                  viewBox="0 0 14 14"
-                  fill="none"
-                  className="animate-spin"
-                  aria-hidden="true"
-                >
-                  <circle
-                    cx="7"
-                    cy="7"
-                    r="5.5"
-                    stroke="currentColor"
-                    strokeWidth="1.5"
-                    strokeLinecap="round"
-                    strokeDasharray="20 12"
-                  />
-                </svg>
+                <AgentProgressIndicator className="size-3" label="Sending message" />
               ) : (
                 <ComposerSendArrowIcon aria-hidden="true" className="size-5 shrink-0" />
               )}

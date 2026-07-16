@@ -26,6 +26,7 @@ import {
 } from "../sidebarRowStyles";
 import { isDuplicateProjectCreateError } from "../lib/projectCreateRecovery";
 import { isWorkspaceRootWithin, workspaceRootsEqual } from "@t3tools/shared/threadWorkspace";
+import type { TerminalActivityState } from "@t3tools/shared/terminalThreads";
 import {
   canSessionAnswerPendingRequests,
   findLatestProposedPlan,
@@ -131,6 +132,16 @@ const THREAD_STATUS_PRIORITY: Record<ThreadStatusPill["label"], number> = {
   "Plan Ready": 2,
   Completed: 1,
 };
+
+function createWorkingThreadStatus(): ThreadStatusPill {
+  return {
+    label: "Working",
+    colorClass: "text-sky-600 dark:text-sky-300/80",
+    dotClass: "bg-sky-500 dark:bg-sky-300/80",
+    pulse: true,
+    dismissible: false,
+  };
+}
 
 type ThreadStatusInput = Pick<
   Thread,
@@ -387,13 +398,7 @@ export function resolveThreadStatusPill(input: {
   }
 
   if (thread.hasLiveTailWork) {
-    return {
-      label: "Working",
-      colorClass: "text-sky-600 dark:text-sky-300/80",
-      dotClass: "bg-sky-500 dark:bg-sky-300/80",
-      pulse: true,
-      dismissible: false,
-    };
+    return createWorkingThreadStatus();
   }
 
   // ponytail: trust the authoritative running signal from the snapshot
@@ -402,13 +407,7 @@ export function resolveThreadStatusPill(input: {
   // threads the user hasn't opened, which previously left already-running agents
   // showing as idle in the sidebar until clicked.
   if (isSessionRunningTurn(thread.session)) {
-    return {
-      label: "Working",
-      colorClass: "text-sky-600 dark:text-sky-300/80",
-      dotClass: "bg-sky-500 dark:bg-sky-300/80",
-      pulse: true,
-      dismissible: false,
-    };
+    return createWorkingThreadStatus();
   }
 
   if (thread.session?.status === "connecting") {
@@ -462,6 +461,25 @@ export function resolveThreadStatusPill(input: {
   }
 
   return null;
+}
+
+/**
+ * Adds terminal-agent generation to the same status model used by provider-backed
+ * chat sessions. The managed terminal hook is intentionally the source of truth:
+ * a long-lived Codex or Claude process may be open while its agent is idle.
+ */
+export function resolveThreadStatusWithTerminalAgentActivity(input: {
+  threadStatus: ThreadStatusPill | null;
+  terminalAgentStates: Readonly<Record<string, TerminalActivityState>>;
+}): ThreadStatusPill | null {
+  if (!Object.values(input.terminalAgentStates).includes("running")) {
+    return input.threadStatus;
+  }
+
+  return resolveProjectStatusIndicator([
+    input.threadStatus,
+    createWorkingThreadStatus(),
+  ]);
 }
 
 export function resolveProjectStatusIndicator(

@@ -277,6 +277,7 @@ import {
   resolveThreadRowClassName,
   resolveThreadRowTrailingReserveClass,
   resolveThreadStatusPill,
+  resolveThreadStatusWithTerminalAgentActivity,
   type ThreadStatusPill,
   isDuplicateProjectCreateError,
   type SidebarDerivedProjectData,
@@ -287,6 +288,7 @@ import {
   sortProjectsForSidebar,
   sortThreadsForSidebar,
 } from "./Sidebar.logic";
+import { AgentProgressIndicator } from "./ui/agent-progress-indicator";
 import type { LastThreadRoute } from "../chatRouteRestore";
 import { resolveSubagentPresentationForThread } from "../lib/subagentPresentation";
 import { useCopyPathToClipboard, useCopyThreadIdToClipboard } from "~/hooks/useCopyToClipboard";
@@ -346,6 +348,7 @@ import {
   waitForRecoverableProjectInReadModel,
 } from "../lib/projectCreateRecovery";
 
+const EMPTY_TERMINAL_AGENT_STATES: Readonly<Record<string, TerminalActivityState>> = {};
 const EMPTY_KEYBINDINGS: ResolvedKeybindingsConfig = [];
 const THREAD_PREVIEW_LIMIT = 5;
 const SIDEBAR_SORT_LABELS: Record<SidebarProjectSortOrder, string> = {
@@ -511,10 +514,17 @@ function WorktreeBadgeGlyph({ className }: { className?: string }) {
   return <WorktreeIcon aria-hidden="true" className={sidebarGlyphClass("meta", className)} />;
 }
 
-// Trailing status indicator shown in the timestamp slot: check when completed,
-// otherwise a static colored status dot. Replaces the relative
-// timestamp whenever the thread has an active/unseen status.
+// Trailing status indicator shown in the timestamp slot. Live agent work uses
+// the same progress ring as the chat composer; settled/actionable states stay quiet.
 function ThreadStatusTrailingGlyph({ threadStatus }: { threadStatus: ThreadStatusPill }) {
+  if (threadStatus.label === "Working") {
+    return (
+      <AgentProgressIndicator
+        className={cn("size-3.5", threadStatus.colorClass)}
+        label="Agent is generating"
+      />
+    );
+  }
   if (threadStatus.label === "Completed") {
     return (
       <HiOutlineCheckCircle
@@ -1620,16 +1630,23 @@ export default function Sidebar() {
     });
   }, []);
   const resolveThreadStatusForSidebar = useCallback(
-    (thread: SidebarThreadSummary) =>
-      resolveThreadStatusPill({
+    (thread: SidebarThreadSummary) => {
+      const threadStatus = resolveThreadStatusPill({
         thread: {
           ...thread,
           dismissedStatusKey: dismissedThreadStatusKeyByThreadId[thread.id],
         },
         hasPendingApprovals: thread.hasPendingApprovals,
         hasPendingUserInput: thread.hasPendingUserInput,
-      }),
-    [dismissedThreadStatusKeyByThreadId],
+      });
+      return resolveThreadStatusWithTerminalAgentActivity({
+        threadStatus,
+        terminalAgentStates:
+          terminalStateByThreadId[thread.id]?.terminalAttentionStatesById ??
+          EMPTY_TERMINAL_AGENT_STATES,
+      });
+    },
+    [dismissedThreadStatusKeyByThreadId, terminalStateByThreadId],
   );
 
   useEffect(() => {
@@ -5296,14 +5313,24 @@ export default function Sidebar() {
             >
               <ProjectSidebarIcon cwd={project.cwd} expanded={project.expanded} />
               {projectStatus ? (
-                <span
-                  aria-hidden="true"
-                  title={projectStatus.label}
-                  className={cn(
-                    "absolute -right-0.5 top-0.5 size-1.5 rounded-full",
-                    projectStatus.dotClass,
-                  )}
-                />
+                projectStatus.label === "Working" ? (
+                  <AgentProgressIndicator
+                    className={cn(
+                      "absolute -right-1 top-0 size-2.5 rounded-full bg-sidebar",
+                      projectStatus.colorClass,
+                    )}
+                    label={`${project.name} has an agent generating`}
+                  />
+                ) : (
+                  <span
+                    aria-hidden="true"
+                    title={projectStatus.label}
+                    className={cn(
+                      "absolute -right-0.5 top-0.5 size-1.5 rounded-full",
+                      projectStatus.dotClass,
+                    )}
+                  />
+                )
               ) : null}
             </SidebarLeadingIcon>
             <div
