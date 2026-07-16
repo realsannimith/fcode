@@ -263,16 +263,10 @@ export const SETTINGS_SEARCH_ENTRIES: readonly SettingsSearchEntry[] = [
       "Drag providers into your preferred picker order and hide the ones you don't use. visibility order",
   },
   {
-    id: "providers:provider-updates",
-    section: "providers",
-    title: "Provider updates",
-    keywords: "Update installed provider tools that FCode can safely update. upgrade cli",
-  },
-  {
     id: "providers:installed-clis",
     section: "providers",
     title: "Installed CLIs",
-    keywords: "Review provider versions and update tools. binary overrides path install",
+    keywords: "Review installed provider versions. binary overrides path install",
   },
 
   // ── Skills ────────────────────────────────────────────────────────────────────

@@ -28,7 +28,6 @@ export type SettingsNavGroupId = "app" | "fcode";
  * silently drifting apart.
  */
 export const SETTINGS_TARGETS = {
-  providerUpdates: "provider-updates",
   providerInstalls: "provider-installs",
   environmentPanel: "environment-panel",
 } as const;
@@ -122,7 +121,7 @@ export const SETTINGS_NAV_ITEMS: readonly SettingsNavItem[] = [
     id: "providers",
     group: "fcode",
     label: "Providers",
-    description: "Choose visible providers, review CLI installs, and update provider tools.",
+    description: "Choose visible providers and review CLI installations.",
     icon: "puzzle",
     eyebrow: "Picker visibility",
   },

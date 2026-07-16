@@ -41,6 +41,7 @@ import {
   projectProviderStatusesForSettings,
   readCodexConfigModelProvider,
   stabilizeProviderStatusesAgainstTransientTimeouts,
+  stripProviderVersionAdvisory,
 } from "./ProviderHealth";
 
 // ── Test helpers ────────────────────────────────────────────────────
@@ -346,7 +347,7 @@ it.layer(NodeServices.layer)("ProviderHealth", (it) => {
       }),
     );
 
-    it.effect("does not offer updates for disabled providers", () =>
+    it.effect("does not expose update advisories for disabled providers", () =>
       Effect.gen(function* () {
         const providerHealth = yield* ProviderHealth;
         const statuses = yield* providerHealth.refresh;
@@ -355,9 +356,7 @@ it.layer(NodeServices.layer)("ProviderHealth", (it) => {
         for (const status of statuses) {
           assert.strictEqual(status.available, false);
           assert.strictEqual(status.message, "Provider is disabled in FCode settings.");
-          assert.strictEqual(status.versionAdvisory?.status, "unknown");
-          assert.strictEqual(status.versionAdvisory?.canUpdate, false);
-          assert.strictEqual(status.versionAdvisory?.updateCommand, null);
+          assert.strictEqual(status.versionAdvisory, undefined);
         }
       }).pipe(Effect.provide(disabledProviderHealthLayer)),
     );
@@ -372,6 +371,25 @@ it.layer(NodeServices.layer)("ProviderHealth", (it) => {
         assert.strictEqual(error.reason, "Provider is disabled in FCode settings.");
       }).pipe(Effect.provide(disabledProviderHealthLayer)),
     );
+  });
+
+  describe("provider update detection removal", () => {
+    it("strips cached latest-version advisories from provider status", () => {
+      const status = {
+        ...cachedReadyCodexStatus,
+        versionAdvisory: {
+          status: "behind_latest",
+          currentVersion: "1.0.0",
+          latestVersion: "2.0.0",
+          updateCommand: "npm install -g @openai/codex@latest",
+          canUpdate: true,
+          checkedAt: cachedReadyCodexStatus.checkedAt,
+          message: null,
+        },
+      } satisfies ServerProviderStatus;
+
+      assert.deepStrictEqual(stripProviderVersionAdvisory(status), cachedReadyCodexStatus);
+    });
   });
 
   describe("stabilizeProviderStatusesAgainstTransientTimeouts", () => {

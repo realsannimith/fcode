@@ -82,7 +82,6 @@ import {
 } from "../providerStatusCache";
 import { makeProviderMaintenanceCommandCoordinator } from "../providerMaintenanceCommandCoordinator";
 import {
-  enrichProviderStatusWithVersionAdvisory,
   makeProviderMaintenanceCapabilities,
   normalizeCommandPath,
   parseGenericCliVersion,
@@ -1887,6 +1886,13 @@ export const checkCursorProviderStatus = makeCheckCursorProviderStatus();
 
 // ── Snapshot helpers ────────────────────────────────────────────────
 
+export function stripProviderVersionAdvisory(
+  status: ServerProviderStatus,
+): ServerProviderStatus {
+  const { versionAdvisory: _versionAdvisory, ...statusWithoutVersionAdvisory } = status;
+  return statusWithoutVersionAdvisory;
+}
+
 function comparableProviderVersionAdvisory(
   advisory: ServerProviderStatus["versionAdvisory"] | undefined,
 ): Omit<NonNullable<ServerProviderStatus["versionAdvisory"]>, "checkedAt"> | null {
@@ -2019,28 +2025,16 @@ export function projectProviderStatusesForSettings(
     const status = statusByProvider.get(provider);
     if (!isProviderEnabledForSettings(provider, settings)) {
       const disabledStatus = makeDisabledProviderStatus(provider, status?.checkedAt ?? checkedAt);
-      const disabledStatusWithAdvisory = {
-        ...disabledStatus,
-        versionAdvisory: {
-          status: "unknown" as const,
-          currentVersion: status?.version ?? null,
-          latestVersion: null,
-          updateCommand: null,
-          canUpdate: false,
-          checkedAt: disabledStatus.checkedAt,
-          message: null,
-        },
-      } satisfies ServerProviderStatus;
       projected.push(
         status?.updateState
-          ? { ...disabledStatusWithAdvisory, updateState: status.updateState }
-          : disabledStatusWithAdvisory,
+          ? { ...disabledStatus, updateState: status.updateState }
+          : disabledStatus,
       );
       continue;
     }
 
     if (status && !isDisabledProviderStatusOverlay(status)) {
-      projected.push(status);
+      projected.push(stripProviderVersionAdvisory(status));
     }
   }
 
@@ -2090,7 +2084,7 @@ export const ProviderHealthLive = Layer.effect(
           statuses.filter(
             (status): status is ServerProviderStatus =>
               status !== undefined && !isDisabledProviderStatusOverlay(status),
-          ),
+          ).map(stripProviderVersionAdvisory),
         ),
       ),
     );
@@ -2237,38 +2231,6 @@ export const ProviderHealthLive = Layer.effect(
       return yield* publishProjectedStatuses();
     });
 
-    const enrichStatuses = Effect.fn("enrichProviderStatuses")(function* (
-      statuses: ReadonlyArray<ServerProviderStatus>,
-    ) {
-      const enriched = yield* Effect.forEach(
-        statuses,
-        (status) =>
-          getProviderMaintenanceCapabilities(status.provider).pipe(
-            Effect.flatMap((capabilities) =>
-              enrichProviderStatusWithVersionAdvisory(status, capabilities),
-            ),
-            Effect.catch(() =>
-              Effect.succeed({
-                ...status,
-                versionAdvisory: {
-                  status: "unknown" as const,
-                  currentVersion: status.version ?? null,
-                  latestVersion: null,
-                  updateCommand: null,
-                  canUpdate: false,
-                  checkedAt: status.checkedAt,
-                  message: null,
-                },
-              }),
-            ),
-          ),
-        { concurrency: "unbounded" },
-      );
-      return yield* Effect.forEach(enriched, applyVolatileProviderState, {
-        concurrency: "unbounded",
-      });
-    });
-
     const checkProviderWhenEnabled = <R>(
       settings: ServerSettings,
       provider: ProviderKind,
@@ -2349,7 +2311,6 @@ export const ProviderHealthLive = Layer.effect(
             statuses.flatMap((status) => (Option.isSome(status) ? [status.value] : [])),
           ),
         ),
-        Effect.flatMap(enrichStatuses),
       );
 
     const persistStatuses = (statuses: ProviderStatuses) =>
