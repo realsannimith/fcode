@@ -12,7 +12,7 @@ import {
   type ThreadId,
 } from "@t3tools/contracts";
 import { isGenericChatThreadTitle } from "@t3tools/shared/chatThreads";
-import React, { memo, useCallback, useMemo, useRef, useState } from "react";
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FiGitBranch } from "react-icons/fi";
 import { HiMiniArrowsPointingOut } from "react-icons/hi2";
 import { TbExchange } from "react-icons/tb";
