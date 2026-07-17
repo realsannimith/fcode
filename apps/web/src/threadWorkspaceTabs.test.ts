@@ -47,6 +47,7 @@ describe("resolveThreadWorkspaceChatTabs", () => {
       [CHAT_TWO, "Chat 2"],
       [CHAT_THREE, "Chat 3"],
     ]);
+    expect(result.tabs.map((tab) => tab.canClose)).toEqual([true, true, true]);
     expect(result.tabs[2]?.isWorking).toBe(true);
   });
 

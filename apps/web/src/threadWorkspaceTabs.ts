@@ -57,6 +57,7 @@ export function resolveThreadWorkspaceChatTabs(input: {
       label: index === 0 ? "Chat" : `Chat ${index + 1}`,
       title: summary.title,
       isWorking: summary.hasLiveTailWork,
+      canClose: true,
     })),
   };
 }

@@ -112,6 +112,8 @@ interface ChatHeaderProps {
     isWorking: boolean;
     terminalCount: number;
     onAddChat?: () => void;
+    onAddTerminal?: () => void;
+    onCloseChat?: (threadId: ThreadId) => void;
     onOpenChat: (threadId: ThreadId) => void;
     onOpenTerminal: () => void;
   } | null;
@@ -133,6 +135,8 @@ function EditorRailTabs(props: {
   isWorking: boolean;
   terminalCount: number;
   onAddChat?: () => void;
+  onAddTerminal?: () => void;
+  onCloseChat?: (threadId: ThreadId) => void;
   onOpenChat: (threadId: ThreadId) => void;
   onOpenTerminal: () => void;
 }) {
@@ -147,6 +151,8 @@ function EditorRailTabs(props: {
           terminalCount={props.terminalCount}
           variant="inline"
           onAddChatTab={props.onAddChat}
+          onAddTerminalTab={props.onAddTerminal}
+          onCloseChatTab={props.onCloseChat}
           onSelectChatTab={props.onOpenChat}
           onSelectTab={(tab) => {
             if (tab === "terminal") {
@@ -400,6 +406,8 @@ export const ChatHeader = memo(function ChatHeader({
                   isWorking={editorChatControls.isWorking}
                   terminalCount={editorChatControls.terminalCount}
                   onAddChat={editorChatControls.onAddChat}
+                  onAddTerminal={editorChatControls.onAddTerminal}
+                  onCloseChat={editorChatControls.onCloseChat}
                   onOpenChat={editorChatControls.onOpenChat}
                   onOpenTerminal={editorChatControls.onOpenTerminal}
                 />

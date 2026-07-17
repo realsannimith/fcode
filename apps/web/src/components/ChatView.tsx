@@ -8884,6 +8884,67 @@ export default function ChatView({
         });
       });
   }, [activeThreadId, onOpenWorkspaceChat]);
+  const onAddWorkspaceTerminal = useCallback(() => {
+    if (!activeThreadId) return;
+    storeOpenTerminalThreadPage(activeThreadId, { terminalOnly: true });
+    createNewTerminal();
+  }, [activeThreadId, createNewTerminal, storeOpenTerminalThreadPage]);
+  const onCloseWorkspaceChat = useCallback(
+    (closingThreadId: ThreadId) => {
+      const closingTabIndex = workspaceChatTabs.findIndex((tab) => tab.id === closingThreadId);
+      const closingTab = workspaceChatTabs[closingTabIndex];
+      if (!closingTab?.canClose) return;
+      if (closingTab.isWorking) {
+        toastManager.add({
+          type: "warning",
+          title: "Stop the chat before closing it",
+          description: "A chat with an active agent cannot be closed yet.",
+        });
+        return;
+      }
+      const api = readNativeApi();
+      if (!api) return;
+      const fallbackTab =
+        workspaceChatTabs[closingTabIndex - 1] ?? workspaceChatTabs[closingTabIndex + 1] ?? null;
+      void api.orchestration
+        .dispatchCommand({
+          type: "thread.archive",
+          commandId: newCommandId(),
+          threadId: closingThreadId,
+        })
+        .then(async () => {
+          try {
+            const snapshot = await api.orchestration.getShellSnapshot();
+            syncServerShellSnapshot(snapshot);
+          } catch {
+            // The archive event is still pushed through the live socket; navigation can
+            // proceed even if an immediate reconciliation snapshot is unavailable.
+          }
+          if (activeThreadId !== closingThreadId) return;
+          if (fallbackTab) {
+            onOpenWorkspaceChat(fallbackTab.id);
+          } else if (activeProject) {
+            void navigate({ to: "/", replace: true });
+          }
+        })
+        .catch((error: unknown) => {
+          toastManager.add({
+            type: "error",
+            title: "Could not close chat",
+            description:
+              error instanceof Error ? error.message : "An error occurred while closing the chat.",
+          });
+        });
+    },
+    [
+      activeProject,
+      activeThreadId,
+      navigate,
+      onOpenWorkspaceChat,
+      syncServerShellSnapshot,
+      workspaceChatTabs,
+    ],
+  );
   const onOpenEditorTerminal = useCallback(() => {
     if (!activeThreadId) return;
     storeOpenTerminalThreadPage(activeThreadId, { terminalOnly: true });
@@ -9783,6 +9844,8 @@ export default function ChatView({
                   isWorking: isAgentWorking,
                   terminalCount: terminalState.terminalOpen ? terminalState.terminalIds.length : 0,
                   onAddChat: isServerThread ? onAddWorkspaceChat : undefined,
+                  onAddTerminal: onAddWorkspaceTerminal,
+                  onCloseChat: isServerThread ? onCloseWorkspaceChat : undefined,
                   onOpenChat: onOpenWorkspaceChat,
                   onOpenTerminal: onOpenEditorTerminal,
                 }
@@ -9854,6 +9917,8 @@ export default function ChatView({
           isWorking={isAgentWorking}
           terminalCount={terminalState.terminalOpen ? terminalState.terminalIds.length : 0}
           onAddChatTab={isServerThread ? onAddWorkspaceChat : undefined}
+          onAddTerminalTab={onAddWorkspaceTerminal}
+          onCloseChatTab={isServerThread ? onCloseWorkspaceChat : undefined}
           onSelectChatTab={onOpenWorkspaceChat}
           onSelectTab={selectThreadSurface}
         />

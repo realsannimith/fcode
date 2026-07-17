@@ -18,19 +18,23 @@ describe("TerminalWorkspaceTabs", () => {
         activeTab="chat"
         activeChatTabId={chatTwo}
         chatTabs={[
-          { id: chatOne, label: "Chat", title: "Main task", isWorking: false },
-          { id: chatTwo, label: "Chat 2", title: "Alternative", isWorking: true },
+          { id: chatOne, label: "Chat", title: "Main task", isWorking: false, canClose: true },
+          { id: chatTwo, label: "Chat 2", title: "Alternative", isWorking: true, canClose: true },
         ]}
         isWorking={false}
         terminalCount={1}
         onAddChatTab={vi.fn()}
+        onAddTerminalTab={vi.fn()}
+        onCloseChatTab={vi.fn()}
         onSelectChatTab={vi.fn()}
         onSelectTab={vi.fn()}
       />,
     );
 
     expect(markup).toContain("Chat 2");
-    expect(markup).toContain('aria-label="New chat tab"');
+    expect(markup).toContain('aria-label="Add workspace tab"');
+    expect(markup).toContain('aria-label="Close Chat 2"');
+    expect(markup).toContain('aria-label="Close Chat"');
     expect(markup).toContain('aria-label="Chat 2 agent is generating"');
   });
 
