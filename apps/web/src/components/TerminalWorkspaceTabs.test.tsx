@@ -1,5 +1,5 @@
 // FILE: TerminalWorkspaceTabs.test.tsx
-// Purpose: Guards the workspace-level terminal/chat tab visibility rules.
+// Purpose: Guards the per-thread terminal/chat tab visibility rules.
 // Layer: Component rendering tests
 // Depends on: TerminalWorkspaceTabs and React server rendering.
 
@@ -9,6 +9,21 @@ import { describe, expect, it, vi } from "vitest";
 import TerminalWorkspaceTabs from "./TerminalWorkspaceTabs";
 
 describe("TerminalWorkspaceTabs", () => {
+  it("keeps both thread surfaces available before a terminal is opened", () => {
+    const markup = renderToStaticMarkup(
+      <TerminalWorkspaceTabs
+        activeTab="chat"
+        isWorking={false}
+        terminalCount={0}
+        onSelectTab={vi.fn()}
+      />,
+    );
+
+    expect(markup).toContain("Terminal");
+    expect(markup).toContain("Chat");
+    expect(markup).toContain('aria-selected="true"');
+  });
+
   it("keeps both thread surfaces available in terminal-only mode", () => {
     const markup = renderToStaticMarkup(
       <TerminalWorkspaceTabs

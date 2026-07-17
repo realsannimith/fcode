@@ -3536,6 +3536,20 @@ export default function ChatView({
     },
     [activeThreadId, storeSetTerminalWorkspaceTab],
   );
+  const selectThreadSurface = useCallback(
+    (tab: "terminal" | "chat") => {
+      if (!activeThreadId) return;
+
+      if (tab === "terminal") {
+        storeOpenTerminalThreadPage(activeThreadId, { terminalOnly: true });
+        setTerminalFocusRequestId((value) => value + 1);
+        return;
+      }
+
+      storeOpenChatThreadPage(activeThreadId);
+    },
+    [activeThreadId, storeOpenChatThreadPage, storeOpenTerminalThreadPage],
+  );
   const setTerminalHeight = useCallback(
     (height: number) => {
       if (!activeThreadId) return;
@@ -9781,12 +9795,12 @@ export default function ChatView({
         rateLimitStatus={visibleActiveRateLimitStatus}
         onDismiss={dismissActiveRateLimitBanner}
       />
-      {terminalWorkspaceOpen && !isEditorRail ? (
+      {!isEditorRail ? (
         <TerminalWorkspaceTabs
-          activeTab={terminalState.workspaceActiveTab}
+          activeTab={terminalWorkspaceTerminalTabActive ? "terminal" : "chat"}
           isWorking={isAgentWorking}
-          terminalCount={terminalState.terminalIds.length}
-          onSelectTab={setTerminalWorkspaceTab}
+          terminalCount={terminalState.terminalOpen ? terminalState.terminalIds.length : 0}
+          onSelectTab={selectThreadSurface}
         />
       ) : null}
       {/* Main content area with optional plan sidebar */}
