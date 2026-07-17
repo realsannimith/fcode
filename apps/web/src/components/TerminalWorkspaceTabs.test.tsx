@@ -47,6 +47,8 @@ describe("TerminalWorkspaceTabs", () => {
     expect(markup).toContain("Chat 2");
     expect(markup).toContain("Terminal 2");
     expect(markup).toContain('aria-label="Add workspace tab"');
+    expect(markup).toContain("flex-1 snap-x snap-proximity");
+    expect(markup).toContain("shrink-0 snap-start");
     expect(markup).toContain('aria-label="Close Chat 2 workspace"');
     expect(markup).toContain('aria-label="Close Chat workspace"');
     expect(markup).toContain('aria-label="Chat 2 agent is generating"');

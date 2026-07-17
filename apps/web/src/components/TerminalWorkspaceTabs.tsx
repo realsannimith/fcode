@@ -8,6 +8,7 @@
 // active tab, z-index stacking) doesn't fit the Button taxonomy.
 
 import type { ThreadId } from "@t3tools/contracts";
+import { useEffect, useRef } from "react";
 
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "./ui/menu";
 import { MessageCircleIcon, Plus, TerminalIcon, XIcon } from "~/lib/icons";
@@ -50,8 +51,10 @@ export default function TerminalWorkspaceTabs({
   onAddWorkspaceTab,
   onCloseChatTab,
 }: TerminalWorkspaceTabsProps) {
+  const tabListRef = useRef<HTMLDivElement>(null);
+  const activeWorkspaceRef = useRef<HTMLDivElement>(null);
   const tabClassName =
-    "group relative -mb-px inline-flex h-8 shrink-0 items-center rounded-t-[10px] border border-b-0 px-3 text-xs transition-colors focus-visible:z-10 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring";
+    "group relative -mb-px inline-flex h-8 shrink-0 items-center rounded-t-[10px] border border-b-0 px-2.5 text-xs transition-colors focus-visible:z-10 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring @min-[420px]:px-3";
 
   const resolvedChatTabs =
     chatTabs && chatTabs.length > 0
@@ -66,12 +69,34 @@ export default function TerminalWorkspaceTabs({
           },
         ] satisfies readonly WorkspaceChatTab[]);
 
+  useEffect(() => {
+    const tabList = tabListRef.current;
+    const activeWorkspace = activeWorkspaceRef.current;
+    if (!tabList || !activeWorkspace) return;
+
+    const keepActiveWorkspaceVisible = () => {
+      const listBounds = tabList.getBoundingClientRect();
+      const workspaceBounds = activeWorkspace.getBoundingClientRect();
+      if (workspaceBounds.left < listBounds.left) {
+        tabList.scrollLeft -= listBounds.left - workspaceBounds.left + 6;
+      } else if (workspaceBounds.right > listBounds.right) {
+        tabList.scrollLeft += workspaceBounds.right - listBounds.right + 6;
+      }
+    };
+
+    keepActiveWorkspaceVisible();
+    const resizeObserver = new ResizeObserver(keepActiveWorkspaceVisible);
+    resizeObserver.observe(tabList);
+    return () => resizeObserver.disconnect();
+  }, [activeChatTabId, activeTab, resolvedChatTabs.length]);
+
   const tabs = (
-    <div className="flex min-w-0 items-end gap-1.5">
+    <div className="@container flex w-full min-w-0 items-end gap-1.5 overflow-hidden">
       <div
+        ref={tabListRef}
         role="tablist"
         aria-label="Thread views"
-        className="flex min-w-0 items-end gap-1.5 overflow-x-auto pt-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        className="flex min-w-0 flex-1 snap-x snap-proximity items-end gap-1.5 overflow-x-auto pt-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
         {resolvedChatTabs.map((chatTab, index) => {
           const isTerminalActive =
@@ -83,8 +108,9 @@ export default function TerminalWorkspaceTabs({
           return (
             <div
               key={chatTab.id}
+              ref={isTerminalActive || isChatActive ? activeWorkspaceRef : undefined}
               role="presentation"
-              className="flex shrink-0 items-end gap-1"
+              className="flex shrink-0 snap-start items-end gap-1"
             >
               <button
                 type="button"
@@ -172,7 +198,7 @@ export default function TerminalWorkspaceTabs({
           >
             <Plus className="size-3.5" />
           </MenuTrigger>
-          <MenuPopup align="start" className="min-w-44">
+          <MenuPopup align="end" className="min-w-44 max-w-[calc(100vw-1rem)]">
             <MenuItem onClick={() => onAddWorkspaceTab("chat")}>
               <MessageCircleIcon className="mr-2 size-3.5" />
               New workspace in Chat
@@ -192,7 +218,7 @@ export default function TerminalWorkspaceTabs({
   }
 
   return (
-    <div className="relative border-b border-border/70 bg-muted/10 px-3 sm:px-5">
+    <div className="relative w-full min-w-0 border-b border-border/70 bg-muted/10 px-3 sm:px-5">
       {tabs}
     </div>
   );

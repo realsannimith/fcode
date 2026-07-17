@@ -138,7 +138,7 @@ function EditorRailTabs(props: {
 }) {
   return (
     <div className="flex h-full min-w-0 flex-1 items-end [-webkit-app-region:no-drag]">
-      <div className="self-end">
+      <div className="w-full min-w-0 self-end">
         <TerminalWorkspaceTabs
           activeTab={props.activeSurface}
           activeChatTabId={props.activeThreadId}
