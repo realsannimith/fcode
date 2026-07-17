@@ -5,8 +5,8 @@
 import { cn } from "~/lib/utils";
 
 interface AgentProgressIndicatorProps {
-  className?: string;
-  label?: string;
+  className?: string | undefined;
+  label?: string | undefined;
 }
 
 export function AgentProgressIndicator({

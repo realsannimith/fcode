@@ -35,8 +35,8 @@ interface TerminalWorkspaceTabsProps {
   onSelectTab: (tab: ThreadTerminalWorkspaceTab) => void;
   onSelectChatTab?: (threadId: ThreadId) => void;
   onSelectTerminalTab?: (threadId: ThreadId) => void;
-  onAddWorkspaceTab?: (initialSurface: ThreadTerminalWorkspaceTab) => void;
-  onCloseChatTab?: (threadId: ThreadId) => void;
+  onAddWorkspaceTab?: ((initialSurface: ThreadTerminalWorkspaceTab) => void) | undefined;
+  onCloseChatTab?: ((threadId: ThreadId) => void) | undefined;
 }
 
 export default function TerminalWorkspaceTabs({
@@ -150,9 +150,7 @@ export default function TerminalWorkspaceTabs({
                   type="button"
                   role="tab"
                   aria-selected={isChatActive}
-                  aria-label={
-                    chatTab.title ? `${chatTab.label}: ${chatTab.title}` : chatTab.label
-                  }
+                  aria-label={chatTab.title ? `${chatTab.label}: ${chatTab.title}` : chatTab.label}
                   className="flex min-w-0 flex-1 items-center focus-visible:z-10 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                   onClick={() => {
                     if (onSelectChatTab) {

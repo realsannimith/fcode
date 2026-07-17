@@ -18,12 +18,7 @@ import { HiMiniArrowsPointingOut } from "react-icons/hi2";
 import { TbExchange } from "react-icons/tb";
 import type { ThreadPrimarySurface } from "../../types";
 import GitActionsControl from "../GitActionsControl";
-import {
-  ArrowRightIcon,
-  HandoffIcon,
-  PanelRightCloseIcon,
-  XIcon,
-} from "~/lib/icons";
+import { ArrowRightIcon, HandoffIcon, PanelRightCloseIcon, XIcon } from "~/lib/icons";
 import {
   CHAT_HEADER_TOGGLE_CLASS_NAME,
   ChatHeaderButton,
@@ -110,8 +105,8 @@ interface ChatHeaderProps {
     activeSurface: "chat" | "terminal";
     chatTabs: readonly WorkspaceChatTab[];
     isWorking: boolean;
-    onAddWorkspace?: (initialSurface: "chat" | "terminal") => void;
-    onCloseChat?: (threadId: ThreadId) => void;
+    onAddWorkspace?: ((initialSurface: "chat" | "terminal") => void) | undefined;
+    onCloseChat?: ((threadId: ThreadId) => void) | undefined;
     onOpenChat: (threadId: ThreadId) => void;
     onOpenTerminal: (threadId: ThreadId) => void;
   } | null;
@@ -131,8 +126,8 @@ function EditorRailTabs(props: {
   activeSurface: "chat" | "terminal";
   chatTabs: readonly WorkspaceChatTab[];
   isWorking: boolean;
-  onAddWorkspace?: (initialSurface: "chat" | "terminal") => void;
-  onCloseChat?: (threadId: ThreadId) => void;
+  onAddWorkspace?: ((initialSurface: "chat" | "terminal") => void) | undefined;
+  onCloseChat?: ((threadId: ThreadId) => void) | undefined;
   onOpenChat: (threadId: ThreadId) => void;
   onOpenTerminal: (threadId: ThreadId) => void;
 }) {

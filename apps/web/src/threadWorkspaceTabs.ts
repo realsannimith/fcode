@@ -19,6 +19,7 @@ export interface ThreadWorkspaceChatTab {
   label: string;
   title: string;
   isWorking: boolean;
+  canClose: boolean;
 }
 
 export function resolveThreadWorkspaceChatTabs(input: {
