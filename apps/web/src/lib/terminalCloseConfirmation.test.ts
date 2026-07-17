@@ -39,7 +39,6 @@ describe("buildTerminalCloseConfirmationMessage", () => {
     expect(
       buildTerminalCloseConfirmationMessage({
         terminalTitle: "Deploy shell",
-        willDeleteThread: false,
       }),
     ).toBe(
       [
@@ -49,19 +48,6 @@ describe("buildTerminalCloseConfirmationMessage", () => {
     );
   });
 
-  it("warns when closing the last placeholder terminal also deletes the thread", () => {
-    expect(
-      buildTerminalCloseConfirmationMessage({
-        terminalTitle: "Codex 1",
-        willDeleteThread: true,
-      }),
-    ).toBe(
-      [
-        'Close terminal "Codex 1"?',
-        "This permanently clears the terminal history for this tab and deletes the empty terminal thread.",
-      ].join("\n"),
-    );
-  });
 });
 
 describe("confirmTerminalTabClose", () => {
@@ -86,13 +72,12 @@ describe("confirmTerminalTabClose", () => {
         api: { dialogs: { confirm, pickFolder: vi.fn() } },
         enabled: true,
         terminalTitle: "Deploy shell",
-        willDeleteThread: true,
       }),
     ).resolves.toBe(true);
     expect(confirm).toHaveBeenCalledWith(
       [
         'Close terminal "Deploy shell"?',
-        "This permanently clears the terminal history for this tab and deletes the empty terminal thread.",
+        "This permanently clears the terminal history for this tab.",
       ].join("\n"),
     );
   });
@@ -132,7 +117,7 @@ describe("shouldPromptForTerminalClose", () => {
     ).toBe(true);
   });
 
-  it("does not prompt just because an idle placeholder terminal thread will be deleted", () => {
+  it("does not prompt for an idle terminal", () => {
     expect(
       shouldPromptForTerminalClose({
         confirmationEnabled: true,

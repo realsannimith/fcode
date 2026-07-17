@@ -12,7 +12,6 @@ import {
 import { normalizeModelSlug } from "@t3tools/shared/model";
 import { buildFCodeBranchName } from "@t3tools/shared/git";
 import { isGenericChatThreadTitle } from "@t3tools/shared/chatThreads";
-import { isGenericTerminalThreadTitle } from "@t3tools/shared/terminalThreads";
 import {
   type ChatAssistantSelectionAttachment,
   type ChatMessage,
@@ -643,34 +642,6 @@ export function resolveProjectScriptTerminalTarget(options: {
     shouldCreateNewTerminal,
     terminalId: shouldCreateNewTerminal ? options.createTerminalId() : options.baseTerminalId,
   };
-}
-
-export function shouldAutoDeleteTerminalThreadOnLastClose(options: {
-  isLastTerminal: boolean;
-  isServerThread: boolean;
-  terminalEntryPoint: ThreadPrimarySurface;
-  thread:
-    | Pick<Thread, "activities" | "latestTurn" | "messages" | "proposedPlans" | "session" | "title">
-    | null
-    | undefined;
-}): boolean {
-  const { thread } = options;
-  if (
-    !options.isLastTerminal ||
-    !options.isServerThread ||
-    options.terminalEntryPoint !== "terminal" ||
-    !thread
-  ) {
-    return false;
-  }
-  return (
-    isGenericTerminalThreadTitle(thread.title) &&
-    thread.messages.length === 0 &&
-    thread.latestTurn === null &&
-    thread.session === null &&
-    thread.activities.length === 0 &&
-    thread.proposedPlans.length === 0
-  );
 }
 
 export interface ThreadBreadcrumb {

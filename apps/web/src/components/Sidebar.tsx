@@ -4841,9 +4841,7 @@ export default function Sidebar() {
       thread,
       includeHandoffBadge: true,
       handoffShownInAvatar:
-        threadEntryPoint !== "terminal" &&
-        !isGenericChatThreadTitle(thread.title) &&
-        Boolean(thread.handoff?.sourceProvider),
+        !isGenericChatThreadTitle(thread.title) && Boolean(thread.handoff?.sourceProvider),
       threadAutomations: automationsByThreadId.get(thread.id),
     });
     const threadStatus = resolveThreadStatusForSidebar(thread);
@@ -4913,9 +4911,7 @@ export default function Sidebar() {
             });
           }}
         >
-          {threadEntryPoint === "terminal" ? (
-            <SidebarGlyph icon={TerminalIcon} variant="chrome" />
-          ) : showThreadProviderAvatar ? (
+          {showThreadProviderAvatar ? (
             <ProviderAvatarWithTerminal
               provider={thread.session?.provider ?? thread.modelSelection.provider}
               handoffSourceProvider={thread.handoff?.sourceProvider ?? null}
@@ -5020,9 +5016,7 @@ export default function Sidebar() {
       thread,
       includeHandoffBadge: !isDisposableThread,
       handoffShownInAvatar:
-        threadEntryPoint !== "terminal" &&
-        !isGenericChatThreadTitle(thread.title) &&
-        Boolean(thread.handoff?.sourceProvider),
+        !isGenericChatThreadTitle(thread.title) && Boolean(thread.handoff?.sourceProvider),
       threadAutomations: automationsByThreadId.get(thread.id),
     });
     const isSubagentThread = Boolean(thread.parentThreadId);
@@ -5151,8 +5145,6 @@ export default function Sidebar() {
                 style={{ backgroundColor: subagentPresentation?.accentColor }}
               />
             </span>
-          ) : threadEntryPoint === "terminal" ? (
-            <SidebarGlyph icon={TerminalIcon} variant="chrome" />
           ) : showThreadProviderAvatar ? (
             <ProviderAvatarWithTerminal
               provider={thread.session?.provider ?? thread.modelSelection.provider}
@@ -5292,13 +5284,13 @@ export default function Sidebar() {
     // local server (possibly started outside FCode) is attributed by cwd.
     const isProjectRunning = projectRun !== null || projectRunServer !== null;
     // The "open dev server" affordance now lives in the project context menu, so
-    // the hover toolbar always reserves space for the three thread actions. The
+    // the hover toolbar reserves space for the unified new-thread action. The
     // reserve lives on the *name* container (not the button) so only the truncating
     // name yields to the overlay toolbar; the trailing run dot stays put and fades
     // in place instead of sliding left. Focus is read from the group because the
     // name container itself is not focusable — the row's button is.
     const projectToolbarReserveClassName =
-      "group-hover/project-header:pr-[4.75rem] group-has-[:focus-visible]/project-header:pr-[4.75rem]";
+      "group-hover/project-header:pr-8 group-has-[:focus-visible]/project-header:pr-8";
 
     return (
       <div className="group/collapsible">
@@ -5407,26 +5399,6 @@ export default function Sidebar() {
             <PinStatusIcon pinned={isProjectPinned} className="size-3.5" />
           </button>
           <SidebarSectionToolbar placement="overlay" revealOnHover>
-            <SidebarIconButton
-              icon={TerminalIcon}
-              label={`Create new terminal thread in ${project.name}`}
-              tooltip={
-                newTerminalThreadShortcutLabel
-                  ? `New terminal thread (${newTerminalThreadShortcutLabel})`
-                  : "New terminal thread"
-              }
-              tooltipSide="top"
-              onClick={(event) => {
-                event.preventDefault();
-                event.stopPropagation();
-                void handleNewThread(project.id, {
-                  envMode: resolveSidebarNewThreadEnvMode({
-                    defaultEnvMode: appSettings.defaultThreadEnvMode,
-                  }),
-                  entryPoint: "terminal",
-                });
-              }}
-            />
             <SidebarIconButton
               icon={NewThreadIcon}
               label={`Create new thread in ${project.name}`}
@@ -5871,7 +5843,6 @@ export default function Sidebar() {
   const newChatShortcutLabel =
     shortcutLabelForCommand(keybindings, "chat.newChat") ??
     shortcutLabelForCommand(keybindings, "chat.newLocal");
-  const newTerminalThreadShortcutLabel = shortcutLabelForCommand(keybindings, "chat.newTerminal");
   const searchShortcutLabel =
     shortcutLabelForCommand(keybindings, "sidebar.search") ??
     (isMacPlatform(navigator.platform) ? "⌘K" : "Ctrl+K");

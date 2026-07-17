@@ -77,8 +77,8 @@ const AVAILABLE_NOW_DEFINITIONS: readonly ShortcutDefinition[] = [
   },
   {
     command: "chat.newTerminal",
-    label: "New terminal thread",
-    description: "Create a thread that opens directly into terminal mode.",
+    label: "New thread in Terminal",
+    description: "Create a thread and open its Terminal tab.",
   },
   {
     command: "chat.newClaude",

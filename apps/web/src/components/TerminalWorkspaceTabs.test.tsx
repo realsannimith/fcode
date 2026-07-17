@@ -9,27 +9,27 @@ import { describe, expect, it, vi } from "vitest";
 import TerminalWorkspaceTabs from "./TerminalWorkspaceTabs";
 
 describe("TerminalWorkspaceTabs", () => {
-  it("hides the workspace switcher in terminal-only mode", () => {
+  it("keeps both thread surfaces available in terminal-only mode", () => {
     const markup = renderToStaticMarkup(
       <TerminalWorkspaceTabs
         activeTab="terminal"
         isWorking={false}
         terminalCount={2}
-        workspaceLayout="terminal-only"
         onSelectTab={vi.fn()}
       />,
     );
 
-    expect(markup).toBe("");
+    expect(markup).toContain("Terminal");
+    expect(markup).toContain("Chat");
+    expect(markup).toContain('role="tablist"');
   });
 
-  it("shows the chat switcher when the workspace still includes chat", () => {
+  it("shows the switcher for a single terminal", () => {
     const markup = renderToStaticMarkup(
       <TerminalWorkspaceTabs
         activeTab="terminal"
         isWorking={false}
-        terminalCount={2}
-        workspaceLayout="both"
+        terminalCount={1}
         onSelectTab={vi.fn()}
       />,
     );
@@ -44,7 +44,6 @@ describe("TerminalWorkspaceTabs", () => {
         activeTab="terminal"
         isWorking
         terminalCount={2}
-        workspaceLayout="both"
         onSelectTab={vi.fn()}
       />,
     );

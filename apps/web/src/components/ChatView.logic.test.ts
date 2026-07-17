@@ -21,7 +21,6 @@ import {
   resolveRuntimeModeAfterApprovalDecision,
   sanitizeVoiceErrorMessage,
   buildExpiredTerminalContextToastCopy,
-  shouldAutoDeleteTerminalThreadOnLastClose,
   shouldConsumePendingCustomBinaryConfirmation,
   shouldEnableComposerPastedTextCollapse,
   shouldRenderProviderHealthBanner,
@@ -830,7 +829,7 @@ describe("resolveProjectScriptTerminalTarget", () => {
 });
 
 describe("shouldRenderProviderHealthBanner", () => {
-  it("does not show chat provider health while a terminal thread is active", () => {
+  it("does not show chat provider health while the Terminal tab is active", () => {
     expect(
       shouldRenderProviderHealthBanner({
         threadEntryPoint: "terminal",
@@ -1002,68 +1001,6 @@ describe("hasServerAcknowledgedLocalDispatch", () => {
         threadError: "provider failed",
       }),
     ).toBe(true);
-  });
-});
-
-describe("shouldAutoDeleteTerminalThreadOnLastClose", () => {
-  it("deletes untouched terminal-first placeholder threads when the last terminal closes", () => {
-    expect(
-      shouldAutoDeleteTerminalThreadOnLastClose({
-        isLastTerminal: true,
-        isServerThread: true,
-        terminalEntryPoint: "terminal",
-        thread: {
-          title: "New terminal",
-          messages: [],
-          latestTurn: null,
-          session: null,
-          activities: [],
-          proposedPlans: [],
-        },
-      }),
-    ).toBe(true);
-  });
-
-  it("keeps non-placeholder or already-used threads", () => {
-    expect(
-      shouldAutoDeleteTerminalThreadOnLastClose({
-        isLastTerminal: true,
-        isServerThread: true,
-        terminalEntryPoint: "terminal",
-        thread: {
-          title: "Manual rename",
-          messages: [],
-          latestTurn: null,
-          session: null,
-          activities: [],
-          proposedPlans: [],
-        },
-      }),
-    ).toBe(false);
-
-    expect(
-      shouldAutoDeleteTerminalThreadOnLastClose({
-        isLastTerminal: true,
-        isServerThread: true,
-        terminalEntryPoint: "terminal",
-        thread: {
-          title: "New terminal",
-          messages: [
-            {
-              id: "msg-1" as never,
-              role: "user",
-              text: "hello",
-              createdAt: "2026-04-06T12:00:00.000Z",
-              streaming: false,
-            },
-          ],
-          latestTurn: null,
-          session: null,
-          activities: [],
-          proposedPlans: [],
-        },
-      }),
-    ).toBe(false);
   });
 });
 

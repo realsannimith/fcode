@@ -212,6 +212,7 @@ describe("terminalStateStore actions", () => {
       useTerminalStateStore.getState().terminalStateByThreadId,
       THREAD_ID,
     );
+    expect(terminalState.entryPoint).toBe("chat");
     expect(terminalState.workspaceLayout).toBe("both");
     expect(terminalState.workspaceActiveTab).toBe("chat");
   });
@@ -228,6 +229,7 @@ describe("terminalStateStore actions", () => {
     );
     expect(terminalState.terminalOpen).toBe(true);
     expect(terminalState.presentationMode).toBe("workspace");
+    expect(terminalState.entryPoint).toBe("terminal");
     expect(terminalState.workspaceLayout).toBe("terminal-only");
     expect(terminalState.workspaceActiveTab).toBe("terminal");
     expect(terminalState.terminalIds).toEqual(["default"]);
@@ -639,7 +641,7 @@ describe("terminalStateStore actions", () => {
     ).toEqual(["default"]);
   });
 
-  it("keeps terminal-first threads terminal-first after closing the last terminal", () => {
+  it("returns terminal-first threads to chat after closing the last terminal", () => {
     const store = useTerminalStateStore.getState();
     store.openTerminalThreadPage(THREAD_ID, { terminalOnly: true });
     store.closeTerminal(THREAD_ID, "default");
@@ -648,9 +650,10 @@ describe("terminalStateStore actions", () => {
       useTerminalStateStore.getState().terminalStateByThreadId,
       THREAD_ID,
     );
-    expect(useTerminalStateStore.getState().terminalStateByThreadId[THREAD_ID]).toBeDefined();
-    expect(terminalState.entryPoint).toBe("terminal");
+    expect(terminalState.entryPoint).toBe("chat");
     expect(terminalState.terminalOpen).toBe(false);
+    expect(terminalState.presentationMode).toBe("drawer");
+    expect(terminalState.workspaceLayout).toBe("both");
     expect(terminalState.terminalIds).toEqual(["default"]);
   });
 

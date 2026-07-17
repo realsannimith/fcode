@@ -9,7 +9,7 @@ import { resolveChatHeaderThreadIconKind } from "./ChatHeader";
 
 describe("resolveChatHeaderThreadIconKind", () => {
   it("uses the terminal icon for terminal-first threads", () => {
-    expect(resolveChatHeaderThreadIconKind("terminal", "New terminal")).toBe("terminal");
+    expect(resolveChatHeaderThreadIconKind("terminal", "New terminal")).toBe("provider");
   });
 
   it("keeps provider branding for chat-first threads", () => {

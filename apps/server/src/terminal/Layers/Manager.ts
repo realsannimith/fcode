@@ -460,6 +460,7 @@ export function inspectSubprocessActivity(
   for (const child of children) {
     const nestedActivity = inspectSubprocessActivity(child.pid, childrenByParentPid);
     const childAgentKind = deriveTerminalCodingAgentKind(child.command);
+    const childCliKind = terminalCliKindFromValue(childAgentKind);
     if (childAgentKind || nestedActivity.hasProviderDescendant) {
       hasProviderDescendant = true;
     }
@@ -574,6 +575,7 @@ async function checkPosixSubprocessActivityByTreeWalk(
       if (!command) continue;
       const nestedActivity = await inspectPid(childPid);
       const childAgentKind = deriveTerminalCodingAgentKind(command);
+      const childCliKind = terminalCliKindFromValue(childAgentKind);
       if (childAgentKind || nestedActivity.hasProviderDescendant) {
         hasProviderDescendant = true;
       }

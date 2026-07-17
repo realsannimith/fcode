@@ -140,7 +140,6 @@ import {
   warningIdsForAcknowledgedRisks,
 } from "../lib/automationDraft";
 import { dispatchThreadRename } from "../lib/threadRename";
-import { useHandleNewChat } from "../hooks/useHandleNewChat";
 import { useComposerDropzone } from "../hooks/useComposerDropzone";
 import { useDiffRouteSearch } from "../hooks/useDiffRouteSearch";
 import { resolveAgentLauncherTerminalTarget } from "../agentLaunchers";
@@ -347,8 +346,6 @@ import {
 import { selectThreadTerminalState, useTerminalStateStore } from "../terminalStateStore";
 import { collectTerminalIdsFromLayout } from "../terminalPaneLayout";
 import {
-  resolveSplitViewFocusedThreadId,
-  selectSplitView,
   type SplitViewPanePanelState,
   useSplitViewStore,
 } from "../splitViewStore";
@@ -467,7 +464,6 @@ import {
   isVoiceAuthExpiredMessage,
   sanitizeVoiceErrorMessage,
   shouldStartActiveTurnLayoutGrace,
-  shouldAutoDeleteTerminalThreadOnLastClose,
   buildExpiredTerminalContextToastCopy,
   buildLocalDraftThread,
   DISMISSED_PROVIDER_HEALTH_BANNERS_KEY,
@@ -853,11 +849,8 @@ export default function ChatView({
   const timestampFormat = settings.timestampFormat;
   const navigate = useNavigate();
   const { handleNewThread } = useHandleNewThread();
-  const { handleNewChat } = useHandleNewChat();
   const { createThreadHandoff } = useThreadHandoff();
   const rawSearch = useDiffRouteSearch();
-  const activeSplitView = useSplitViewStore(selectSplitView(rawSearch.splitViewId ?? null));
-  const removeThreadFromSplitViews = useSplitViewStore((store) => store.removeThreadFromSplitViews);
   const { resolvedTheme } = useTheme();
   const queryClient = useQueryClient();
   const createWorktreeMutation = useMutation(gitCreateWorktreeMutationOptions({ queryClient }));
@@ -1197,7 +1190,6 @@ export default function ChatView({
   const storeMergeTerminalGroups = useTerminalStateStore((s) => s.mergeTerminalGroups);
   const storeMoveTerminalToPane = useTerminalStateStore((s) => s.moveTerminalToPane);
   const storeResizeTerminalSplit = useTerminalStateStore((s) => s.resizeTerminalSplit);
-  const storeClearTerminalState = useTerminalStateStore((s) => s.clearTerminalState);
 
   const setPrompt = useCallback(
     (nextPrompt: string) => {
@@ -3681,12 +3673,6 @@ export default function ChatView({
       const api = readNativeApi();
       if (!activeThreadId || !api) return;
       const isFinalTerminal = terminalState.terminalIds.length <= 1;
-      const shouldDeletePlaceholderTerminalThread = shouldAutoDeleteTerminalThreadOnLastClose({
-        isLastTerminal: isFinalTerminal,
-        isServerThread,
-        terminalEntryPoint: terminalState.entryPoint,
-        thread: activeThread,
-      });
       const confirmed = await confirmTerminalTabClose({
         api,
         enabled: shouldPromptForTerminalClose({
@@ -3700,7 +3686,6 @@ export default function ChatView({
           terminalLabelsById: terminalState.terminalLabelsById,
           terminalTitleOverridesById: terminalState.terminalTitleOverridesById,
         }),
-        willDeleteThread: shouldDeletePlaceholderTerminalThread,
       });
       if (!confirmed) {
         return;
@@ -3713,61 +3698,11 @@ export default function ChatView({
       });
       storeCloseTerminal(activeThreadId, terminalId);
       setTerminalFocusRequestId((value) => value + 1);
-      if (!shouldDeletePlaceholderTerminalThread) {
-        return;
-      }
-      void (async () => {
-        try {
-          await api.orchestration.dispatchCommand({
-            type: "thread.delete",
-            commandId: newCommandId(),
-            threadId: activeThreadId,
-          });
-          void reconcileDeletedThreadFromClient({
-            threadId: activeThreadId,
-            removeDeletedThreadFromClientState:
-              useStore.getState().removeDeletedThreadFromClientState,
-          });
-          useComposerDraftStore.getState().clearDraftThread(activeThreadId);
-          storeClearTerminalState(activeThreadId);
-          removeThreadFromSplitViews(activeThreadId);
-          if (activeSplitView) {
-            const nextSplitView = useSplitViewStore.getState().splitViewsById[activeSplitView.id];
-            const nextThreadId = nextSplitView
-              ? resolveSplitViewFocusedThreadId(nextSplitView)
-              : null;
-            if (nextSplitView && nextThreadId) {
-              await navigate({
-                to: "/$threadId",
-                params: { threadId: nextThreadId },
-                replace: true,
-                search: () => ({ splitViewId: nextSplitView.id }),
-              });
-              return;
-            }
-          }
-          await handleNewChat({ fresh: true });
-        } catch (error) {
-          console.error("Failed to delete empty terminal thread after closing its last terminal", {
-            threadId: activeThreadId,
-            error,
-          });
-        }
-      })();
     },
     [
-      activeThread,
       activeThreadId,
-      activeSplitView,
-      handleNewChat,
-      isServerThread,
-      navigate,
-      removeThreadFromSplitViews,
-      storeClearTerminalState,
       storeCloseTerminal,
-      syncServerShellSnapshot,
       settings.confirmTerminalTabClose,
-      terminalState.entryPoint,
       terminalState.runningTerminalIds,
       terminalState.terminalAttentionStatesById,
       terminalState.terminalIds.length,
@@ -8879,17 +8814,6 @@ export default function ChatView({
     },
     [navigate],
   );
-  const activeProjectIdForNewChat = activeProject?.id ?? null;
-  const onNewEditorChat = useCallback(() => {
-    if (!activeProjectIdForNewChat) {
-      return;
-    }
-    // Keep the editor workspace view (and any open file) across the new-thread
-    // navigation; the default new-thread flow clears all search params.
-    void handleNewThread(activeProjectIdForNewChat, undefined, {
-      search: (previous) => ({ ...stripDiffSearchParams(previous), view: "editor" }),
-    });
-  }, [activeProjectIdForNewChat, handleNewThread]);
   const onOpenEditorChat = useCallback(
     (nextThreadId: ThreadId) => {
       storeOpenChatThreadPage(nextThreadId);
@@ -8899,19 +8823,9 @@ export default function ChatView({
   );
   const onOpenEditorTerminal = useCallback(() => {
     if (!activeThreadId) return;
-    setTerminalPresentationMode("workspace");
-    setTerminalWorkspaceLayout("terminal-only");
-    setTerminalWorkspaceTab("terminal");
+    storeOpenTerminalThreadPage(activeThreadId, { terminalOnly: true });
     setTerminalFocusRequestId((value) => value + 1);
-  }, [
-    activeThreadId,
-    setTerminalPresentationMode,
-    setTerminalWorkspaceLayout,
-    setTerminalWorkspaceTab,
-  ]);
-  const onCloseEditorTerminal = useCallback(() => {
-    void closeTerminal(terminalState.activeTerminalId);
-  }, [closeTerminal, terminalState.activeTerminalId]);
+  }, [activeThreadId, storeOpenTerminalThreadPage]);
   const onRevertUserMessage = useCallback(
     (messageId: MessageId) => {
       const targetTurnCount = revertTurnCountByUserMessageId.get(messageId);
@@ -9801,14 +9715,11 @@ export default function ChatView({
           editorChatControls={
             isEditorRail && activeProject
               ? {
-                  projectId: activeProject.id,
                   activeSurface: terminalWorkspaceTerminalTabActive ? "terminal" : "chat",
-                  terminalAvailable: terminalState.terminalOpen,
-                  onNewChat: onNewEditorChat,
-                  onNewTerminal: onOpenEditorTerminal,
+                  isWorking: isAgentWorking,
+                  terminalCount: terminalState.terminalOpen ? terminalState.terminalIds.length : 0,
                   onOpenChat: onOpenEditorChat,
                   onOpenTerminal: onOpenEditorTerminal,
-                  onCloseTerminal: onCloseEditorTerminal,
                 }
               : null
           }
@@ -9875,7 +9786,6 @@ export default function ChatView({
           activeTab={terminalState.workspaceActiveTab}
           isWorking={isAgentWorking}
           terminalCount={terminalState.terminalIds.length}
-          workspaceLayout={terminalState.workspaceLayout}
           onSelectTab={setTerminalWorkspaceTab}
         />
       ) : null}

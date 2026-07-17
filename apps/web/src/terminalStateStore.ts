@@ -667,6 +667,7 @@ function setThreadTerminalPresentationMode(
   }
   return {
     ...normalized,
+    entryPoint: mode === "workspace" ? "terminal" : normalized.entryPoint,
     terminalOpen: true,
     presentationMode: mode,
     workspaceLayout: normalized.workspaceLayout,
@@ -680,11 +681,16 @@ function setThreadTerminalWorkspaceTab(
 ): ThreadTerminalState {
   const normalized = normalizeThreadTerminalState(state);
   const nextWorkspaceLayout = tab === "chat" ? "both" : normalized.workspaceLayout;
-  if (normalized.workspaceActiveTab === tab && normalized.workspaceLayout === nextWorkspaceLayout) {
+  if (
+    normalized.entryPoint === tab &&
+    normalized.workspaceActiveTab === tab &&
+    normalized.workspaceLayout === nextWorkspaceLayout
+  ) {
     return normalized;
   }
   return {
     ...normalized,
+    entryPoint: tab,
     workspaceLayout: nextWorkspaceLayout,
     workspaceActiveTab: tab,
     terminalAttentionStatesById:
@@ -708,11 +714,16 @@ function setThreadTerminalWorkspaceLayout(
       : normalized.workspaceActiveTab === "chat"
         ? "chat"
         : "terminal";
-  if (normalized.workspaceLayout === layout && normalized.workspaceActiveTab === nextActiveTab) {
+  if (
+    normalized.workspaceLayout === layout &&
+    normalized.workspaceActiveTab === nextActiveTab &&
+    (layout !== "terminal-only" || normalized.entryPoint === "terminal")
+  ) {
     return normalized;
   }
   return {
     ...normalized,
+    entryPoint: layout === "terminal-only" ? "terminal" : normalized.entryPoint,
     workspaceLayout: layout,
     workspaceActiveTab: nextActiveTab,
   };
@@ -962,18 +973,13 @@ function closeThreadTerminal(state: ThreadTerminalState, terminalId: string): Th
 
   const remainingTerminalIds = normalized.terminalIds.filter((id) => id !== terminalId);
   if (remainingTerminalIds.length === 0) {
-    if (normalized.entryPoint === "terminal") {
-      return normalizeThreadTerminalState({
-        ...createDefaultThreadTerminalState(),
-        entryPoint: "terminal",
-        terminalOpen: false,
-        presentationMode: normalized.presentationMode,
-        workspaceLayout: normalized.workspaceLayout,
-        workspaceActiveTab: "terminal",
-        terminalHeight: normalized.terminalHeight,
-      });
-    }
-    return createDefaultThreadTerminalState();
+    // Terminal and chat are sibling surfaces of the same thread. Closing the
+    // final terminal closes only that surface and returns to Chat; it never
+    // leaves a terminal-only thread shell behind.
+    return normalizeThreadTerminalState({
+      ...createDefaultThreadTerminalState(),
+      terminalHeight: normalized.terminalHeight,
+    });
   }
 
   const sourceGroupId =
@@ -1236,6 +1242,7 @@ function openThreadTerminalFullWidth(
   const nextState = newThreadTerminal(state, terminalId);
   return normalizeThreadTerminalState({
     ...nextState,
+    entryPoint: "terminal",
     terminalOpen: true,
     presentationMode: "workspace",
     workspaceLayout: "terminal-only",
@@ -1246,11 +1253,12 @@ function openThreadTerminalFullWidth(
 
 function closeThreadWorkspaceChat(state: ThreadTerminalState): ThreadTerminalState {
   const normalized = normalizeThreadTerminalState(state);
-  if (normalized.workspaceLayout === "terminal-only") {
+  if (normalized.workspaceLayout === "terminal-only" && normalized.entryPoint === "terminal") {
     return normalized;
   }
   return {
     ...normalized,
+    entryPoint: "terminal",
     workspaceLayout: "terminal-only",
     workspaceActiveTab: "terminal",
   };
