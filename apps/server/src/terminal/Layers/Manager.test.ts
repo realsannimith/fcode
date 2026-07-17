@@ -1280,6 +1280,10 @@ describe("TerminalManager", () => {
     setEnv("TERM_PROGRAM", "ghostty");
     setEnv("TERMINFO", "/Applications/Ghostty.app/Contents/Resources/terminfo");
     setEnv("GHOSTTY_RESOURCES_DIR", "/Applications/Ghostty.app/Contents/Resources");
+    setEnv("NO_COLOR", "1");
+    setEnv("FORCE_COLOR", "0");
+    setEnv("CLICOLOR", "0");
+    setEnv("CLICOLOR_FORCE", "0");
 
     try {
       const { manager, ptyAdapter } = makeManager();
@@ -1294,6 +1298,11 @@ describe("TerminalManager", () => {
       expect(spawnInput.env.TERM_PROGRAM).toBeUndefined();
       expect(spawnInput.env.TERMINFO).toBeUndefined();
       expect(spawnInput.env.GHOSTTY_RESOURCES_DIR).toBeUndefined();
+      expect(spawnInput.env.NO_COLOR).toBeUndefined();
+      expect(spawnInput.env.FORCE_COLOR).toBeUndefined();
+      expect(spawnInput.env.CLICOLOR).toBeUndefined();
+      expect(spawnInput.env.CLICOLOR_FORCE).toBeUndefined();
+      expect(spawnInput.env.COLORTERM).toBe("truecolor");
 
       await manager.dispose();
     } finally {

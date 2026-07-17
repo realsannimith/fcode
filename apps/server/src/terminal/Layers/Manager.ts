@@ -108,6 +108,14 @@ const TERMINAL_ENV_BLOCKLIST = new Set([
   "TERM_PROGRAM",
   "TERM_PROGRAM_VERSION",
   "TERM_SESSION_ID",
+  // The server can be launched from a host process that intentionally disables
+  // color (for example, the dev runner sets NO_COLOR=1). That policy must not
+  // leak into the embedded terminal: agent CLIs use these flags to suppress
+  // their ANSI output even though xterm.js supports the full palette.
+  "NO_COLOR",
+  "FORCE_COLOR",
+  "CLICOLOR",
+  "CLICOLOR_FORCE",
   "GHOSTTY_RESOURCES_DIR",
   "GHOSTTY_BIN_DIR",
   "ITERM_PROFILE",
@@ -946,6 +954,9 @@ function createTerminalSpawnEnv(
   // Pin TERM to the embedded renderer's capabilities; a caller-provided
   // runtimeEnv may still override it deliberately below.
   spawnEnv.TERM = TERMINAL_SPAWN_TERM;
+  // Match modern terminal emulators and let agent TUIs use their true-color
+  // themes inside xterm.js instead of falling back to monochrome output.
+  spawnEnv.COLORTERM = "truecolor";
   if (runtimeEnv) {
     for (const [key, value] of Object.entries(runtimeEnv)) {
       spawnEnv[key] = value;
