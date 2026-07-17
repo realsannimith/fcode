@@ -1,5 +1,5 @@
 // FILE: TerminalWorkspaceTabs.tsx
-// Purpose: Renders the top-level workspace switcher between terminal and one or more chats.
+// Purpose: Renders one paired Terminal/Chat switcher for every workspace thread.
 // Layer: Chat workspace chrome
 // Depends on: terminal workspace store layout state and shared className helpers.
 //
@@ -18,6 +18,7 @@ import { AgentProgressIndicator } from "./ui/agent-progress-indicator";
 
 export interface WorkspaceChatTab {
   id: ThreadId;
+  terminalLabel?: string;
   label: string;
   title?: string;
   isWorking: boolean;
@@ -29,12 +30,11 @@ interface TerminalWorkspaceTabsProps {
   activeChatTabId?: ThreadId;
   chatTabs?: readonly WorkspaceChatTab[];
   isWorking: boolean;
-  terminalCount: number;
   variant?: "row" | "inline";
   onSelectTab: (tab: ThreadTerminalWorkspaceTab) => void;
   onSelectChatTab?: (threadId: ThreadId) => void;
-  onAddChatTab?: () => void;
-  onAddTerminalTab?: () => void;
+  onSelectTerminalTab?: (threadId: ThreadId) => void;
+  onAddWorkspaceTab?: (initialSurface: ThreadTerminalWorkspaceTab) => void;
   onCloseChatTab?: (threadId: ThreadId) => void;
 }
 
@@ -43,12 +43,11 @@ export default function TerminalWorkspaceTabs({
   activeChatTabId,
   chatTabs,
   isWorking,
-  terminalCount,
   variant = "row",
   onSelectTab,
   onSelectChatTab,
-  onAddChatTab,
-  onAddTerminalTab,
+  onSelectTerminalTab,
+  onAddWorkspaceTab,
   onCloseChatTab,
 }: TerminalWorkspaceTabsProps) {
   const tabClassName =
@@ -60,6 +59,7 @@ export default function TerminalWorkspaceTabs({
       : ([
           {
             id: activeChatTabId ?? ("chat" as ThreadId),
+            terminalLabel: "Terminal",
             label: "Chat",
             isWorking,
             canClose: false,
@@ -73,84 +73,97 @@ export default function TerminalWorkspaceTabs({
         aria-label="Thread views"
         className="flex min-w-0 items-end gap-1.5 overflow-x-auto pt-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
-        <button
-          type="button"
-          role="tab"
-          aria-selected={activeTab === "terminal"}
-          className={cn(
-            tabClassName,
-            activeTab === "terminal"
-              ? "z-[1] border-border/70 bg-[var(--composer-surface)] text-foreground"
-              : "border-transparent bg-transparent text-muted-foreground hover:bg-background/55 hover:text-foreground",
-          )}
-          onClick={() => {
-            onSelectTab("terminal");
-          }}
-        >
-          <span className="font-mono tracking-wide">Terminal</span>
-          {terminalCount > 0 ? (
-            <span className="ml-1.5 font-mono text-[10px] text-muted-foreground">
-              {terminalCount}
-            </span>
-          ) : null}
-        </button>
-        {resolvedChatTabs.map((chatTab) => {
-          const isActive =
+        {resolvedChatTabs.map((chatTab, index) => {
+          const isTerminalActive =
+            activeTab === "terminal" &&
+            (activeChatTabId === undefined || chatTab.id === activeChatTabId);
+          const isChatActive =
             activeTab === "chat" &&
             (activeChatTabId === undefined || chatTab.id === activeChatTabId);
           return (
             <div
               key={chatTab.id}
               role="presentation"
-              title={chatTab.title}
-              className={cn(
-                tabClassName,
-                isActive
-                  ? "z-[1] border-border/70 bg-[var(--composer-surface)] text-foreground"
-                  : "border-transparent bg-transparent text-muted-foreground hover:bg-background/55 hover:text-foreground",
-              )}
+              className="flex shrink-0 items-end gap-1"
             >
               <button
                 type="button"
                 role="tab"
-                aria-selected={isActive}
-                aria-label={chatTab.title ? `${chatTab.label}: ${chatTab.title}` : chatTab.label}
-                className="flex min-w-0 flex-1 items-center focus-visible:z-10 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                aria-selected={isTerminalActive}
+                aria-label={`${chatTab.terminalLabel ?? (index === 0 ? "Terminal" : `Terminal ${index + 1}`)}: ${chatTab.title ?? chatTab.label}`}
+                title={chatTab.title}
+                className={cn(
+                  tabClassName,
+                  isTerminalActive
+                    ? "z-[1] border-border/70 bg-[var(--composer-surface)] text-foreground"
+                    : "border-transparent bg-transparent text-muted-foreground hover:bg-background/55 hover:text-foreground",
+                )}
                 onClick={() => {
-                  if (onSelectChatTab) {
-                    onSelectChatTab(chatTab.id);
+                  if (onSelectTerminalTab) {
+                    onSelectTerminalTab(chatTab.id);
                   } else {
-                    onSelectTab("chat");
+                    onSelectTab("terminal");
                   }
                 }}
               >
-                <span className="font-mono tracking-wide">{chatTab.label}</span>
-                {chatTab.isWorking ? (
-                  <AgentProgressIndicator
-                    className="ml-1.5"
-                    label={`${chatTab.label} agent is generating`}
-                  />
-                ) : null}
+                <span className="font-mono tracking-wide">
+                  {chatTab.terminalLabel ?? (index === 0 ? "Terminal" : `Terminal ${index + 1}`)}
+                </span>
               </button>
-              {chatTab.canClose && onCloseChatTab ? (
+              <div
+                role="presentation"
+                title={chatTab.title}
+                className={cn(
+                  tabClassName,
+                  isChatActive
+                    ? "z-[1] border-border/70 bg-[var(--composer-surface)] text-foreground"
+                    : "border-transparent bg-transparent text-muted-foreground hover:bg-background/55 hover:text-foreground",
+                )}
+              >
                 <button
                   type="button"
-                  aria-label={`Close ${chatTab.label}`}
-                  title={`Close ${chatTab.label}`}
-                  className="ml-1 inline-flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground/70 transition-colors hover:bg-background/70 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    onCloseChatTab(chatTab.id);
+                  role="tab"
+                  aria-selected={isChatActive}
+                  aria-label={
+                    chatTab.title ? `${chatTab.label}: ${chatTab.title}` : chatTab.label
+                  }
+                  className="flex min-w-0 flex-1 items-center focus-visible:z-10 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                  onClick={() => {
+                    if (onSelectChatTab) {
+                      onSelectChatTab(chatTab.id);
+                    } else {
+                      onSelectTab("chat");
+                    }
                   }}
                 >
-                  <XIcon className="size-3" />
+                  <span className="font-mono tracking-wide">{chatTab.label}</span>
+                  {chatTab.isWorking ? (
+                    <AgentProgressIndicator
+                      className="ml-1.5"
+                      label={`${chatTab.label} agent is generating`}
+                    />
+                  ) : null}
                 </button>
-              ) : null}
+                {chatTab.canClose && onCloseChatTab ? (
+                  <button
+                    type="button"
+                    aria-label={`Close ${chatTab.label} workspace`}
+                    title={`Close ${chatTab.label} workspace`}
+                    className="ml-1 inline-flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground/70 transition-colors hover:bg-background/70 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onCloseChatTab(chatTab.id);
+                    }}
+                  >
+                    <XIcon className="size-3" />
+                  </button>
+                ) : null}
+              </div>
             </div>
           );
         })}
       </div>
-      {onAddChatTab || onAddTerminalTab ? (
+      {onAddWorkspaceTab ? (
         <Menu modal={false}>
           <MenuTrigger
             aria-label="Add workspace tab"
@@ -160,18 +173,14 @@ export default function TerminalWorkspaceTabs({
             <Plus className="size-3.5" />
           </MenuTrigger>
           <MenuPopup align="start" className="min-w-44">
-            {onAddChatTab ? (
-              <MenuItem onClick={onAddChatTab}>
-                <MessageCircleIcon className="mr-2 size-3.5" />
-                New chat
-              </MenuItem>
-            ) : null}
-            {onAddTerminalTab ? (
-              <MenuItem onClick={onAddTerminalTab}>
-                <TerminalIcon className="mr-2 size-3.5" />
-                New terminal
-              </MenuItem>
-            ) : null}
+            <MenuItem onClick={() => onAddWorkspaceTab("chat")}>
+              <MessageCircleIcon className="mr-2 size-3.5" />
+              New workspace in Chat
+            </MenuItem>
+            <MenuItem onClick={() => onAddWorkspaceTab("terminal")}>
+              <TerminalIcon className="mr-2 size-3.5" />
+              New workspace in Terminal
+            </MenuItem>
           </MenuPopup>
         </Menu>
       ) : null}

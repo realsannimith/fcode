@@ -8857,7 +8857,15 @@ export default function ChatView({
     },
     [onNavigateToThread, storeOpenChatThreadPage],
   );
-  const onAddWorkspaceChat = useCallback(() => {
+  const onOpenWorkspaceTerminal = useCallback(
+    (nextThreadId: ThreadId) => {
+      storeOpenTerminalThreadPage(nextThreadId, { terminalOnly: true });
+      onNavigateToThread(nextThreadId);
+      setTerminalFocusRequestId((value) => value + 1);
+    },
+    [onNavigateToThread, storeOpenTerminalThreadPage],
+  );
+  const onAddWorkspace = useCallback((initialSurface: "chat" | "terminal") => {
     if (!activeThreadId) return;
     const createSidechat = getSidechatCreator(activeThreadId);
     if (!createSidechat) {
@@ -8872,7 +8880,11 @@ export default function ChatView({
     void createSidechat({ presentation: "tab" })
       .then((nextThreadId) => {
         if (nextThreadId) {
-          onOpenWorkspaceChat(nextThreadId);
+          if (initialSurface === "terminal") {
+            onOpenWorkspaceTerminal(nextThreadId);
+          } else {
+            onOpenWorkspaceChat(nextThreadId);
+          }
         }
       })
       .catch((error: unknown) => {
@@ -8883,12 +8895,7 @@ export default function ChatView({
             error instanceof Error ? error.message : "An error occurred while creating the chat.",
         });
       });
-  }, [activeThreadId, onOpenWorkspaceChat]);
-  const onAddWorkspaceTerminal = useCallback(() => {
-    if (!activeThreadId) return;
-    storeOpenTerminalThreadPage(activeThreadId, { terminalOnly: true });
-    createNewTerminal();
-  }, [activeThreadId, createNewTerminal, storeOpenTerminalThreadPage]);
+  }, [activeThreadId, onOpenWorkspaceChat, onOpenWorkspaceTerminal]);
   const onCloseWorkspaceChat = useCallback(
     (closingThreadId: ThreadId) => {
       const closingTabIndex = workspaceChatTabs.findIndex((tab) => tab.id === closingThreadId);
@@ -8945,11 +8952,6 @@ export default function ChatView({
       workspaceChatTabs,
     ],
   );
-  const onOpenEditorTerminal = useCallback(() => {
-    if (!activeThreadId) return;
-    storeOpenTerminalThreadPage(activeThreadId, { terminalOnly: true });
-    setTerminalFocusRequestId((value) => value + 1);
-  }, [activeThreadId, storeOpenTerminalThreadPage]);
   const onRevertUserMessage = useCallback(
     (messageId: MessageId) => {
       const targetTurnCount = revertTurnCountByUserMessageId.get(messageId);
@@ -9842,12 +9844,10 @@ export default function ChatView({
                   activeSurface: terminalWorkspaceTerminalTabActive ? "terminal" : "chat",
                   chatTabs: workspaceChatTabs,
                   isWorking: isAgentWorking,
-                  terminalCount: terminalState.terminalOpen ? terminalState.terminalIds.length : 0,
-                  onAddChat: isServerThread ? onAddWorkspaceChat : undefined,
-                  onAddTerminal: onAddWorkspaceTerminal,
+                  onAddWorkspace: isServerThread ? onAddWorkspace : undefined,
                   onCloseChat: isServerThread ? onCloseWorkspaceChat : undefined,
                   onOpenChat: onOpenWorkspaceChat,
-                  onOpenTerminal: onOpenEditorTerminal,
+                  onOpenTerminal: onOpenWorkspaceTerminal,
                 }
               : null
           }
@@ -9915,11 +9915,10 @@ export default function ChatView({
           activeChatTabId={activeThread.id}
           chatTabs={workspaceChatTabs}
           isWorking={isAgentWorking}
-          terminalCount={terminalState.terminalOpen ? terminalState.terminalIds.length : 0}
-          onAddChatTab={isServerThread ? onAddWorkspaceChat : undefined}
-          onAddTerminalTab={onAddWorkspaceTerminal}
+          onAddWorkspaceTab={isServerThread ? onAddWorkspace : undefined}
           onCloseChatTab={isServerThread ? onCloseWorkspaceChat : undefined}
           onSelectChatTab={onOpenWorkspaceChat}
+          onSelectTerminalTab={onOpenWorkspaceTerminal}
           onSelectTab={selectThreadSurface}
         />
       ) : null}

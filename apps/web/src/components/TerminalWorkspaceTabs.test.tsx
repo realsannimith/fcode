@@ -18,23 +18,37 @@ describe("TerminalWorkspaceTabs", () => {
         activeTab="chat"
         activeChatTabId={chatTwo}
         chatTabs={[
-          { id: chatOne, label: "Chat", title: "Main task", isWorking: false, canClose: true },
-          { id: chatTwo, label: "Chat 2", title: "Alternative", isWorking: true, canClose: true },
+          {
+            id: chatOne,
+            terminalLabel: "Terminal",
+            label: "Chat",
+            title: "Main task",
+            isWorking: false,
+            canClose: true,
+          },
+          {
+            id: chatTwo,
+            terminalLabel: "Terminal 2",
+            label: "Chat 2",
+            title: "Alternative",
+            isWorking: true,
+            canClose: true,
+          },
         ]}
         isWorking={false}
-        terminalCount={1}
-        onAddChatTab={vi.fn()}
-        onAddTerminalTab={vi.fn()}
+        onAddWorkspaceTab={vi.fn()}
         onCloseChatTab={vi.fn()}
         onSelectChatTab={vi.fn()}
+        onSelectTerminalTab={vi.fn()}
         onSelectTab={vi.fn()}
       />,
     );
 
     expect(markup).toContain("Chat 2");
+    expect(markup).toContain("Terminal 2");
     expect(markup).toContain('aria-label="Add workspace tab"');
-    expect(markup).toContain('aria-label="Close Chat 2"');
-    expect(markup).toContain('aria-label="Close Chat"');
+    expect(markup).toContain('aria-label="Close Chat 2 workspace"');
+    expect(markup).toContain('aria-label="Close Chat workspace"');
     expect(markup).toContain('aria-label="Chat 2 agent is generating"');
   });
 
@@ -43,7 +57,6 @@ describe("TerminalWorkspaceTabs", () => {
       <TerminalWorkspaceTabs
         activeTab="chat"
         isWorking={false}
-        terminalCount={0}
         onSelectTab={vi.fn()}
       />,
     );
@@ -58,7 +71,6 @@ describe("TerminalWorkspaceTabs", () => {
       <TerminalWorkspaceTabs
         activeTab="terminal"
         isWorking={false}
-        terminalCount={2}
         onSelectTab={vi.fn()}
       />,
     );
@@ -73,7 +85,6 @@ describe("TerminalWorkspaceTabs", () => {
       <TerminalWorkspaceTabs
         activeTab="terminal"
         isWorking={false}
-        terminalCount={1}
         onSelectTab={vi.fn()}
       />,
     );
@@ -87,7 +98,6 @@ describe("TerminalWorkspaceTabs", () => {
       <TerminalWorkspaceTabs
         activeTab="terminal"
         isWorking
-        terminalCount={2}
         onSelectTab={vi.fn()}
       />,
     );

@@ -110,12 +110,10 @@ interface ChatHeaderProps {
     activeSurface: "chat" | "terminal";
     chatTabs: readonly WorkspaceChatTab[];
     isWorking: boolean;
-    terminalCount: number;
-    onAddChat?: () => void;
-    onAddTerminal?: () => void;
+    onAddWorkspace?: (initialSurface: "chat" | "terminal") => void;
     onCloseChat?: (threadId: ThreadId) => void;
     onOpenChat: (threadId: ThreadId) => void;
-    onOpenTerminal: () => void;
+    onOpenTerminal: (threadId: ThreadId) => void;
   } | null;
   onRunProjectScript: (script: ProjectScript) => void;
   onAddProjectScript: (input: NewProjectScriptInput) => Promise<void>;
@@ -133,12 +131,10 @@ function EditorRailTabs(props: {
   activeSurface: "chat" | "terminal";
   chatTabs: readonly WorkspaceChatTab[];
   isWorking: boolean;
-  terminalCount: number;
-  onAddChat?: () => void;
-  onAddTerminal?: () => void;
+  onAddWorkspace?: (initialSurface: "chat" | "terminal") => void;
   onCloseChat?: (threadId: ThreadId) => void;
   onOpenChat: (threadId: ThreadId) => void;
-  onOpenTerminal: () => void;
+  onOpenTerminal: (threadId: ThreadId) => void;
 }) {
   return (
     <div className="flex h-full min-w-0 flex-1 items-end [-webkit-app-region:no-drag]">
@@ -148,15 +144,14 @@ function EditorRailTabs(props: {
           activeChatTabId={props.activeThreadId}
           chatTabs={props.chatTabs}
           isWorking={props.isWorking}
-          terminalCount={props.terminalCount}
           variant="inline"
-          onAddChatTab={props.onAddChat}
-          onAddTerminalTab={props.onAddTerminal}
+          onAddWorkspaceTab={props.onAddWorkspace}
           onCloseChatTab={props.onCloseChat}
           onSelectChatTab={props.onOpenChat}
+          onSelectTerminalTab={props.onOpenTerminal}
           onSelectTab={(tab) => {
             if (tab === "terminal") {
-              props.onOpenTerminal();
+              props.onOpenTerminal(props.activeThreadId);
             } else {
               props.onOpenChat(props.activeThreadId);
             }
@@ -404,9 +399,7 @@ export const ChatHeader = memo(function ChatHeader({
                   activeSurface={editorChatControls.activeSurface}
                   chatTabs={editorChatControls.chatTabs}
                   isWorking={editorChatControls.isWorking}
-                  terminalCount={editorChatControls.terminalCount}
-                  onAddChat={editorChatControls.onAddChat}
-                  onAddTerminal={editorChatControls.onAddTerminal}
+                  onAddWorkspace={editorChatControls.onAddWorkspace}
                   onCloseChat={editorChatControls.onCloseChat}
                   onOpenChat={editorChatControls.onOpenChat}
                   onOpenTerminal={editorChatControls.onOpenTerminal}

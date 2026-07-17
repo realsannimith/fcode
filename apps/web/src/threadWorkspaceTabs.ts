@@ -15,6 +15,7 @@ export interface ThreadWorkspaceTabSummary {
 
 export interface ThreadWorkspaceChatTab {
   id: ThreadId;
+  terminalLabel: string;
   label: string;
   title: string;
   isWorking: boolean;
@@ -54,6 +55,7 @@ export function resolveThreadWorkspaceChatTabs(input: {
     hostThreadId,
     tabs: orderedSummaries.map((summary, index) => ({
       id: summary.id,
+      terminalLabel: index === 0 ? "Terminal" : `Terminal ${index + 1}`,
       label: index === 0 ? "Chat" : `Chat ${index + 1}`,
       title: summary.title,
       isWorking: summary.hasLiveTailWork,
