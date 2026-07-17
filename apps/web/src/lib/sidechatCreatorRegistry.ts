@@ -1,16 +1,18 @@
 // FILE: sidechatCreatorRegistry.ts
-// Purpose: Bridge the composer's /side creation logic to the right-dock "+" button.
+// Purpose: Bridge the composer's side-chat creation logic to workspace add-chat controls.
 // Layer: Chat capability registry
 // Exports: register/get for a per-host-thread sidechat creator.
 //
 // The composer (inside ChatView) owns the full sidechat-creation flow, including the
-// user's currently selected model. The right dock lives outside ChatView, so instead
-// of duplicating that flow we let the composer publish its creator keyed by host
-// thread id and have the dock invoke it. Only threads that can offer /side register.
+// user's currently selected model. Workspace chrome outside that hook invokes the
+// published creator instead of duplicating the orchestration command sequence.
 
 import type { ThreadId } from "@t3tools/contracts";
 
-export type SidechatCreator = (options?: { initialPrompt?: string }) => Promise<unknown>;
+export type SidechatCreator = (options?: {
+  initialPrompt?: string;
+  presentation?: "dock" | "tab";
+}) => Promise<ThreadId | null>;
 
 const creatorsByThreadId = new Map<ThreadId, SidechatCreator>();
 

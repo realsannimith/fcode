@@ -294,18 +294,22 @@ export function useComposerSlashCommands(input: {
   );
 
   const createSidechatFromSlashCommand = useCallback(
-    async (inputOptions?: { initialPrompt?: string }) => {
+    async (inputOptions?: {
+      initialPrompt?: string;
+      presentation?: "dock" | "tab";
+    }) => {
       const api = readNativeApi();
-      if (!api || !activeProject || !activeThread || !isServerThread || !canOfferSideCommand) {
+      if (!api || !activeProject || !activeThread || !isServerThread) {
         toastManager.add({
           type: "warning",
           title: "Side is unavailable",
           description: "Open a server-backed main thread before starting Side.",
         });
-        return true;
+        return null;
       }
 
       const importedMessages = buildThreadHandoffImportedMessages(activeThread);
+      const hostThreadId = activeThread.sidechatSourceThreadId ?? activeThread.id;
       const nextThreadId = newThreadId();
       const createdAt = new Date().toISOString();
       const initialPrompt = inputOptions?.initialPrompt?.trim() ?? "";
@@ -319,7 +323,7 @@ export function useComposerSlashCommands(input: {
         commandId: newCommandId(),
         threadId: nextThreadId,
         sourceThreadId: activeThread.id,
-        sidechatSourceThreadId: activeThread.id,
+        sidechatSourceThreadId: hostThreadId,
         projectId: activeProject.id,
         title: `Sidechat: ${titleSeed}`,
         modelSelection: selectedModelSelection,
@@ -355,32 +359,32 @@ export function useComposerSlashCommands(input: {
 
       const snapshot = await api.orchestration.getShellSnapshot();
       syncServerShellSnapshot(snapshot);
-      // Side chats now live as a tab in the host thread's right dock instead of a
-      // split-view pane, so the user stays on the main conversation.
-      useRightDockStore.getState().openPane(activeThread.id, {
-        kind: "sidechat",
-        threadId: nextThreadId,
-      });
-      return true;
+      if (inputOptions?.presentation !== "tab") {
+        useRightDockStore.getState().openPane(hostThreadId, {
+          kind: "sidechat",
+          threadId: nextThreadId,
+        });
+      }
+      return nextThreadId;
     },
     [
       activeProject,
       activeThread,
-      canOfferSideCommand,
       isServerThread,
       selectedModelSelection,
       syncServerShellSnapshot,
     ],
   );
 
-  // Publish the host thread's sidechat creator so the right-dock "+" button can start
-  // a sidechat using the exact same flow (and model selection) as typing /side.
+  // Publish for every server-backed chat, including an active child tab. New child
+  // tabs still group under the original host while forking the currently visible
+  // conversation, so the user's selected model and context remain predictable.
   useEffect(() => {
-    if (!canOfferSideCommand) {
+    if (!isServerThread || !activeThread) {
       return;
     }
     return registerSidechatCreator(threadId, createSidechatFromSlashCommand);
-  }, [canOfferSideCommand, createSidechatFromSlashCommand, threadId]);
+  }, [activeThread, createSidechatFromSlashCommand, isServerThread, threadId]);
 
   const runCodexReviewStart = useCallback(
     async (target: "changes" | "base-branch") => {

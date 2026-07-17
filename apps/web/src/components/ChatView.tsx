@@ -173,7 +173,11 @@ import {
   ensureLeadingSpaceForReplacement,
   extendReplacementRangeForTrailingSpace,
 } from "../composerTriggerInsertion";
-import { createProjectSelector, createThreadSelector } from "../storeSelectors";
+import {
+  createProjectSelector,
+  createSidebarThreadSummariesSelector,
+  createThreadSelector,
+} from "../storeSelectors";
 import {
   canOfferForkSlashCommand,
   canOfferSideSlashCommand,
@@ -485,6 +489,8 @@ import {
 } from "./ChatView.logic";
 import { useLocalStorage } from "~/hooks/useLocalStorage";
 import { useComposerSlashCommands } from "../hooks/useComposerSlashCommands";
+import { getSidechatCreator } from "../lib/sidechatCreatorRegistry";
+import { resolveThreadWorkspaceChatTabs } from "../threadWorkspaceTabs";
 import { useFeatureFlags } from "../featureFlags";
 import { mergeCursorModelVariantsWithBaseControls } from "../cursorModelVariants";
 import { useHandleNewThread } from "../hooks/useHandleNewThread";
@@ -965,6 +971,9 @@ export default function ChatView({
     (store) => store.draftThreadsByThreadId[threadId] ?? null,
   );
   const serverThread = useStore(useMemo(() => createThreadSelector(threadId), [threadId]));
+  const threadWorkspaceSummaries = useStore(
+    useMemo(() => createSidebarThreadSummariesSelector(), []),
+  );
   const fallbackDraftProjectId = draftThread?.projectId ?? null;
   const fallbackDraftProject = useStore(
     useMemo(() => createProjectSelector(fallbackDraftProjectId), [fallbackDraftProjectId]),
@@ -1318,6 +1327,19 @@ export default function ChatView({
     [draftThread, fallbackDraftProject?.defaultModelSelection, localDraftError, threadId],
   );
   const activeThread = serverThread ?? localDraftThread;
+  const activeWorkspaceThreadId = activeThread?.id ?? null;
+  const activeWorkspaceHostThreadId = activeThread?.sidechatSourceThreadId ?? null;
+  const workspaceChatTabs = useMemo(
+    () =>
+      activeWorkspaceThreadId
+        ? resolveThreadWorkspaceChatTabs({
+            activeThreadId: activeWorkspaceThreadId,
+            activeSidechatSourceThreadId: activeWorkspaceHostThreadId,
+            summaries: threadWorkspaceSummaries,
+          }).tabs
+        : [],
+    [activeWorkspaceHostThreadId, activeWorkspaceThreadId, threadWorkspaceSummaries],
+  );
   const runtimeMode =
     composerDraft.runtimeMode ?? activeThread?.runtimeMode ?? DEFAULT_RUNTIME_MODE;
   const interactionMode =
@@ -8828,13 +8850,40 @@ export default function ChatView({
     },
     [navigate],
   );
-  const onOpenEditorChat = useCallback(
+  const onOpenWorkspaceChat = useCallback(
     (nextThreadId: ThreadId) => {
       storeOpenChatThreadPage(nextThreadId);
       onNavigateToThread(nextThreadId);
     },
     [onNavigateToThread, storeOpenChatThreadPage],
   );
+  const onAddWorkspaceChat = useCallback(() => {
+    if (!activeThreadId) return;
+    const createSidechat = getSidechatCreator(activeThreadId);
+    if (!createSidechat) {
+      toastManager.add({
+        type: "warning",
+        title: "New chat is unavailable",
+        description: "Open a server-backed chat before adding another chat tab.",
+      });
+      return;
+    }
+
+    void createSidechat({ presentation: "tab" })
+      .then((nextThreadId) => {
+        if (nextThreadId) {
+          onOpenWorkspaceChat(nextThreadId);
+        }
+      })
+      .catch((error: unknown) => {
+        toastManager.add({
+          type: "error",
+          title: "Could not add chat tab",
+          description:
+            error instanceof Error ? error.message : "An error occurred while creating the chat.",
+        });
+      });
+  }, [activeThreadId, onOpenWorkspaceChat]);
   const onOpenEditorTerminal = useCallback(() => {
     if (!activeThreadId) return;
     storeOpenTerminalThreadPage(activeThreadId, { terminalOnly: true });
@@ -9730,9 +9779,11 @@ export default function ChatView({
             isEditorRail && activeProject
               ? {
                   activeSurface: terminalWorkspaceTerminalTabActive ? "terminal" : "chat",
+                  chatTabs: workspaceChatTabs,
                   isWorking: isAgentWorking,
                   terminalCount: terminalState.terminalOpen ? terminalState.terminalIds.length : 0,
-                  onOpenChat: onOpenEditorChat,
+                  onAddChat: isServerThread ? onAddWorkspaceChat : undefined,
+                  onOpenChat: onOpenWorkspaceChat,
                   onOpenTerminal: onOpenEditorTerminal,
                 }
               : null
@@ -9798,8 +9849,12 @@ export default function ChatView({
       {!isEditorRail ? (
         <TerminalWorkspaceTabs
           activeTab={terminalWorkspaceTerminalTabActive ? "terminal" : "chat"}
+          activeChatTabId={activeThread.id}
+          chatTabs={workspaceChatTabs}
           isWorking={isAgentWorking}
           terminalCount={terminalState.terminalOpen ? terminalState.terminalIds.length : 0}
+          onAddChatTab={isServerThread ? onAddWorkspaceChat : undefined}
+          onSelectChatTab={onOpenWorkspaceChat}
           onSelectTab={selectThreadSurface}
         />
       ) : null}

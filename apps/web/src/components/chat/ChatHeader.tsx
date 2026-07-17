@@ -47,7 +47,7 @@ import { useOpenFavoriteEditorShortcut } from "~/hooks/useOpenFavoriteEditorShor
 import type { RepoDiffTotals } from "~/hooks/useRepoDiffTotals";
 import { ProviderIcon } from "../ProviderIcon";
 import { ProviderUsageMenuControl } from "../ProviderUsageMenuControl";
-import TerminalWorkspaceTabs from "../TerminalWorkspaceTabs";
+import TerminalWorkspaceTabs, { type WorkspaceChatTab } from "../TerminalWorkspaceTabs";
 import { EnvironmentToggle, type EnvironmentToggleState } from "./environment/EnvironmentToggle";
 
 /**
@@ -108,8 +108,10 @@ interface ChatHeaderProps {
   // Per-thread Chat/Terminal surface switcher shown by the editor workspace rail.
   editorChatControls?: {
     activeSurface: "chat" | "terminal";
+    chatTabs: readonly WorkspaceChatTab[];
     isWorking: boolean;
     terminalCount: number;
+    onAddChat?: () => void;
     onOpenChat: (threadId: ThreadId) => void;
     onOpenTerminal: () => void;
   } | null;
@@ -127,8 +129,10 @@ interface ChatHeaderProps {
 function EditorRailTabs(props: {
   activeThreadId: ThreadId;
   activeSurface: "chat" | "terminal";
+  chatTabs: readonly WorkspaceChatTab[];
   isWorking: boolean;
   terminalCount: number;
+  onAddChat?: () => void;
   onOpenChat: (threadId: ThreadId) => void;
   onOpenTerminal: () => void;
 }) {
@@ -137,9 +141,13 @@ function EditorRailTabs(props: {
       <div className="self-end">
         <TerminalWorkspaceTabs
           activeTab={props.activeSurface}
+          activeChatTabId={props.activeThreadId}
+          chatTabs={props.chatTabs}
           isWorking={props.isWorking}
           terminalCount={props.terminalCount}
           variant="inline"
+          onAddChatTab={props.onAddChat}
+          onSelectChatTab={props.onOpenChat}
           onSelectTab={(tab) => {
             if (tab === "terminal") {
               props.onOpenTerminal();
@@ -388,8 +396,10 @@ export const ChatHeader = memo(function ChatHeader({
                 <EditorRailTabs
                   activeThreadId={activeThreadId}
                   activeSurface={editorChatControls.activeSurface}
+                  chatTabs={editorChatControls.chatTabs}
                   isWorking={editorChatControls.isWorking}
                   terminalCount={editorChatControls.terminalCount}
+                  onAddChat={editorChatControls.onAddChat}
                   onOpenChat={editorChatControls.onOpenChat}
                   onOpenTerminal={editorChatControls.onOpenTerminal}
                 />

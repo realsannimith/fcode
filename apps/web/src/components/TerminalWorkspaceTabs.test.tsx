@@ -5,10 +5,35 @@
 
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
+import { ThreadId } from "@t3tools/contracts";
 
 import TerminalWorkspaceTabs from "./TerminalWorkspaceTabs";
 
 describe("TerminalWorkspaceTabs", () => {
+  it("renders multiple chat tabs and an accessible add control", () => {
+    const chatOne = ThreadId.makeUnsafe("chat-one");
+    const chatTwo = ThreadId.makeUnsafe("chat-two");
+    const markup = renderToStaticMarkup(
+      <TerminalWorkspaceTabs
+        activeTab="chat"
+        activeChatTabId={chatTwo}
+        chatTabs={[
+          { id: chatOne, label: "Chat", title: "Main task", isWorking: false },
+          { id: chatTwo, label: "Chat 2", title: "Alternative", isWorking: true },
+        ]}
+        isWorking={false}
+        terminalCount={1}
+        onAddChatTab={vi.fn()}
+        onSelectChatTab={vi.fn()}
+        onSelectTab={vi.fn()}
+      />,
+    );
+
+    expect(markup).toContain("Chat 2");
+    expect(markup).toContain('aria-label="New chat tab"');
+    expect(markup).toContain('aria-label="Chat 2 agent is generating"');
+  });
+
   it("keeps both thread surfaces available before a terminal is opened", () => {
     const markup = renderToStaticMarkup(
       <TerminalWorkspaceTabs
