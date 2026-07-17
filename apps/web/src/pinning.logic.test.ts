@@ -3,7 +3,13 @@
 // Layer: UI state logic test
 
 import { describe, expect, it } from "vitest";
-import { derivePinnedIds, orderPinnedItemsFirst, pinId, prunePinnedIds } from "./pinning.logic";
+import {
+  derivePinnedIds,
+  orderPinnedItemsFirst,
+  pinId,
+  prunePinnedIds,
+  reorderPinnedIds,
+} from "./pinning.logic";
 
 describe("pinning.logic", () => {
   it("pins newest ids first and rejects ids beyond the configured cap", () => {
@@ -56,5 +62,13 @@ describe("pinning.logic", () => {
 
   it("prunes missing ids and removes duplicates", () => {
     expect(prunePinnedIds(["a", "b", "a", "c"], ["c", "a"])).toEqual(["a", "c"]);
+  });
+
+  it("reorders persisted pins without changing a no-op list reference", () => {
+    const pinnedIds = ["a", "b", "c"];
+
+    expect(reorderPinnedIds(pinnedIds, "c", "a")).toEqual(["c", "a", "b"]);
+    expect(reorderPinnedIds(pinnedIds, "b", "b")).toBe(pinnedIds);
+    expect(reorderPinnedIds(pinnedIds, "missing", "a")).toBe(pinnedIds);
   });
 });

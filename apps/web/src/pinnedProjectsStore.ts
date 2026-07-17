@@ -6,12 +6,19 @@
 import { MAX_PINNED_PROJECTS, type ProjectId } from "@t3tools/contracts";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
-import { normalizePinnedIds, pinId, prunePinnedIds, unpinId } from "./pinning.logic";
+import {
+  normalizePinnedIds,
+  pinId,
+  prunePinnedIds,
+  reorderPinnedIds,
+  unpinId,
+} from "./pinning.logic";
 
 interface PinnedProjectsStoreState {
   pinnedProjectIds: ProjectId[];
   pinProject: (projectId: ProjectId) => boolean;
   unpinProject: (projectId: ProjectId) => void;
+  reorderPinnedProject: (activeProjectId: ProjectId, overProjectId: ProjectId) => void;
   prunePinnedProjects: (projectIds: readonly ProjectId[]) => void;
 }
 
@@ -43,6 +50,16 @@ export const usePinnedProjectsStore = create<PinnedProjectsStoreState>()(
           return {
             pinnedProjectIds: result.pinnedIds,
           };
+        });
+      },
+      reorderPinnedProject: (activeProjectId, overProjectId) => {
+        set((state) => {
+          const pinnedProjectIds = reorderPinnedIds(
+            state.pinnedProjectIds,
+            activeProjectId,
+            overProjectId,
+          );
+          return pinnedProjectIds === state.pinnedProjectIds ? state : { pinnedProjectIds };
         });
       },
       prunePinnedProjects: (projectIds) => {

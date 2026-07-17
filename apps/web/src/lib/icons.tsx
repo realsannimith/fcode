@@ -43,6 +43,7 @@ import {
   IconHash,
   IconFolder,
   IconFolderOpen,
+  IconGripVertical,
   IconEdit,
   IconHistory,
   IconInfoCircle,
@@ -184,6 +185,7 @@ export const GitHubIcon: LucideIcon = (props) => (
 );
 export const GitPullRequestIcon = centralIconWrapper("pull-request");
 export const GlobeIcon = adaptIcon(IconWorld);
+export const GripVerticalIcon = adaptIcon(IconGripVertical);
 export const WebSearchIcon: LucideIcon = centralIconWrapper("globe");
 export const McpIcon: LucideIcon = (props) => (
   <VscMcp className={props.className} style={props.style} />

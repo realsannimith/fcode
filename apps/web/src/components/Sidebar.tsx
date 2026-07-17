@@ -54,6 +54,7 @@ import {
   DndContext,
   type DragCancelEvent,
   type CollisionDetection,
+  KeyboardSensor,
   PointerSensor,
   type DragStartEvent,
   closestCorners,
@@ -62,7 +63,12 @@ import {
   useSensors,
   type DragEndEvent,
 } from "@dnd-kit/core";
-import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
 import { restrictToFirstScrollableAncestor, restrictToVerticalAxis } from "@dnd-kit/modifiers";
 import { CSS } from "@dnd-kit/utilities";
 import {
@@ -1364,6 +1370,7 @@ export default function Sidebar() {
   const persistedPinnedProjectIds = usePinnedProjectsStore((store) => store.pinnedProjectIds);
   const pinProjectLocally = usePinnedProjectsStore((store) => store.pinProject);
   const unpinProject = usePinnedProjectsStore((store) => store.unpinProject);
+  const reorderPinnedProject = usePinnedProjectsStore((store) => store.reorderPinnedProject);
   const prunePinnedProjects = usePinnedProjectsStore((store) => store.prunePinnedProjects);
   const persistedPinnedThreadIds = usePinnedThreadsStore((store) => store.pinnedThreadIds);
   const pinThreadLocally = usePinnedThreadsStore((store) => store.pinThread);
@@ -3929,6 +3936,9 @@ export default function Sidebar() {
     useSensor(PointerSensor, {
       activationConstraint: { distance: 6 },
     }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    }),
   );
   const projectCollisionDetection = useCallback<CollisionDetection>((args) => {
     const pointerCollisions = pointerWithin(args);
@@ -3941,24 +3951,35 @@ export default function Sidebar() {
 
   const handleProjectDragEnd = useCallback(
     (event: DragEndEvent) => {
-      if (appSettings.sidebarProjectSortOrder !== "manual") {
-        dragInProgressRef.current = false;
-        return;
-      }
       dragInProgressRef.current = false;
       const { active, over } = event;
       if (!over || active.id === over.id) return;
       const activeProject = projects.find((project) => project.id === active.id);
       const overProject = projects.find((project) => project.id === over.id);
       if (!activeProject || !overProject) return;
+
+      const persistedPins = usePinnedProjectsStore.getState().pinnedProjectIds;
+      const activeIsPinned = persistedPins.includes(activeProject.id);
+      const overIsPinned = persistedPins.includes(overProject.id);
+      if (activeIsPinned || overIsPinned) {
+        if (activeIsPinned && overIsPinned) {
+          reorderPinnedProject(activeProject.id, overProject.id);
+        }
+        return;
+      }
+      if (appSettings.sidebarProjectSortOrder !== "manual") return;
       reorderProjects(activeProject.id, overProject.id);
     },
-    [appSettings.sidebarProjectSortOrder, projects, reorderProjects],
+    [appSettings.sidebarProjectSortOrder, projects, reorderPinnedProject, reorderProjects],
   );
 
   const handleProjectDragStart = useCallback(
-    (_event: DragStartEvent) => {
-      if (appSettings.sidebarProjectSortOrder !== "manual") {
+    (event: DragStartEvent) => {
+      const activeProjectId = String(event.active.id) as ProjectId;
+      const activeIsPinned = usePinnedProjectsStore
+        .getState()
+        .pinnedProjectIds.includes(activeProjectId);
+      if (appSettings.sidebarProjectSortOrder !== "manual" && !activeIsPinned) {
         return;
       }
       dragInProgressRef.current = true;
@@ -5283,15 +5304,15 @@ export default function Sidebar() {
       <div className="group/collapsible">
         <div className="group/project-header relative">
           <SidebarMenuButton
-            ref={isManualProjectSorting ? dragHandleProps?.setActivatorNodeRef : undefined}
+            ref={dragHandleProps?.setActivatorNodeRef}
             size="sm"
             className={cn(
               SIDEBAR_HEADER_ROW_CLASS_NAME,
               "hover:bg-[var(--sidebar-accent)] group-hover/project-header:bg-[var(--sidebar-accent)] group-hover/project-header:text-[var(--sidebar-accent-foreground)]",
-              isManualProjectSorting ? "cursor-grab active:cursor-grabbing" : "cursor-pointer",
+              dragHandleProps ? "cursor-grab active:cursor-grabbing" : "cursor-pointer",
             )}
-            {...(isManualProjectSorting && dragHandleProps ? dragHandleProps.attributes : {})}
-            {...(isManualProjectSorting && dragHandleProps ? dragHandleProps.listeners : {})}
+            {...(dragHandleProps ? dragHandleProps.attributes : {})}
+            {...(dragHandleProps ? dragHandleProps.listeners : {})}
             onPointerDownCapture={handleProjectTitlePointerDownCapture}
             onClick={(event) => handleProjectTitleClick(event, project.id)}
             onKeyDown={(event) => handleProjectTitleKeyDown(event, project.id)}
@@ -6572,7 +6593,7 @@ export default function Sidebar() {
                   </div>
                 )}
 
-                {isManualProjectSorting ? (
+                {isManualProjectSorting || pinnedProjectIds.length > 1 ? (
                   <DndContext
                     sensors={projectDnDSensors}
                     collisionDetection={projectCollisionDetection}
@@ -6586,11 +6607,21 @@ export default function Sidebar() {
                         items={standardProjects.map((project) => project.id)}
                         strategy={verticalListSortingStrategy}
                       >
-                        {standardProjects.map((project) => (
-                          <SortableProjectItem key={project.id} projectId={project.id}>
-                            {(dragHandleProps) => renderProjectItem(project, dragHandleProps)}
-                          </SortableProjectItem>
-                        ))}
+                        {standardProjects.map((project) => {
+                          const dragDisabled =
+                            !isManualProjectSorting && !pinnedProjectIdSet.has(project.id);
+                          return (
+                            <SortableProjectItem
+                              key={project.id}
+                              projectId={project.id}
+                              disabled={dragDisabled}
+                            >
+                              {(dragHandleProps) =>
+                                renderProjectItem(project, dragDisabled ? null : dragHandleProps)
+                              }
+                            </SortableProjectItem>
+                          );
+                        })}
                       </SortableContext>
                     </SidebarMenu>
                   </DndContext>

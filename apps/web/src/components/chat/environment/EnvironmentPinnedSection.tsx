@@ -6,6 +6,23 @@
 
 import type { MessageId, PinnedMessage } from "@t3tools/contracts";
 import {
+  closestCenter,
+  DndContext,
+  type DragEndEvent,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+import { restrictToFirstScrollableAncestor, restrictToVerticalAxis } from "@dnd-kit/modifiers";
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import {
   memo,
   useCallback,
   useEffect,
@@ -17,7 +34,7 @@ import {
 
 import { Checkbox } from "~/components/ui/checkbox";
 import { IconButton } from "~/components/ui/icon-button";
-import { ChevronDownIcon, ChevronUpIcon, XIcon } from "~/lib/icons";
+import { ChevronDownIcon, ChevronUpIcon, GripVerticalIcon, XIcon } from "~/lib/icons";
 import { cn } from "~/lib/utils";
 import { displayLabelFor } from "~/pinnedMessages";
 
@@ -43,30 +60,62 @@ export function EnvironmentPinnedSection({
   onRename,
   onReorder,
 }: EnvironmentPinnedSectionProps) {
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 4 },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    }),
+  );
+  const handleDragEnd = useCallback(
+    (event: DragEndEvent) => {
+      const { active, over } = event;
+      if (!over || active.id === over.id) return;
+      const activePin = pins.find((pin) => pin.messageId === active.id);
+      const targetIndex = pins.findIndex((pin) => pin.messageId === over.id);
+      if (!activePin || targetIndex < 0) return;
+      onReorder(activePin.messageId, targetIndex);
+    },
+    [onReorder, pins],
+  );
+
   if (pins.length === 0) {
     return null;
   }
   return (
     <EnvironmentCollapsibleSection label={`Pinned · ${pins.length}`}>
-      <ul
-        className="flex max-h-56 flex-col overflow-y-auto overscroll-contain pr-0.5"
-        aria-label="Pinned messages"
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        modifiers={[restrictToVerticalAxis, restrictToFirstScrollableAncestor]}
+        onDragEnd={handleDragEnd}
       >
-        {pins.map((pin, index) => (
-          <PinnedMessageRow
-            key={pin.messageId}
-            pin={pin}
-            text={messageTextById.get(pin.messageId)}
-            onJump={onJump}
-            onToggleDone={onToggleDone}
-            onUnpin={onUnpin}
-            onRename={onRename}
-            index={index}
-            total={pins.length}
-            onReorder={onReorder}
-          />
-        ))}
-      </ul>
+        <ul
+          className="flex max-h-56 flex-col overflow-y-auto overscroll-contain pr-0.5"
+          aria-label="Pinned messages"
+        >
+          <SortableContext
+            items={pins.map((pin) => pin.messageId)}
+            strategy={verticalListSortingStrategy}
+          >
+            {pins.map((pin, index) => (
+              <PinnedMessageRow
+                key={pin.messageId}
+                pin={pin}
+                text={messageTextById.get(pin.messageId)}
+                onJump={onJump}
+                onToggleDone={onToggleDone}
+                onUnpin={onUnpin}
+                onRename={onRename}
+                index={index}
+                total={pins.length}
+                onReorder={onReorder}
+              />
+            ))}
+          </SortableContext>
+        </ul>
+      </DndContext>
     </EnvironmentCollapsibleSection>
   );
 }
@@ -97,6 +146,19 @@ const PinnedMessageRow = memo(function PinnedMessageRow({
   const inputRef = useRef<HTMLInputElement>(null);
   const jumpClickTimeoutRef = useRef<number | null>(null);
   const suppressNextBlurCommitRef = useRef(false);
+  const {
+    attributes,
+    listeners,
+    setActivatorNodeRef,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+    isOver,
+  } = useSortable({
+    id: pin.messageId,
+    disabled: editing || total < 2,
+  });
 
   const available = text !== undefined;
   const resolvedLabel = displayLabelFor(pin, text);
@@ -186,10 +248,28 @@ const PinnedMessageRow = memo(function PinnedMessageRow({
 
   return (
     <li
-      className="group/pin flex items-center gap-1.5 rounded-lg px-2 py-1 hover:bg-[var(--color-background-elevated-secondary)]"
+      ref={setNodeRef}
+      style={{ transform: CSS.Translate.toString(transform), transition }}
+      className={cn(
+        "group/pin flex items-center gap-1 rounded-lg px-1.5 py-1 hover:bg-[var(--color-background-elevated-secondary)]",
+        isDragging && "z-20 bg-[var(--color-background-elevated-secondary)] opacity-75 shadow-sm",
+        isOver && !isDragging && "ring-1 ring-primary/35",
+      )}
       aria-posinset={index + 1}
       aria-setsize={total}
     >
+      <IconButton
+        ref={setActivatorNodeRef}
+        label="Drag pinned message to reorder"
+        tooltip="Drag to reorder"
+        size="icon-xs"
+        disabled={total < 2 || editing}
+        className="size-5 shrink-0 touch-none cursor-grab text-muted-foreground/45 active:cursor-grabbing disabled:cursor-default disabled:opacity-25"
+        {...attributes}
+        {...listeners}
+      >
+        <GripVerticalIcon className="size-3" />
+      </IconButton>
       <Checkbox
         className="size-3.5 sm:size-3.5"
         checked={pin.done}

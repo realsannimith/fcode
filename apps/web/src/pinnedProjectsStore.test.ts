@@ -39,4 +39,24 @@ describe("usePinnedProjectsStore", () => {
     usePinnedProjectsStore.getState().prunePinnedProjects(["project-1" as ProjectId]);
     expect(usePinnedProjectsStore.getState().pinnedProjectIds).toEqual(["project-1"]);
   });
+
+  it("persists drag ordering between pinned projects", () => {
+    usePinnedProjectsStore.setState({
+      pinnedProjectIds: [
+        "project-3" as ProjectId,
+        "project-2" as ProjectId,
+        "project-1" as ProjectId,
+      ],
+    });
+
+    usePinnedProjectsStore
+      .getState()
+      .reorderPinnedProject("project-1" as ProjectId, "project-3" as ProjectId);
+
+    expect(usePinnedProjectsStore.getState().pinnedProjectIds).toEqual([
+      "project-1",
+      "project-3",
+      "project-2",
+    ]);
+  });
 });

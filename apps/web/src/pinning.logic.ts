@@ -67,6 +67,31 @@ export function prunePinnedIds<TId extends string>(
   return normalizePinnedIds(ids).filter((id) => allowedIdSet.has(id));
 }
 
+/** Reorder one persisted pin over another while preserving a no-op list reference. */
+export function reorderPinnedIds<TId extends string>(
+  ids: TId[],
+  activeId: TId,
+  overId: TId,
+): TId[] {
+  const normalized = normalizePinnedIds(ids);
+  const sourceIndex = normalized.indexOf(activeId);
+  const targetIndex = normalized.indexOf(overId);
+  const normalizedMatchesInput =
+    normalized.length === ids.length && normalized.every((id, index) => id === ids[index]);
+
+  if (sourceIndex < 0 || targetIndex < 0 || sourceIndex === targetIndex) {
+    return normalizedMatchesInput ? ids : normalized;
+  }
+
+  const nextPinnedIds = [...normalized];
+  const [movedId] = nextPinnedIds.splice(sourceIndex, 1);
+  if (!movedId) {
+    return normalizedMatchesInput ? ids : normalized;
+  }
+  nextPinnedIds.splice(targetIndex, 0, movedId);
+  return nextPinnedIds;
+}
+
 // Persisted order wins when present; server-only pins are appended in current sidebar order.
 export function derivePinnedIds<
   TId extends string,
