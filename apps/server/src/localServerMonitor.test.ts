@@ -170,6 +170,36 @@ describe("localServerMonitor", () => {
     expect(servers).toHaveLength(0);
   });
 
+  it("detects custom script-based servers running from a project directory", () => {
+    const processInfo = new Map<number, LocalServerProcessInfo>([
+      [123, { ppid: 1, commandLine: "/opt/homebrew/bin/node src/index.js" }],
+    ]);
+    const cwdByPid = new Map<number, string>([[123, "/Users/dev/custom-api"]]);
+    const servers = buildLocalServerProcesses(
+      parseLsofTcpListenOutput(["p123", "cnode", "PTCP", "n*:8000"].join("\n")),
+      processInfo,
+      cwdByPid,
+    );
+
+    expect(servers).toHaveLength(1);
+    expect(servers[0]).toMatchObject({
+      displayName: "Node",
+      cwd: "/Users/dev/custom-api",
+      ports: [8000],
+    });
+  });
+
+  it("does not treat app-bundled runtime scripts as project servers", () => {
+    expect(
+      isLikelyDevServerProcess({
+        command: "node",
+        args: "node service.js",
+        ports: [8000],
+        cwd: "/Applications/Example.app/Contents/Resources",
+      }),
+    ).toBe(false);
+  });
+
   it("treats custom electron dev scripts as dev context without showing Electron helpers", () => {
     const processInfo = new Map<number, LocalServerProcessInfo>([
       [
@@ -247,6 +277,24 @@ describe("localServerMonitor", () => {
       ppid: 12094,
       displayName: "Next.js",
       args: "next-server (v16.2.3)",
+      ports: [3000],
+    });
+  });
+
+  it("detects a listening Next.js production server child", () => {
+    const processInfo = new Map<number, LocalServerProcessInfo>([
+      [30223, { ppid: 30210, commandLine: "next-server (v16.2.10)" }],
+      [30210, { ppid: 1, commandLine: "bun run start" }],
+    ]);
+    const servers = buildLocalServerProcesses(
+      parseLsofTcpListenOutput(["p30223", "cnode", "PTCP", "n*:3000"].join("\n")),
+      processInfo,
+      new Map([[30223, "/Users/dev/site"]]),
+    );
+
+    expect(servers).toHaveLength(1);
+    expect(servers[0]).toMatchObject({
+      displayName: "Next.js",
       ports: [3000],
     });
   });

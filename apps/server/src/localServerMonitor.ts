@@ -47,6 +47,7 @@ interface DevServerCandidateInput {
   readonly command: string;
   readonly args: string;
   readonly ports: readonly number[];
+  readonly cwd?: string;
 }
 
 interface CachedPageTitle {
@@ -116,6 +117,35 @@ const DEV_SCRIPT_NAME_PATTERN =
   /^(?:dev|dev[:_-].+|.+[:_-]dev|electron:dev|dev:electron|dev:desktop|desktop:dev|start:desktop)$/i;
 const DEV_ARGS_PATTERN =
   /\b(astro|expo|flask|next\s+dev|nodemon|nuxt|parcel|react-scripts\s+start|remix|rsbuild|rspack|svelte-kit|turbo|vite|webpack-dev-server)\b|(?:manage\.py\s+runserver)|(?:php\s+(?:artisan\s+serve|-S\s+))|(?:rails\s+(?:s|server))|(?:uvicorn\b)|(?:webpack\s+serve)|(?:go\s+run\b)|(?:cargo\s+run\b)|(?:dotnet\s+(?:watch|run)\b)|(?:deno\s+(?:task\s+)?(?:dev|serve|run)\b)|(?:python3?\s+-m\s+http\.server\b)|(?:dev-runner\.[cm]?ts\s+dev[:_-][A-Za-z0-9:_-]+)/i;
+
+const SCRIPT_RUNTIME_EXTENSIONS = new Map<string, RegExp>([
+  ["bun", /\.[cm]?[jt]sx?$/i],
+  ["deno", /\.[cm]?[jt]sx?$/i],
+  ["node", /\.[cm]?[jt]sx?$/i],
+  ["php", /\.php$/i],
+  ["python", /\.py$/i],
+  ["python3", /\.py$/i],
+  ["ruby", /\.rb$/i],
+]);
+
+const SCRIPT_RUNTIME_LABELS = new Map<string, string>([
+  ["bun", "Bun"],
+  ["deno", "Deno"],
+  ["node", "Node"],
+  ["php", "PHP"],
+  ["python", "Python"],
+  ["python3", "Python"],
+  ["ruby", "Ruby"],
+]);
+
+const NON_PROJECT_CWD_PREFIXES = [
+  "/Applications",
+  "/Library",
+  "/System",
+  "/bin",
+  "/sbin",
+  "/usr",
+];
 
 const pageTitleCache = new Map<string, CachedPageTitle>();
 const pageTitleInFlight = new Map<string, Promise<string | null>>();
@@ -352,6 +382,38 @@ function devScriptNameFromArgs(args: string): string | null {
   return match?.[1] ?? null;
 }
 
+function isProjectWorkingDirectory(cwd: string | undefined): cwd is string {
+  if (!cwd || !path.isAbsolute(cwd)) {
+    return false;
+  }
+  const normalized = path.resolve(cwd);
+  if (normalized.includes(".app/Contents")) {
+    return false;
+  }
+  return !NON_PROJECT_CWD_PREFIXES.some(
+    (prefix) => normalized === prefix || normalized.startsWith(`${prefix}/`),
+  );
+}
+
+// Framework-specific commands are the strongest signal, but custom local servers are
+// commonly launched directly from a source entrypoint (for example `node src/index.js`).
+// Requiring a project cwd and a runtime-specific script extension keeps application helpers
+// and arbitrary port-owning processes out of the sidebar while covering those servers.
+function detectScriptRuntimeServerKind(input: DevServerCandidateInput): string | null {
+  if (!isProjectWorkingDirectory(input.cwd)) {
+    return null;
+  }
+  const commandName = normalizeCommandName(input.command, input.args);
+  const extensionPattern = SCRIPT_RUNTIME_EXTENSIONS.get(commandName);
+  if (!extensionPattern) {
+    return null;
+  }
+  const hasScriptEntrypoint = tokenizeCommandLine(input.args).some((token) =>
+    extensionPattern.test(token.replace(/[),;]+$/g, "")),
+  );
+  return hasScriptEntrypoint ? (SCRIPT_RUNTIME_LABELS.get(commandName) ?? null) : null;
+}
+
 function detectDevServerKindFromText(input: DevServerCandidateInput): string | null {
   const commandName = normalizeCommandName(input.command, input.args);
   const directToolLabel = DEV_COMMAND_LABELS.get(commandName);
@@ -362,7 +424,7 @@ function detectDevServerKindFromText(input: DevServerCandidateInput): string | n
 
   const text = normalizeProcessText(input.command, input.args);
   if (/(^|[\s/\\])vite(?:\.js|\.mjs|\.cjs)?(?:\s|$)/i.test(text)) return "Vite";
-  if (/\bnext\s+dev\b/i.test(text)) return "Next.js";
+  if (/\bnext(?:\s+(?:dev|start)|-server)\b/i.test(text)) return "Next.js";
   if (/\bnuxt\b/i.test(text)) return "Nuxt";
   if (/\bastro\b/i.test(text)) return "Astro";
   if (/\bexpo\b/i.test(text)) return "Expo";
@@ -387,15 +449,20 @@ function detectDevServerKindFromText(input: DevServerCandidateInput): string | n
   }
 
   if (DEV_ARGS_PATTERN.test(text)) return "Dev Server";
-  return null;
+  return detectScriptRuntimeServerKind(input);
 }
 
 export function isLikelyDevServerProcess(input: DevServerCandidateInput): boolean {
   return !isIgnoredLocalServerProcess(input) && detectDevServerKindFromText(input) !== null;
 }
 
-function formatDisplayName(command: string, args: string): string {
-  const textKind = detectDevServerKindFromText({ command, args, ports: [] });
+function formatDisplayName(command: string, args: string, cwd: string | null): string {
+  const textKind = detectDevServerKindFromText({
+    command,
+    args,
+    ports: [],
+    ...(cwd ? { cwd } : {}),
+  });
   if (textKind) return textKind;
   const text = normalizeProcessText(command, args);
   if (/\bvite\b/.test(text)) return "Vite";
@@ -789,12 +856,19 @@ function toServerProcess(
   const processInfo = processInfoByPid.get(pid);
   const args = processInfo?.commandLine ?? command;
   const detectionArgs = processLineageCommandLines(pid, processInfoByPid) ?? args;
-  if (!isLikelyDevServerProcess({ command, args: detectionArgs, ports })) {
+  const cwd = resolveProcessCwd(pid, processInfoByPid, cwdByPid);
+  if (
+    !isLikelyDevServerProcess({
+      command,
+      args: detectionArgs,
+      ports,
+      ...(cwd ? { cwd } : {}),
+    })
+  ) {
     return null;
   }
 
   const isStoppable = isProcessSignalable(pid);
-  const cwd = resolveProcessCwd(pid, processInfoByPid, cwdByPid);
   return {
     id: `${pid}:${ports.join(",")}`,
     pid,
@@ -802,7 +876,7 @@ function toServerProcess(
       ? { ppid: processInfo.ppid }
       : {}),
     command,
-    displayName: formatDisplayName(command, detectionArgs),
+    displayName: formatDisplayName(command, detectionArgs, cwd),
     ...(cwd ? { cwd } : {}),
     args,
     ports,
