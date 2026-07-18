@@ -874,9 +874,8 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
         command,
         threadId: command.threadId,
       });
-      const sourceIndex = thread.pinnedMessages?.findIndex(
-        (pin) => pin.messageId === command.messageId,
-      ) ?? -1;
+      const sourceIndex =
+        thread.pinnedMessages?.findIndex((pin) => pin.messageId === command.messageId) ?? -1;
       if (sourceIndex < 0) {
         return yield* new OrchestrationCommandInvariantError({
           commandType: command.type,

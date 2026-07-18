@@ -743,6 +743,7 @@ describe("TerminalManager", () => {
         events.some(
           (event) =>
             event.type === "activity" &&
+            event.agentKind === "opencode" &&
             event.cliKind === null &&
             event.agentState === "running",
         ),
@@ -844,6 +845,42 @@ describe("TerminalManager", () => {
     await manager.dispose();
   });
 
+  it("does not relabel a live agent from command text submitted inside its prompt", async () => {
+    let providerRuntimePolls = 0;
+    const { manager } = makeManager(5, {
+      subprocessChecker: async () => {
+        providerRuntimePolls += 1;
+        return {
+          agentKind: "claude",
+          cliKind: "claude",
+          hasNonProviderSubprocess: false,
+          hasProviderDescendant: true,
+          hasRunningSubprocess: true,
+        };
+      },
+      subprocessPollIntervalMs: 20,
+    });
+    const events: TerminalEvent[] = [];
+    manager.on("event", (event) => {
+      events.push(event);
+    });
+
+    await manager.open(openInput());
+    await manager.write({ threadId: "thread-1", data: "claude\r" });
+    providerRuntimePolls = 0;
+    await waitFor(() => providerRuntimePolls > 0, 1_200);
+    const eventCountBeforePrompt = events.length;
+
+    await manager.write({ threadId: "thread-1", data: "cursor-agent\r" });
+
+    expect(
+      events
+        .slice(eventCountBeforePrompt)
+        .some((event) => event.type === "activity" && event.agentKind === "cursor"),
+    ).toBe(false);
+    await manager.dispose();
+  });
+
   it("clears unmanaged provider identity as soon as an observed provider process disappears", async () => {
     let subprocessActivity: TerminalSubprocessActivity = {
       cliKind: null,
@@ -894,6 +931,75 @@ describe("TerminalManager", () => {
             event.cliKind === null &&
             event.hasRunningSubprocess === false,
         ),
+      1_200,
+    );
+
+    await manager.dispose();
+  });
+
+  it("preserves agent identity when a CLI replaces itself with a generic runtime process", async () => {
+    let subprocessActivity: TerminalSubprocessActivity = {
+      agentKind: null,
+      cliKind: null,
+      hasNonProviderSubprocess: false,
+      hasProviderDescendant: false,
+      hasRunningSubprocess: false,
+    };
+    let genericRuntimePolls = 0;
+    let providerRuntimePolls = 0;
+    const { manager } = makeManager(5, {
+      subprocessChecker: async () => {
+        if (subprocessActivity.hasProviderDescendant) {
+          providerRuntimePolls += 1;
+        }
+        if (!subprocessActivity.hasProviderDescendant && subprocessActivity.hasRunningSubprocess) {
+          genericRuntimePolls += 1;
+        }
+        return subprocessActivity;
+      },
+      subprocessPollIntervalMs: 20,
+    });
+    const events: TerminalEvent[] = [];
+    manager.on("event", (event) => {
+      events.push(event);
+    });
+
+    await manager.open(openInput());
+    await manager.write({ threadId: "thread-1", data: "opencode\r" });
+    subprocessActivity = {
+      agentKind: "opencode",
+      cliKind: null,
+      hasNonProviderSubprocess: false,
+      hasProviderDescendant: true,
+      hasRunningSubprocess: true,
+    };
+    await waitFor(() => providerRuntimePolls > 0, 1_200);
+    const eventCountBeforeGenericRuntime = events.length;
+
+    subprocessActivity = {
+      agentKind: null,
+      cliKind: null,
+      hasNonProviderSubprocess: true,
+      hasProviderDescendant: false,
+      hasRunningSubprocess: true,
+    };
+    await waitFor(() => genericRuntimePolls > 0, 1_200);
+
+    expect(
+      events
+        .slice(eventCountBeforeGenericRuntime)
+        .some((event) => event.type === "activity" && event.agentKind === null),
+    ).toBe(false);
+
+    subprocessActivity = {
+      agentKind: null,
+      cliKind: null,
+      hasNonProviderSubprocess: false,
+      hasProviderDescendant: false,
+      hasRunningSubprocess: false,
+    };
+    await waitFor(
+      () => events.some((event) => event.type === "activity" && event.agentKind === null),
       1_200,
     );
 

@@ -6,6 +6,7 @@
 import {
   type ResolvedTerminalVisualIdentity,
   type TerminalActivityState,
+  type TerminalCodingAgentKind,
   type TerminalCliKind,
 } from "@t3tools/shared/terminalThreads";
 
@@ -159,6 +160,7 @@ export function resolveThreadTerminalLayout(input: {
   activeTerminalId: string;
   runningTerminalIds: string[];
   terminalAttentionStatesById: Record<string, TerminalActivityState>;
+  terminalAgentKindsById?: Record<string, TerminalCodingAgentKind> | undefined;
   terminalCliKindsById: Record<string, TerminalCliKind>;
   terminalGroups: ThreadTerminalGroup[];
   terminalIds: string[];
@@ -191,6 +193,7 @@ export function resolveThreadTerminalLayout(input: {
     terminalIds: normalizedTerminalIds,
     runningTerminalIds: input.runningTerminalIds,
     terminalAttentionStatesById: input.terminalAttentionStatesById,
+    terminalAgentKindsById: input.terminalAgentKindsById,
     terminalCliKindsById: input.terminalCliKindsById,
     terminalLabelsById: input.terminalLabelsById,
     terminalTitleOverridesById: input.terminalTitleOverridesById,

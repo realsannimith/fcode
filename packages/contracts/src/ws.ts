@@ -47,6 +47,7 @@ import {
   GitListBranchesInput,
   GitPullInput,
   GitPullRequestRefInput,
+  GitPullRequestSnapshotInput,
   GitReadWorkingTreeDiffInput,
   GitRemoveWorktreeInput,
   GitRemoveIndexLockInput,
@@ -59,6 +60,14 @@ import {
   GitSummarizeDiffInput,
   GitUnstageFilesInput,
 } from "./git";
+import {
+  PullRequestActionInput,
+  PullRequestCommentInput,
+  PullRequestDetailInput,
+  PullRequestReviewRequestCountInput,
+  PullRequestSetPinnedInput,
+  PullRequestsListInput,
+} from "./pullRequests";
 import {
   TerminalAckOutputInput,
   TerminalClearInput,
@@ -162,6 +171,16 @@ export const WS_METHODS = {
   gitResolvePullRequest: "git.resolvePullRequest",
   gitPreparePullRequestThread: "git.preparePullRequestThread",
   gitCheckPullRequestConflicts: "git.checkPullRequestConflicts",
+  gitPullRequestSnapshot: "git.pullRequestSnapshot",
+
+  // Global pull request methods
+  pullRequestsList: "pullRequests.list",
+  pullRequestsReviewRequestCount: "pullRequests.reviewRequestCount",
+  pullRequestsDetail: "pullRequests.detail",
+  pullRequestsDiff: "pullRequests.diff",
+  pullRequestsAction: "pullRequests.action",
+  pullRequestsComment: "pullRequests.comment",
+  pullRequestsSetPinned: "pullRequests.setPinned",
 
   // Terminal methods
   terminalOpen: "terminal.open",
@@ -316,6 +335,16 @@ const WebSocketRequestBody = Schema.Union([
   tagRequestBody(WS_METHODS.gitResolvePullRequest, GitPullRequestRefInput),
   tagRequestBody(WS_METHODS.gitPreparePullRequestThread, GitPreparePullRequestThreadInput),
   tagRequestBody(WS_METHODS.gitCheckPullRequestConflicts, GitPullRequestRefInput),
+  tagRequestBody(WS_METHODS.gitPullRequestSnapshot, GitPullRequestSnapshotInput),
+
+  // Global pull requests
+  tagRequestBody(WS_METHODS.pullRequestsList, PullRequestsListInput),
+  tagRequestBody(WS_METHODS.pullRequestsReviewRequestCount, PullRequestReviewRequestCountInput),
+  tagRequestBody(WS_METHODS.pullRequestsDetail, PullRequestDetailInput),
+  tagRequestBody(WS_METHODS.pullRequestsDiff, PullRequestDetailInput),
+  tagRequestBody(WS_METHODS.pullRequestsAction, PullRequestActionInput),
+  tagRequestBody(WS_METHODS.pullRequestsComment, PullRequestCommentInput),
+  tagRequestBody(WS_METHODS.pullRequestsSetPinned, PullRequestSetPinnedInput),
 
   // Terminal methods
   tagRequestBody(WS_METHODS.terminalOpen, TerminalOpenInput),

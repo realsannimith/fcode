@@ -248,7 +248,11 @@ export function buildDraftThreadContextPatch(
   };
 }
 
-// Reuse only when the active route draft already belongs to the target project and surface.
+// Reuse only when the active route draft already belongs to the target project and surface,
+// and has not already been promoted into a durable thread. A draft is promoted (but never
+// finalized) when its first terminal opens without ever starting an orchestration turn, so
+// reusing it here would route "New thread" back to that same terminal-backed thread instead
+// of minting a fresh one. Mirror the promoted-draft guard in getDraftThreadByProjectId.
 export function shouldReuseActiveDraftThread(input: {
   draftThread: DraftThreadState | null;
   entryPoint: ThreadPrimarySurface;
@@ -264,7 +268,8 @@ export function shouldReuseActiveDraftThread(input: {
     input.draftThread &&
     input.routeThreadId &&
     input.draftThread.projectId === input.projectId &&
-    input.draftThread.entryPoint === input.entryPoint,
+    input.draftThread.entryPoint === input.entryPoint &&
+    input.draftThread.promotedTo === undefined,
   );
 }
 

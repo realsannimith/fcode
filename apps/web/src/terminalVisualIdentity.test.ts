@@ -8,6 +8,8 @@ import {
   resolveTerminalVisualIdentityMap,
   resolveTerminalVisualState,
   selectRepresentativeTerminalVisualIdentity,
+  selectThreadTerminalVisualIdentities,
+  selectThreadTerminalVisualIdentity,
 } from "./terminalVisualIdentity";
 
 describe("terminal visual identity", () => {
@@ -112,5 +114,88 @@ describe("terminal visual identity", () => {
         terminalId: "terminal-1",
       }),
     ).toBe("idle");
+  });
+
+  it("uses a detected terminal agent as the thread identity", () => {
+    expect(
+      selectThreadTerminalVisualIdentity({
+        activeTerminalId: "terminal-1",
+        entryPoint: "chat",
+        runningTerminalIds: [],
+        terminalAttentionStatesById: {},
+        terminalCliKindsById: { "terminal-1": "claude" },
+        terminalIds: ["terminal-1"],
+        terminalLabelsById: { "terminal-1": "Claude" },
+        terminalTitleOverridesById: {},
+      }),
+    ).toMatchObject({
+      terminalId: "terminal-1",
+      identity: { cliKind: "claude", iconKey: "claude" },
+    });
+  });
+
+  it("uses a generic terminal identity for terminal-first threads without an agent", () => {
+    expect(
+      selectThreadTerminalVisualIdentity({
+        activeTerminalId: "terminal-1",
+        entryPoint: "terminal",
+        runningTerminalIds: [],
+        terminalAttentionStatesById: {},
+        terminalCliKindsById: {},
+        terminalIds: ["terminal-1"],
+        terminalLabelsById: {},
+        terminalTitleOverridesById: {},
+      }),
+    ).toMatchObject({
+      terminalId: "terminal-1",
+      identity: { cliKind: null, iconKey: "terminal" },
+    });
+  });
+
+  it("keeps chat-first threads on their provider identity without a detected agent", () => {
+    expect(
+      selectThreadTerminalVisualIdentity({
+        activeTerminalId: "terminal-1",
+        entryPoint: "chat",
+        runningTerminalIds: [],
+        terminalAttentionStatesById: {},
+        terminalCliKindsById: {},
+        terminalIds: ["terminal-1"],
+        terminalLabelsById: {},
+        terminalTitleOverridesById: {},
+      }),
+    ).toBeNull();
+  });
+
+  it("returns one stacked identity for every distinct detected terminal agent", () => {
+    expect(
+      selectThreadTerminalVisualIdentities({
+        activeTerminalId: "terminal-cursor",
+        entryPoint: "terminal",
+        runningTerminalIds: [],
+        terminalAttentionStatesById: {},
+        terminalAgentKindsById: {
+          "terminal-codex": "codex",
+          "terminal-claude": "claude",
+          "terminal-kiro": "kiro",
+          "terminal-cursor": "cursor",
+          "terminal-codex-2": "codex",
+        },
+        terminalCliKindsById: {
+          "terminal-codex": "codex",
+          "terminal-claude": "claude",
+          "terminal-codex-2": "codex",
+        },
+        terminalIds: [
+          "terminal-codex",
+          "terminal-claude",
+          "terminal-kiro",
+          "terminal-cursor",
+          "terminal-codex-2",
+        ],
+        terminalLabelsById: {},
+        terminalTitleOverridesById: {},
+      }).map(({ identity }) => identity.iconKey),
+    ).toEqual(["cursor", "openai", "claude", "kiro"]);
   });
 });

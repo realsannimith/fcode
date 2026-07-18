@@ -476,10 +476,7 @@ export function resolveThreadStatusWithTerminalAgentActivity(input: {
     return input.threadStatus;
   }
 
-  return resolveProjectStatusIndicator([
-    input.threadStatus,
-    createWorkingThreadStatus(),
-  ]);
+  return resolveProjectStatusIndicator([input.threadStatus, createWorkingThreadStatus()]);
 }
 
 export function resolveProjectStatusIndicator(

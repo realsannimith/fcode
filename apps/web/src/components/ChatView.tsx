@@ -49,6 +49,7 @@ import {
   resolveThreadWorkspaceCwd as resolveSharedThreadWorkspaceCwd,
 } from "@t3tools/shared/threadEnvironment";
 import { deriveAssociatedWorktreeMetadata } from "@t3tools/shared/threadWorkspace";
+import type { TerminalCodingAgentKind } from "@t3tools/shared/terminalThreads";
 import {
   useCallback,
   useEffect,
@@ -349,10 +350,7 @@ import {
 } from "./composerFooterLayout";
 import { selectThreadTerminalState, useTerminalStateStore } from "../terminalStateStore";
 import { collectTerminalIdsFromLayout } from "../terminalPaneLayout";
-import {
-  type SplitViewPanePanelState,
-  useSplitViewStore,
-} from "../splitViewStore";
+import { type SplitViewPanePanelState, useSplitViewStore } from "../splitViewStore";
 import { ComposerPromptEditor, type ComposerPromptEditorHandle } from "./ComposerPromptEditor";
 import { PullRequestThreadDialog } from "./PullRequestThreadDialog";
 import { ChatHeader } from "./chat/ChatHeader";
@@ -3397,6 +3395,75 @@ export default function ChatView({
     },
     [setStoreThreadError],
   );
+  const terminalDraftPromotionAttemptedIdsRef = useRef<Set<ThreadId>>(new Set());
+
+  useEffect(() => {
+    if (!terminalState.terminalOpen) {
+      terminalDraftPromotionAttemptedIdsRef.current.delete(threadId);
+      return;
+    }
+    if (
+      !isLocalDraftThread ||
+      draftThread?.isTemporary ||
+      !activeThread ||
+      !activeProject ||
+      terminalDraftPromotionAttemptedIdsRef.current.has(activeThread.id)
+    ) {
+      return;
+    }
+
+    const api = readNativeApi();
+    if (!api) {
+      return;
+    }
+
+    terminalDraftPromotionAttemptedIdsRef.current.add(activeThread.id);
+    // A terminal is durable workspace state. Promote an otherwise empty chat
+    // draft as soon as its first terminal opens so the workspace has a sidebar
+    // row even when the user never sends a GUI chat message.
+    void promoteThreadCreate(
+      {
+        type: "thread.create",
+        commandId: newCommandId(),
+        threadId: activeThread.id,
+        projectId: activeProject.id,
+        title: activeThread.title,
+        modelSelection: selectedModelSelection,
+        runtimeMode,
+        interactionMode,
+        envMode: activeThread.envMode ?? (activeThread.worktreePath ? "worktree" : "local"),
+        entryPoint: draftThread?.entryPoint ?? "chat",
+        branch: activeThread.branch ?? null,
+        worktreePath: activeThread.worktreePath ?? null,
+        associatedWorktreePath: activeThreadAssociatedWorktree.associatedWorktreePath,
+        associatedWorktreeBranch: activeThreadAssociatedWorktree.associatedWorktreeBranch,
+        associatedWorktreeRef: activeThreadAssociatedWorktree.associatedWorktreeRef,
+        lastKnownPr: activeThread.lastKnownPr ?? null,
+        createdAt: activeThread.createdAt,
+      },
+      api,
+    ).catch((error) => {
+      setThreadError(
+        activeThread.id,
+        error instanceof Error ? error.message : "Failed to save the terminal workspace.",
+      );
+    });
+  }, [
+    activeProject,
+    activeThread,
+    activeThreadAssociatedWorktree.associatedWorktreeBranch,
+    activeThreadAssociatedWorktree.associatedWorktreePath,
+    activeThreadAssociatedWorktree.associatedWorktreeRef,
+    draftThread?.entryPoint,
+    draftThread?.isTemporary,
+    interactionMode,
+    isLocalDraftThread,
+    runtimeMode,
+    selectedModelSelection,
+    setThreadError,
+    terminalState.terminalOpen,
+    threadId,
+  ]);
 
   const focusComposer = useCallback(() => {
     // Secondary chrome is deferred during thread switches; replay focus once it mounts.
@@ -3666,14 +3733,6 @@ export default function ChatView({
     terminalState.terminalGroups,
     terminalState.terminalOpen,
   ]);
-  const moveTerminalToNewGroup = useCallback(
-    (terminalId: string) => {
-      if (!activeThreadId) return;
-      storeNewTerminal(activeThreadId, terminalId);
-      setTerminalFocusRequestId((value) => value + 1);
-    },
-    [activeThreadId, storeNewTerminal],
-  );
   const openNewFullWidthTerminal = useCallback(() => {
     if (!activeThreadId || !activeProject) return;
     const terminalId = randomTerminalId();
@@ -3837,6 +3896,7 @@ export default function ChatView({
       terminalIds: terminalState.terminalIds,
       terminalLabelsById: terminalState.terminalLabelsById,
       terminalTitleOverridesById: terminalState.terminalTitleOverridesById,
+      terminalAgentKindsById: terminalState.terminalAgentKindsById,
       terminalCliKindsById: terminalState.terminalCliKindsById,
       terminalAttentionStatesById: terminalState.terminalAttentionStatesById ?? {},
       runningTerminalIds: terminalState.runningTerminalIds,
@@ -3848,7 +3908,6 @@ export default function ChatView({
       onSplitTerminalDown: splitTerminalDown,
       onNewTerminal: createNewTerminal,
       onNewTerminalTab: createNewTerminalTab,
-      onMoveTerminalToGroup: moveTerminalToNewGroup,
       splitShortcutLabel: splitTerminalShortcutLabel ?? undefined,
       splitDownShortcutLabel: splitTerminalDownShortcutLabel ?? undefined,
       newShortcutLabel: newTerminalShortcutLabel ?? undefined,
@@ -3887,7 +3946,11 @@ export default function ChatView({
       },
       onTerminalMetadataChange: (
         terminalId: string,
-        metadata: { cliKind: "codex" | "claude" | null; label: string },
+        metadata: {
+          agentKind?: TerminalCodingAgentKind | null;
+          cliKind: "codex" | "claude" | null;
+          label: string;
+        },
       ) => {
         if (!activeThreadId) return;
         storeSetTerminalMetadata(activeThreadId, terminalId, metadata);
@@ -3913,7 +3976,6 @@ export default function ChatView({
       closeWorkspaceShortcutLabel,
       createNewTerminal,
       createNewTerminalTab,
-      moveTerminalToNewGroup,
       gitCwd,
       activeThreadId,
       newTerminalShortcutLabel,
@@ -3933,6 +3995,7 @@ export default function ChatView({
       terminalState.activeTerminalGroupId,
       terminalState.activeTerminalId,
       terminalState.terminalAttentionStatesById,
+      terminalState.terminalAgentKindsById,
       terminalState.terminalCliKindsById,
       terminalState.terminalGroups,
       terminalState.terminalHeight,
@@ -3980,7 +4043,7 @@ export default function ChatView({
               hasRunningTerminal:
                 terminalState.runningTerminalIds.length > 0 ||
                 launchingAgentTerminalIdsRef.current.size > 0,
-              hasLaunchedAgent: Object.keys(terminalState.terminalCliKindsById).length > 0,
+              hasLaunchedAgent: Object.keys(terminalState.terminalAgentKindsById ?? {}).length > 0,
             })
           : resolveProjectScriptTerminalTarget({
               baseTerminalId,
@@ -4025,6 +4088,7 @@ export default function ChatView({
         });
         if (metadata) {
           storeSetTerminalMetadata(activeThreadId, targetTerminalId, {
+            agentKind: metadata.agentKind,
             cliKind: metadata.cliKind,
             label: metadata.label,
           });
@@ -4054,6 +4118,7 @@ export default function ChatView({
       storeSetTerminalMetadata,
       setLastInvokedScriptByProjectId,
       terminalState.activeTerminalId,
+      terminalState.terminalAgentKindsById,
       terminalState.terminalCliKindsById,
       terminalState.terminalOpen,
       terminalState.runningTerminalIds,
@@ -5761,6 +5826,11 @@ export default function ChatView({
       addFiles: addComposerFiles,
     },
     appendReferenceText: (referenceText) => appendComposerPromptText(threadId, referenceText),
+    appendPathMentions: (paths) => {
+      for (const absolutePath of paths) {
+        appendComposerPromptText(threadId, formatComposerMentionToken(absolutePath));
+      }
+    },
     dragDepthRef,
     focusComposer,
     setIsDragOverComposer,
@@ -8865,37 +8935,40 @@ export default function ChatView({
     },
     [onNavigateToThread, storeOpenTerminalThreadPage],
   );
-  const onAddWorkspace = useCallback((initialSurface: "chat" | "terminal") => {
-    if (!activeThreadId) return;
-    const createSidechat = getSidechatCreator(activeThreadId);
-    if (!createSidechat) {
-      toastManager.add({
-        type: "warning",
-        title: "New chat is unavailable",
-        description: "Open a server-backed chat before adding another chat tab.",
-      });
-      return;
-    }
-
-    void createSidechat({ presentation: "tab" })
-      .then((nextThreadId) => {
-        if (nextThreadId) {
-          if (initialSurface === "terminal") {
-            onOpenWorkspaceTerminal(nextThreadId);
-          } else {
-            onOpenWorkspaceChat(nextThreadId);
-          }
-        }
-      })
-      .catch((error: unknown) => {
+  const onAddWorkspace = useCallback(
+    (initialSurface: "chat" | "terminal") => {
+      if (!activeThreadId) return;
+      const createSidechat = getSidechatCreator(activeThreadId);
+      if (!createSidechat) {
         toastManager.add({
-          type: "error",
-          title: "Could not add chat tab",
-          description:
-            error instanceof Error ? error.message : "An error occurred while creating the chat.",
+          type: "warning",
+          title: "New chat is unavailable",
+          description: "Open a server-backed chat before adding another chat tab.",
         });
-      });
-  }, [activeThreadId, onOpenWorkspaceChat, onOpenWorkspaceTerminal]);
+        return;
+      }
+
+      void createSidechat({ presentation: "tab" })
+        .then((nextThreadId) => {
+          if (nextThreadId) {
+            if (initialSurface === "terminal") {
+              onOpenWorkspaceTerminal(nextThreadId);
+            } else {
+              onOpenWorkspaceChat(nextThreadId);
+            }
+          }
+        })
+        .catch((error: unknown) => {
+          toastManager.add({
+            type: "error",
+            title: "Could not add chat tab",
+            description:
+              error instanceof Error ? error.message : "An error occurred while creating the chat.",
+          });
+        });
+    },
+    [activeThreadId, onOpenWorkspaceChat, onOpenWorkspaceTerminal],
+  );
   const onCloseWorkspaceChat = useCallback(
     (closingThreadId: ThreadId) => {
       const closingTabIndex = workspaceChatTabs.findIndex((tab) => tab.id === closingThreadId);
@@ -8913,6 +8986,28 @@ export default function ChatView({
       if (!api) return;
       const fallbackTab =
         workspaceChatTabs[closingTabIndex - 1] ?? workspaceChatTabs[closingTabIndex + 1] ?? null;
+      // After the workspace is archived, never fall back to "/": the home route restores the
+      // last visited thread, which is the one we just closed, so the user is bounced straight
+      // back onto the archived (now dead) workspace. Move to a sibling chat when one exists,
+      // otherwise start a fresh thread.
+      const navigateAwayFromClosedThread = () => {
+        if (activeThreadId !== closingThreadId) return;
+        if (fallbackTab) {
+          onOpenWorkspaceChat(fallbackTab.id);
+        } else if (activeProject) {
+          void handleNewThread(activeProject.id, { entryPoint: "chat" });
+        }
+      };
+      // The thread was already archived by an earlier click (or a racing caller). Re-dispatching
+      // archive here would trip the "thread is not archived" invariant on the server and surface a
+      // misleading "Could not close chat" error, so just leave the dead workspace instead.
+      const closingSummary = threadWorkspaceSummaries.find(
+        (summary) => summary.id === closingThreadId,
+      );
+      if (closingSummary?.archivedAt != null) {
+        navigateAwayFromClosedThread();
+        return;
+      }
       void api.orchestration
         .dispatchCommand({
           type: "thread.archive",
@@ -8927,12 +9022,7 @@ export default function ChatView({
             // The archive event is still pushed through the live socket; navigation can
             // proceed even if an immediate reconciliation snapshot is unavailable.
           }
-          if (activeThreadId !== closingThreadId) return;
-          if (fallbackTab) {
-            onOpenWorkspaceChat(fallbackTab.id);
-          } else if (activeProject) {
-            void navigate({ to: "/", replace: true });
-          }
+          navigateAwayFromClosedThread();
         })
         .catch((error: unknown) => {
           toastManager.add({
@@ -8946,9 +9036,10 @@ export default function ChatView({
     [
       activeProject,
       activeThreadId,
-      navigate,
+      handleNewThread,
       onOpenWorkspaceChat,
       syncServerShellSnapshot,
+      threadWorkspaceSummaries,
       workspaceChatTabs,
     ],
   );

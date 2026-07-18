@@ -14,6 +14,8 @@ import {
   GitPreparePullRequestThreadInput,
   GitPreparePullRequestThreadResult,
   GitPullRequestRefInput,
+  GitPullRequestSnapshotInput,
+  GitPullRequestSnapshotResult,
   GitReadWorkingTreeDiffInput,
   GitReadWorkingTreeDiffResult,
   GitResolvePullRequestResult,
@@ -68,6 +70,13 @@ export interface GitManagerShape {
   readonly resolvePullRequest: (
     input: GitPullRequestRefInput,
   ) => Effect.Effect<GitResolvePullRequestResult, GitManagerServiceError>;
+
+  /**
+   * Load live CI checks and top-level review comments for a pull request.
+   */
+  readonly pullRequestSnapshot: (
+    input: GitPullRequestSnapshotInput,
+  ) => Effect.Effect<GitPullRequestSnapshotResult, GitManagerServiceError>;
 
   /**
    * Prepare a new thread workspace from a pull request in local or worktree mode.

@@ -1,71 +1,49 @@
 // FILE: ProviderUsageDetailCard.tsx
-// Purpose: OpenUsage-style expanded usage card shown when a sidebar usage chip is
-// opened. Header (provider icon + name), an inset container with one meter row per
-// rate-limit window (Session/Weekly: full-width capsule bar, "X% left" ⟷ reset
-// countdown, flame warning when projected to run out), the local spend lines
-// (Today / Yesterday / Last 30 Days), and a Dashboard link.
-// Mirrors OpenUsage's WidgetGroupedListView/WidgetRowView layout while reusing
-// FCode's existing derived usage data (providerUsageDisplay + openUsageRateLimits).
+// Purpose: Expanded plan-usage card shown when a sidebar usage chip is opened.
+// Mirrors the compact Codex sidebar treatment: a quiet header, thin divider, and
+// one two-line meter per rate-limit window (label + reset + used percentage over a
+// slim progress track). Local spend lines remain available below the limit rows.
 
 import type { ProviderKind } from "@t3tools/contracts";
 import { providerUsageDisplayName } from "@t3tools/shared/providerUsage";
 
-import { ArrowUpRightIcon, FlameIcon } from "~/lib/icons";
+import { ArrowRightIcon } from "~/lib/icons";
 import type { OpenUsageUsageLine } from "~/lib/openUsageRateLimits";
-import {
-  providerUsagePaceDetails,
-  type ProviderUsageDisplayRow,
-  type ProviderUsageTone,
-} from "~/lib/providerUsageDisplay";
-import { cn } from "~/lib/utils";
+import type { ProviderUsageDisplayRow } from "~/lib/providerUsageDisplay";
 
-import { ProviderIcon } from "./ProviderIcon";
-
-// OpenUsage palette: healthy meters read blue (not FCode's emerald) to match the
-// reference; warning/danger stay amber/red. Scoped to this surface so Settings and
-// the chat-header chip keep the shared tone colors.
-const OPEN_USAGE_TONE_FILL: Record<ProviderUsageTone, string> = {
-  healthy: "bg-blue-500",
-  warning: "bg-amber-500",
-  danger: "bg-red-500",
-};
-
-// The 5h window is branded "Session" in OpenUsage; everything else keeps its label.
+// Match the reference's human-readable short-window label; custom windows keep
+// their provider-supplied names.
 function displayWindowLabel(label: string): string {
-  return label === "5h" ? "Session" : label;
+  return label === "5h" ? "5-hour limit" : label;
 }
 
 function UsageMeterRow({ row }: { row: ProviderUsageDisplayRow }) {
-  const pace = providerUsagePaceDetails(row);
-  const runningOut = row.pace?.status === "behind" && pace?.etaText;
+  const usedPercent = Math.min(100, Math.max(0, 100 - row.remainingPercent));
+  const usedLabel = `${Math.round(usedPercent)}%`;
 
   return (
     <div className="space-y-1.5">
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-[13px] font-semibold text-foreground">
+      <div className="flex items-baseline justify-between gap-4 text-[13px] leading-tight">
+        <span className="min-w-0 truncate font-normal text-foreground">
           {displayWindowLabel(row.label)}
         </span>
-        {runningOut ? (
-          <span className="flex items-center gap-1 text-[11px] font-medium text-red-500">
-            <FlameIcon className="size-3.5" />
-            <span className="tabular-nums">{pace?.etaText}</span>
-          </span>
-        ) : null}
+        <span className="flex shrink-0 items-baseline gap-2 tabular-nums text-muted-foreground">
+          {row.resetText ? <span>{row.resetText}</span> : null}
+          <span>{usedLabel}</span>
+        </span>
       </div>
-      <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted/70">
+      <div
+        className="h-1.5 w-full overflow-hidden rounded-full bg-muted/75"
+        role="progressbar"
+        aria-label={`${displayWindowLabel(row.label)} used`}
+        aria-valuenow={Math.round(usedPercent)}
+        aria-valuemin={0}
+        aria-valuemax={100}
+      >
         <div
-          className={cn(
-            "h-full rounded-full transition-[width] duration-500",
-            OPEN_USAGE_TONE_FILL[row.remainingTone],
-          )}
-          style={{ width: `${row.remainingPercent}%` }}
+          className="h-full rounded-full bg-blue-500 transition-[width] duration-500 motion-reduce:transition-none"
+          style={{ width: `${usedPercent}%` }}
         />
-      </div>
-      <div className="flex items-baseline justify-between gap-2 text-[12px]">
-        <span className="font-medium tabular-nums text-foreground">{row.leftText}</span>
-        {row.resetText ? (
-          <span className="tabular-nums text-muted-foreground">{row.resetText}</span>
-        ) : null}
       </div>
     </div>
   );
@@ -96,23 +74,43 @@ export function ProviderUsageDetailCard({
   isLoading?: boolean | undefined;
 }) {
   const hasContent = rows.length > 0 || usageLines.length > 0;
+  const providerName = providerUsageDisplayName(provider);
+
+  const headerContent = (
+    <>
+      <span className="min-w-0 truncate">Plan usage limits · {providerName}</span>
+      {learnMoreHref ? <ArrowRightIcon className="size-4 shrink-0" aria-hidden /> : null}
+    </>
+  );
 
   return (
-    <div className="w-64 space-y-3 p-1">
-      <div className="flex items-center justify-between gap-2 px-1">
-        <span className="truncate text-[15px] font-semibold text-foreground">
-          {providerUsageDisplayName(provider)}
-        </span>
-        <ProviderIcon provider={provider} className="size-4 shrink-0" />
-      </div>
+    <div className="w-[min(22rem,calc(100vw-1rem))] px-3.5 py-3">
+      {learnMoreHref ? (
+        <a
+          href={learnMoreHref}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center justify-between gap-3 text-[13px] font-normal text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        >
+          {headerContent}
+        </a>
+      ) : (
+        <div className="flex items-center justify-between gap-3 text-[13px] font-normal text-muted-foreground">
+          {headerContent}
+        </div>
+      )}
 
       {hasContent ? (
-        <div className="space-y-3 rounded-lg border border-[color:var(--color-border)] bg-background/40 px-3 py-3">
-          {rows.map((row) => (
-            <UsageMeterRow key={row.id} row={row} />
-          ))}
+        <div className="mt-2.5 border-t border-[color:var(--color-border)] pt-2.5">
+          {rows.length > 0 ? (
+            <div className="space-y-3">
+              {rows.map((row) => (
+                <UsageMeterRow key={row.id} row={row} />
+              ))}
+            </div>
+          ) : null}
           {rows.length > 0 && usageLines.length > 0 ? (
-            <div className="border-t border-[color:var(--color-border)]" />
+            <div className="my-2.5 border-t border-[color:var(--color-border)]" />
           ) : null}
           {usageLines.length > 0 ? (
             <div className="space-y-2">
@@ -123,22 +121,10 @@ export function ProviderUsageDetailCard({
           ) : null}
         </div>
       ) : (
-        <p className="px-1 text-[12px] leading-relaxed text-muted-foreground">
+        <p className="mt-2.5 border-t border-[color:var(--color-border)] pt-2.5 text-[12px] leading-relaxed text-muted-foreground">
           {isLoading ? "Loading usage data…" : "No usage data yet for this provider."}
         </p>
       )}
-
-      {learnMoreHref ? (
-        <a
-          href={learnMoreHref}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center justify-center gap-1 rounded-md border border-[color:var(--color-border)] bg-background/40 px-2 py-1.5 text-[12px] font-medium text-foreground transition-colors hover:bg-sidebar-accent/60"
-        >
-          Dashboard
-          <ArrowUpRightIcon className="size-3.5" />
-        </a>
-      ) : null}
     </div>
   );
 }

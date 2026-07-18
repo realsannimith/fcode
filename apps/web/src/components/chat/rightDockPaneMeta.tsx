@@ -10,6 +10,7 @@ import {
   DiffIcon,
   FileIcon,
   GitCommitIcon,
+  GitPullRequestIcon,
   GlobeIcon,
   InfoIcon,
   MessageCircleIcon,
@@ -35,6 +36,7 @@ export const RIGHT_DOCK_PANE_META: Record<RightDockPaneKind, RightDockPaneMeta> 
   terminal: { label: "Terminal", Icon: TerminalIcon },
   sidechat: { label: "Side", Icon: MessageCircleIcon },
   git: { label: "Git", Icon: GitCommitIcon },
+  pullRequest: { label: "Pull request", Icon: GitPullRequestIcon },
 };
 
 // Neutral fallback for any pane kind we no longer recognize (e.g. stale
@@ -52,8 +54,12 @@ export function getRightDockPaneMeta(kind: RightDockPaneKind): RightDockPaneMeta
 }
 
 // Add-menu / quick triggers follow the canonical kind order from the single
-// source of truth, so they stay in sync as kinds are added or removed.
-export const RIGHT_DOCK_ADD_MENU_KINDS: readonly RightDockPaneKind[] = RIGHT_DOCK_PANE_KINDS;
+// source of truth, so they stay in sync as kinds are added or removed. The
+// "pullRequest" kind is intentionally excluded: pull request panes are opened
+// from the Pull Requests view or the environment panel, never from the add menu.
+export const RIGHT_DOCK_ADD_MENU_KINDS: readonly RightDockPaneKind[] = RIGHT_DOCK_PANE_KINDS.filter(
+  (kind) => kind !== "pullRequest",
+);
 
 // Resolves a tab label, preferring caller-provided per-pane overrides (e.g. the
 // embedded sidechat thread title) before falling back to the kind label.

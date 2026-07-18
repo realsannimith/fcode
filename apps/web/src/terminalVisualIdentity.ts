@@ -7,6 +7,7 @@ import {
   type ResolvedTerminalVisualIdentity,
   resolveTerminalVisualIdentity,
   type TerminalActivityState,
+  type TerminalCodingAgentKind,
   type TerminalCliKind,
   type TerminalVisualState,
 } from "@t3tools/shared/terminalThreads";
@@ -14,6 +15,18 @@ import {
 export interface RepresentativeTerminalVisualIdentity {
   terminalId: string;
   identity: ResolvedTerminalVisualIdentity;
+}
+
+export interface ThreadTerminalVisualIdentityInput {
+  activeTerminalId?: string | null | undefined;
+  entryPoint: "chat" | "terminal";
+  runningTerminalIds: readonly string[];
+  terminalAttentionStatesById: Record<string, TerminalActivityState>;
+  terminalAgentKindsById?: Record<string, TerminalCodingAgentKind> | undefined;
+  terminalCliKindsById: Record<string, TerminalCliKind>;
+  terminalIds: readonly string[];
+  terminalLabelsById: Record<string, string>;
+  terminalTitleOverridesById: Record<string, string>;
 }
 
 function terminalVisualStatePriority(state: TerminalVisualState): number {
@@ -83,6 +96,7 @@ function resolveTerminalVisualStateFromSet(input: {
 export function resolveTerminalVisualIdentityMap(input: {
   runningTerminalIds: readonly string[];
   terminalAttentionStatesById: Record<string, TerminalActivityState>;
+  terminalAgentKindsById?: Record<string, TerminalCodingAgentKind> | undefined;
   terminalCliKindsById: Record<string, TerminalCliKind>;
   terminalIds: readonly string[];
   terminalLabelsById: Record<string, string>;
@@ -92,6 +106,10 @@ export function resolveTerminalVisualIdentityMap(input: {
     input.terminalIds.map((terminalId, index) => [
       terminalId,
       resolveTerminalVisualIdentity({
+        agentKind:
+          input.terminalAgentKindsById?.[terminalId] ??
+          input.terminalCliKindsById[terminalId] ??
+          null,
         cliKind: input.terminalCliKindsById[terminalId] ?? null,
         fallbackTitle: `Terminal ${index + 1}`,
         state: resolveTerminalVisualStateFromSet({
@@ -133,4 +151,47 @@ export function selectRepresentativeTerminalVisualIdentity(input: {
 
   const identity = input.terminalVisualIdentityById.get(representativeTerminalId);
   return identity ? { terminalId: representativeTerminalId, identity } : null;
+}
+
+// Resolves the terminal identity that should replace the chat-provider avatar in a
+// thread row. A detected agent CLI takes precedence for any thread. Terminal-first
+// threads without a detected agent still retain a generic terminal identity, while
+// untouched chat-first threads continue to use their normal chat-provider avatar.
+export function selectThreadTerminalVisualIdentity(
+  input: ThreadTerminalVisualIdentityInput,
+): RepresentativeTerminalVisualIdentity | null {
+  return selectThreadTerminalVisualIdentities(input)[0] ?? null;
+}
+
+// Returns one representative icon per distinct coding agent detected in the thread. The active
+// terminal leads the stack when it contains an agent; duplicate tabs for the same agent collapse
+// to one icon so the sidebar stays compact.
+export function selectThreadTerminalVisualIdentities(
+  input: ThreadTerminalVisualIdentityInput,
+): RepresentativeTerminalVisualIdentity[] {
+  const terminalVisualIdentityById = resolveTerminalVisualIdentityMap(input);
+  const orderedTerminalIds = input.activeTerminalId
+    ? [input.activeTerminalId, ...input.terminalIds.filter((id) => id !== input.activeTerminalId)]
+    : [...input.terminalIds];
+  const seenAgentKinds = new Set<TerminalCodingAgentKind>();
+  const detectedAgentIdentities: RepresentativeTerminalVisualIdentity[] = [];
+  for (const terminalId of orderedTerminalIds) {
+    const identity = terminalVisualIdentityById.get(terminalId);
+    if (!identity?.agentKind || seenAgentKinds.has(identity.agentKind)) continue;
+    seenAgentKinds.add(identity.agentKind);
+    detectedAgentIdentities.push({ terminalId, identity });
+  }
+  if (detectedAgentIdentities.length > 0) {
+    return detectedAgentIdentities;
+  }
+  if (input.entryPoint !== "terminal") {
+    return [];
+  }
+
+  const genericTerminalIdentity = selectRepresentativeTerminalVisualIdentity({
+    activeTerminalId: input.activeTerminalId,
+    terminalIds: input.terminalIds,
+    terminalVisualIdentityById,
+  });
+  return genericTerminalIdentity ? [genericTerminalIdentity] : [];
 }

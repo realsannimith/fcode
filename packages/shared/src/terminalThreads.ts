@@ -5,24 +5,36 @@
 
 export const GENERIC_TERMINAL_THREAD_TITLE = "New terminal";
 export type TerminalCliKind = "codex" | "claude";
-export type TerminalCodingAgentKind =
-  | TerminalCliKind
-  | "opencode"
-  | "pi"
-  | "kiro"
-  | "agentenv"
-  | "aider"
-  | "amp"
-  | "gemini"
-  | "copilot"
-  | "goose"
+export const TERMINAL_CODING_AGENT_KINDS = [
+  "codex",
+  "claude",
+  "opencode",
+  "grok",
+  "pi",
+  "kiro",
+  "agentenv",
+  "aider",
+  "amp",
+  "gemini",
+  "copilot",
+  "goose",
+  "cursor",
+  "qwen",
+  "crush",
+  "droid",
+  "kilo",
+  "cline",
+] as const;
+export type TerminalCodingAgentKind = (typeof TERMINAL_CODING_AGENT_KINDS)[number];
+export type TerminalIconKey =
+  | "terminal"
+  | "openai"
+  | "claude"
   | "cursor"
-  | "qwen"
-  | "crush"
-  | "droid"
-  | "kilo"
-  | "cline";
-export type TerminalIconKey = "terminal" | "openai" | "claude";
+  | "kiro"
+  | "grok"
+  | "opencode"
+  | "agent";
 export type TerminalActivityState = "running" | "attention" | "review";
 export type TerminalVisualState = "idle" | TerminalActivityState;
 export type TerminalAgentHookEventType = "Start" | "Stop" | "PermissionRequest" | "Idle";
@@ -66,6 +78,7 @@ export const MANAGED_TERMINAL_COMMAND_NAME_BY_CLI_KIND: Record<TerminalCliKind, 
 };
 
 export interface TerminalCommandIdentity {
+  agentKind: TerminalCodingAgentKind | null;
   cliKind: TerminalCliKind | null;
   iconKey: TerminalIconKey;
   title: string;
@@ -97,6 +110,8 @@ const CODING_AGENT_KIND_BY_COMMAND_NAME = new Map<string, TerminalCodingAgentKin
   ...[...CLAUDE_COMMAND_NAMES].map((name) => [name, "claude"] as const),
   ["opencode", "opencode"],
   ["opencode-ai", "opencode"],
+  ["grok", "grok"],
+  ["grok-cli", "grok"],
   ["pi", "pi"],
   ["pi-coding-agent", "pi"],
   ["kiro", "kiro"],
@@ -143,6 +158,7 @@ const CODING_AGENT_PROCESS_TEXT_PATTERNS: ReadonlyArray<
   [/@openai[\\/]codex/i, "codex"],
   [/@anthropic-ai[\\/]claude-code/i, "claude"],
   [/(?:^|[\\/])opencode-ai(?:[\\/]|$)/i, "opencode"],
+  [/(?:^|[\\/])grok(?:-\d+(?:\.\d+)*)?(?:[\\/]|$)/i, "grok"],
   [/@(?:mariozechner|earendil-works)[\\/]pi-coding-agent/i, "pi"],
   [/(?:^|[\\/])kiro-cli(?:[\\/]|$)/i, "kiro"],
   [/(?:^|[\\/])kiro-cli-chat(?:[\\/]|$)/i, "kiro"],
@@ -212,39 +228,10 @@ function stripScriptExtension(token: string): string {
   return token.replace(/\.(?:cjs|cts|js|jsx|mjs|mts|py|ts|tsx)$/i, "");
 }
 
-function deriveCliKindFromNormalizedToken(token: string): TerminalCliKind | null {
-  const normalizedToken = stripScriptExtension(token.trim().toLowerCase());
-  if (normalizedToken.length === 0) {
-    return null;
-  }
-  if (CODEX_COMMAND_NAMES.has(normalizedToken) || normalizedToken === "@openai/codex") {
-    return "codex";
-  }
-  if (
-    CLAUDE_COMMAND_NAMES.has(normalizedToken) ||
-    normalizedToken === "@anthropic-ai/claude-code"
-  ) {
-    return "claude";
-  }
-  return null;
-}
-
-function deriveCodingAgentKindFromNormalizedToken(
-  token: string,
-): TerminalCodingAgentKind | null {
+function deriveCodingAgentKindFromNormalizedToken(token: string): TerminalCodingAgentKind | null {
   const normalizedToken = stripScriptExtension(token.trim().toLowerCase());
   if (normalizedToken.length === 0) return null;
   return CODING_AGENT_KIND_BY_COMMAND_NAME.get(normalizedToken) ?? null;
-}
-
-function deriveCliKindFromTokenList(tokens: string[]): TerminalCliKind | null {
-  for (const token of tokens) {
-    const cliKind = deriveCliKindFromNormalizedToken(normalizeCommandToken(token));
-    if (cliKind) {
-      return cliKind;
-    }
-  }
-  return null;
 }
 
 function textMatchesCliPatterns(
@@ -415,17 +402,55 @@ function derivePackageManagerTitle(tokens: string[]): string | null {
 
 function createTerminalCommandIdentity(
   title: string,
-  cliKind: TerminalCliKind | null,
+  agentKind: TerminalCodingAgentKind | null,
 ): TerminalCommandIdentity {
+  const cliKind = terminalCliKindFromValue(agentKind);
   return {
+    agentKind,
     cliKind,
-    iconKey: cliKind === "codex" ? "openai" : cliKind === "claude" ? "claude" : "terminal",
+    iconKey: terminalIconKeyForCodingAgentKind(agentKind),
     title,
   };
 }
 
+export function terminalIconKeyForCodingAgentKind(
+  agentKind: TerminalCodingAgentKind | null | undefined,
+): TerminalIconKey {
+  if (agentKind === "codex") return "openai";
+  if (agentKind === "claude") return "claude";
+  if (agentKind === "cursor") return "cursor";
+  if (agentKind === "kiro") return "kiro";
+  if (agentKind === "grok") return "grok";
+  if (agentKind === "opencode") return "opencode";
+  return agentKind ? "agent" : "terminal";
+}
+
+export function defaultTerminalTitleForCodingAgentKind(agentKind: TerminalCodingAgentKind): string {
+  const titles: Record<TerminalCodingAgentKind, string> = {
+    codex: "Codex CLI",
+    claude: "Claude Code",
+    opencode: "OpenCode",
+    grok: "Grok",
+    pi: "Pi",
+    kiro: "Kiro",
+    agentenv: "AgentEnv",
+    aider: "Aider",
+    amp: "Amp",
+    gemini: "Gemini CLI",
+    copilot: "GitHub Copilot",
+    goose: "Goose",
+    cursor: "Cursor Agent",
+    qwen: "Qwen Code",
+    crush: "Crush",
+    droid: "Droid",
+    kilo: "Kilo Code",
+    cline: "Cline",
+  };
+  return titles[agentKind];
+}
+
 export function defaultTerminalTitleForCliKind(cliKind: TerminalCliKind): string {
-  return cliKind === "codex" ? "Codex CLI" : "Claude Code";
+  return defaultTerminalTitleForCodingAgentKind(cliKind);
 }
 
 export function managedTerminalCommandNameForCliKind(cliKind: TerminalCliKind): string {
@@ -437,6 +462,13 @@ export function terminalCliKindFromValue(value: string | null | undefined): Term
   return normalizedValue === "codex" || normalizedValue === "claude" ? normalizedValue : null;
 }
 
+export function terminalCodingAgentKindFromValue(
+  value: string | null | undefined,
+): TerminalCodingAgentKind | null {
+  const normalizedValue = value?.trim().toLowerCase();
+  return TERMINAL_CODING_AGENT_KINDS.find((kind) => kind === normalizedValue) ?? null;
+}
+
 // Prefer the actual spawned process name over shell aliases when attributing terminal providers.
 export function deriveTerminalProcessIdentity(
   command: string | null | undefined,
@@ -446,15 +478,12 @@ export function deriveTerminalProcessIdentity(
     return null;
   }
   const codingAgentKind = deriveTerminalCodingAgentKind(strippedCommand);
-  const tokenCliKind =
-    codingAgentKind === "codex" || codingAgentKind === "claude" ? codingAgentKind : null;
-  if (tokenCliKind === "codex") {
-    return createTerminalCommandIdentity(defaultTerminalTitleForCliKind("codex"), "codex");
-  }
-  if (tokenCliKind === "claude") {
-    return createTerminalCommandIdentity(defaultTerminalTitleForCliKind("claude"), "claude");
-  }
-  return null;
+  return codingAgentKind
+    ? createTerminalCommandIdentity(
+        defaultTerminalTitleForCodingAgentKind(codingAgentKind),
+        codingAgentKind,
+      )
+    : null;
 }
 
 function inferCliKindFromTitle(title: string | null | undefined): TerminalCliKind | null {
@@ -505,12 +534,12 @@ export function deriveTerminalCommandIdentity(command: string): TerminalCommandI
   if (!first || IGNORED_TERMINAL_TITLE_COMMANDS.has(first)) {
     return null;
   }
-  const detectedCliKind = deriveCliKindFromTokenList(tokens);
-  if (detectedCliKind === "codex") {
-    return createTerminalCommandIdentity("Codex CLI", "codex");
-  }
-  if (detectedCliKind === "claude" || (first === "claude" && second === "code")) {
-    return createTerminalCommandIdentity("Claude Code", "claude");
+  const detectedAgentKind = deriveTerminalCodingAgentKind(strippedCommand);
+  if (detectedAgentKind) {
+    return createTerminalCommandIdentity(
+      defaultTerminalTitleForCodingAgentKind(detectedAgentKind),
+      detectedAgentKind,
+    );
   }
   if (first === "git") {
     return createTerminalCommandIdentity(
@@ -630,22 +659,26 @@ export function deriveTerminalTitleSignalIdentity(title: string): TerminalComman
 
 // Resolve terminal label, icon, and activity state from persisted metadata plus runtime status.
 export function resolveTerminalVisualIdentity(input: {
+  agentKind?: TerminalCodingAgentKind | null | undefined;
   cliKind?: TerminalCliKind | null | undefined;
   fallbackTitle: string;
   isRunning?: boolean | undefined;
   state?: TerminalVisualState | null | undefined;
   title?: string | null | undefined;
 }): ResolvedTerminalVisualIdentity {
-  const resolvedCliKind =
+  const inferredCliKind =
     input.cliKind === undefined ? inferCliKindFromTitle(input.title) : input.cliKind;
+  const agentKind = input.agentKind === undefined ? (inferredCliKind ?? null) : input.agentKind;
+  const resolvedCliKind = terminalCliKindFromValue(agentKind) ?? inferredCliKind;
   const title =
     input.title?.trim() ||
-    (resolvedCliKind ? defaultTerminalTitleForCliKind(resolvedCliKind) : input.fallbackTitle);
+    (agentKind ? defaultTerminalTitleForCodingAgentKind(agentKind) : input.fallbackTitle);
   const cliKind = resolvedCliKind ?? null;
   const state = input.state ?? (input.isRunning ? "running" : "idle");
   return {
+    agentKind,
     cliKind,
-    iconKey: cliKind === "codex" ? "openai" : cliKind === "claude" ? "claude" : "terminal",
+    iconKey: terminalIconKeyForCodingAgentKind(agentKind),
     state,
     title,
   };

@@ -20,6 +20,7 @@ import {
 } from "@t3tools/contracts";
 import type {
   TerminalActivityState,
+  TerminalCodingAgentKind,
   TerminalCliKind,
   TerminalCliSessionInfo,
 } from "@t3tools/shared/terminalThreads";
@@ -54,6 +55,7 @@ export interface TerminalSessionState {
   unsubscribeData: (() => void) | null;
   unsubscribeExit: (() => void) | null;
   hasRunningSubprocess: boolean;
+  detectedAgentKind: TerminalCodingAgentKind | null;
   detectedCliKind: TerminalCliKind | null;
   /** True once this branded session has actually shown a provider child process. */
   providerDescendantObserved: boolean;

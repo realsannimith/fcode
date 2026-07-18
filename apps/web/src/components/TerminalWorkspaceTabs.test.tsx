@@ -56,11 +56,7 @@ describe("TerminalWorkspaceTabs", () => {
 
   it("keeps both thread surfaces available before a terminal is opened", () => {
     const markup = renderToStaticMarkup(
-      <TerminalWorkspaceTabs
-        activeTab="chat"
-        isWorking={false}
-        onSelectTab={vi.fn()}
-      />,
+      <TerminalWorkspaceTabs activeTab="chat" isWorking={false} onSelectTab={vi.fn()} />,
     );
 
     expect(markup).toContain("Terminal");
@@ -70,11 +66,7 @@ describe("TerminalWorkspaceTabs", () => {
 
   it("keeps both thread surfaces available in terminal-only mode", () => {
     const markup = renderToStaticMarkup(
-      <TerminalWorkspaceTabs
-        activeTab="terminal"
-        isWorking={false}
-        onSelectTab={vi.fn()}
-      />,
+      <TerminalWorkspaceTabs activeTab="terminal" isWorking={false} onSelectTab={vi.fn()} />,
     );
 
     expect(markup).toContain("Terminal");
@@ -84,11 +76,7 @@ describe("TerminalWorkspaceTabs", () => {
 
   it("shows the switcher for a single terminal", () => {
     const markup = renderToStaticMarkup(
-      <TerminalWorkspaceTabs
-        activeTab="terminal"
-        isWorking={false}
-        onSelectTab={vi.fn()}
-      />,
+      <TerminalWorkspaceTabs activeTab="terminal" isWorking={false} onSelectTab={vi.fn()} />,
     );
 
     expect(markup).toContain("Terminal");
@@ -97,11 +85,7 @@ describe("TerminalWorkspaceTabs", () => {
 
   it("uses the shared dot loader while chat is working", () => {
     const markup = renderToStaticMarkup(
-      <TerminalWorkspaceTabs
-        activeTab="terminal"
-        isWorking
-        onSelectTab={vi.fn()}
-      />,
+      <TerminalWorkspaceTabs activeTab="terminal" isWorking onSelectTab={vi.fn()} />,
     );
 
     expect(markup).toContain('aria-label="Chat agent is generating"');

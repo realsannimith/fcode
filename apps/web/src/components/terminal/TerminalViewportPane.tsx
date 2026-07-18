@@ -19,7 +19,6 @@ import {
   Plus,
   SquareSplitHorizontal,
   SquareSplitVertical,
-  TerminalSquareIcon,
   Trash2,
 } from "~/lib/icons";
 import { cn } from "~/lib/utils";
@@ -55,7 +54,6 @@ interface TerminalViewportPaneProps {
   onSplitTerminalDown?: ((terminalId: string) => void) | undefined;
   onNewTerminalTab?: ((terminalId: string) => void) | undefined;
   onLaunchAgentCommand?: ((launch: TerminalAgentLaunch) => void) | undefined;
-  onMoveTerminalToGroup?: ((terminalId: string) => void) | undefined;
   onCloseTerminal?: ((terminalId: string) => void) | undefined;
   // Terminal id of the pane tab currently being dragged (from the shared
   // TerminalDndContext). While set, each pane shows drop zones so the tab can
@@ -86,19 +84,6 @@ function splitHandleClassName(direction: ThreadTerminalSplitNode["direction"]): 
   return direction === "horizontal"
     ? "group/handle relative z-10 flex w-[9px] -mx-1 shrink-0 cursor-col-resize items-center justify-center"
     : "group/handle relative z-10 flex h-[9px] -my-1 shrink-0 cursor-row-resize items-center justify-center";
-}
-
-function canMoveTerminalToOwnGroup(node: ThreadTerminalLayoutNode, terminalId: string): boolean {
-  if (node.type === "terminal") {
-    return node.activeTerminalId === terminalId && node.terminalIds.length > 1;
-  }
-
-  return node.children.some((child) => {
-    if (child.type === "terminal") {
-      return child.terminalIds.includes(terminalId);
-    }
-    return canMoveTerminalToOwnGroup(child, terminalId);
-  });
 }
 
 function PaneActionButton(props: { label: string; onClick: () => void; children: ReactNode }) {
@@ -132,7 +117,6 @@ export default function TerminalViewportPane({
   onSplitTerminalDown,
   onNewTerminalTab,
   onLaunchAgentCommand,
-  onMoveTerminalToGroup,
   onCloseTerminal,
   draggingTerminalId = null,
   presentationMode,
@@ -147,12 +131,6 @@ export default function TerminalViewportPane({
         ? node.activeTerminalId
         : (node.terminalIds[0] ?? resolvedActiveTerminalId);
       const isFocusedPane = activePaneTerminalId === resolvedActiveTerminalId;
-      const canMoveActiveTerminalToGroup =
-        !!onMoveTerminalToGroup && canMoveTerminalToOwnGroup(layout, activePaneTerminalId);
-      const moveActiveTerminalToGroup = () => {
-        if (!onMoveTerminalToGroup) return;
-        onMoveTerminalToGroup(activePaneTerminalId);
-      };
       // Anchor for this pane's drop zones: a terminal already in the pane that
       // is not the dragged one. Without an anchor (the pane holds only the
       // dragged tab) a drop here would be a no-op, so the zones stay hidden.
@@ -194,10 +172,12 @@ export default function TerminalViewportPane({
                           label={tabTitle}
                           labelClassName="max-w-40"
                           icon={
-                            <TerminalIdentityIcon
-                              className="size-3.5"
-                              iconKey={visualIdentity?.iconKey ?? "terminal"}
-                            />
+                            visualIdentity?.iconKey && visualIdentity.iconKey !== "terminal" ? (
+                              <TerminalIdentityIcon
+                                className="size-3.5"
+                                iconKey={visualIdentity.iconKey}
+                              />
+                            ) : null
                           }
                           leading={
                             visualIdentity && visualIdentity.state !== "idle" ? (
@@ -230,14 +210,6 @@ export default function TerminalViewportPane({
             </div>
 
             <div className="flex shrink-0 items-center gap-0.5">
-              {canMoveActiveTerminalToGroup ? (
-                <PaneActionButton
-                  label="Move to its own terminal tab"
-                  onClick={moveActiveTerminalToGroup}
-                >
-                  <TerminalSquareIcon className="size-3.5" />
-                </PaneActionButton>
-              ) : null}
               {onSplitTerminalRight ? (
                 <PaneActionButton
                   label="Split right"
@@ -292,6 +264,15 @@ export default function TerminalViewportPane({
           <div className="relative min-h-0 min-w-0 flex-1 bg-[var(--color-background-surface)]">
             {paneDropAnchorTerminalId ? (
               <TerminalPaneDropZones targetTerminalId={paneDropAnchorTerminalId} />
+            ) : null}
+            {/* Corner accent marking the focused terminal session so it is easy to spot which
+                pane is active — especially in split layouts. Gated on isFocusedPane, purely
+                decorative, and non-interactive so it never intercepts terminal input. */}
+            {isFocusedPane ? (
+              <span
+                aria-hidden="true"
+                className="terminal-focus-corner pointer-events-none absolute right-1.5 top-1.5 z-[2] size-4 rounded-tr-[5px] border-t-2 border-r-2 border-info"
+              />
             ) : null}
             {node.terminalIds.map((terminalId) => {
               const isActiveTab = terminalId === activePaneTerminalId;

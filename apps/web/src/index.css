@@ -82,8 +82,8 @@
     --app-surface-divider: color-mix(in srgb, var(--color-border) 60%, transparent);
     /* Rounded-corner radius of the chat card's seam side. Defined once here so the card
        radius, the seam ring clip-path, the right-side border-radius, and the backing
-       strip width stay in lockstep. (All call sites still carry a 0.75rem fallback.) */
-    --app-content-card-radius: 0.9rem;
+       strip width stay in lockstep. (All call sites still carry a 0.55rem fallback.) */
+    --app-content-card-radius: 0.55rem;
   }
 }
 
@@ -170,7 +170,7 @@
     display: block;
     opacity: 0;
     transition: opacity 300ms cubic-bezier(0.32, 0.72, 0, 1);
-    width: var(--app-content-card-radius, 0.75rem);
+    width: var(--app-content-card-radius, 0.55rem);
     pointer-events: none;
     background-color: var(--app-sidebar-surface, var(--card));
     backdrop-filter: var(--app-sidebar-backdrop-filter, none);
@@ -227,8 +227,8 @@
 
   [data-sidebar-side="left"] .chat-content-card {
     --seam-shadow-x: -6.5px;
-    border-radius: var(--app-content-card-radius, 0.75rem) 0 0
-      var(--app-content-card-radius, 0.75rem);
+    border-radius: var(--app-content-card-radius, 0.55rem) 0 0
+      var(--app-content-card-radius, 0.55rem);
   }
 
   .chat-content-card::before {
@@ -247,7 +247,7 @@
   /* Keep only the seam-side radius strip: the vertical edge + both curves on that
      side, clipping away the straight top/bottom strokes and the opposite edge. */
   [data-sidebar-side="left"] .chat-content-card::before {
-    clip-path: inset(0 calc(100% - var(--app-content-card-radius, 0.75rem)) 0 0);
+    clip-path: inset(0 calc(100% - var(--app-content-card-radius, 0.55rem)) 0 0);
   }
 
   [data-sidebar-side="left"]:has([data-placement="content-seam"]:hover) .chat-content-card {
@@ -327,13 +327,11 @@
   100% {
     opacity: 0.25;
     transform: scale(0.72);
-    box-shadow: 0 0 2px currentColor;
   }
 
   18% {
     opacity: 1;
     transform: scale(1);
-    box-shadow: 0 0 6px currentColor;
   }
 }
 
@@ -346,7 +344,32 @@
     animation: none;
     opacity: 0.8;
     transform: none;
-    box-shadow: 0 0 4px currentColor;
+  }
+}
+
+/* Focused-terminal corner accent: a gentle pulse + glow so the active terminal
+   session is easy to spot. drop-shadow follows the L-bracket's painted borders
+   rather than its (mostly invisible) bounding box. */
+@keyframes terminal-focus-corner {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+
+  50% {
+    opacity: 1;
+  }
+}
+
+.terminal-focus-corner {
+  filter: drop-shadow(0 0 3px color-mix(in srgb, var(--info) 60%, transparent));
+  animation: terminal-focus-corner 1.8s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .terminal-focus-corner {
+    animation: none;
+    opacity: 0.9;
   }
 }
 
@@ -437,8 +460,8 @@
 
 :root {
   color-scheme: light;
-  --radius: 0.625rem;
-  --radius-user-message: 0.875rem;
+  --radius: 0.375rem;
+  --radius-user-message: 0.5rem;
   --font-ui-family: var(
     --theme-font-ui-family,
     -apple-system,
@@ -904,7 +927,7 @@ label:has(> select#reasoning-effort) select {
 .chat-markdown pre {
   max-width: 100%;
   overflow-x: auto;
-  border-radius: 1rem;
+  border-radius: 0.6rem;
   background: var(--app-chat-code-surface);
   padding: 0.5rem 0.6rem;
   font-family: var(--font-chat-code-family);
@@ -922,7 +945,7 @@ label:has(> select#reasoning-effort) select {
 .chat-markdown .chat-markdown-codeblock {
   margin: 0.65rem 0;
   overflow: hidden;
-  border-radius: 0.65rem;
+  border-radius: 0.4rem;
   background: var(--app-chat-code-surface);
 }
 
@@ -1165,7 +1188,7 @@ label:has(> select#reasoning-effort) select {
   gap: 0.5rem;
   padding: 0.75rem 0.875rem;
   border: 1px solid color-mix(in srgb, var(--color-border) 65%, transparent);
-  border-radius: 0.875rem;
+  border-radius: 0.5rem;
   background: var(--color-background-elevated-primary-opaque);
   /* The box lives inside the file viewer, which sets the monospace code font on
      its content; reset to the normal UI font so the comment chrome reads as app
@@ -1408,7 +1431,7 @@ label:has(> select#reasoning-effort) select {
   min-height: 0;
   gap: 0.6rem;
   padding: 0.6rem 0.75rem;
-  border-radius: 0.75rem;
+  border-radius: 0.45rem;
   border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
   background: color-mix(in srgb, var(--muted) 35%, transparent);
 }
@@ -1595,7 +1618,7 @@ label:has(> select#reasoning-effort) select {
   margin: 0;
   border: 0;
   padding: 0;
-  border-radius: 0.85rem;
+  border-radius: 0.5rem;
   overflow: hidden;
   background: color-mix(in srgb, var(--muted) 55%, transparent);
   cursor: zoom-in;
@@ -1762,12 +1785,13 @@ diffs-container {
 
 .diff-render-file {
   border: 1px solid var(--border);
-  border-radius: 0.5rem;
+  border-radius: 0.35rem;
   overflow: clip;
-  background: color-mix(in srgb, var(--card) 92%, var(--background));
+  background: var(--background);
 }
 
 .diff-render-file [data-diffs-header],
+.diff-render-file [data-diff-file-header],
 .diff-render-file [data-file-info] {
   cursor: pointer;
 }
@@ -1793,8 +1817,8 @@ diffs-container {
 /* Composer shell/surface corner geometry — single source of truth so radius
    tweaks are not split across Tailwind utilities (and HMR cannot leave stale rules). */
 :root {
-  /* Pill-ward to match the target's strongly-rounded follow-up input. */
-  --composer-radius: 1.75rem;
+  /* Kept modest to match the app-wide squarer corner style. */
+  --composer-radius: 0.75rem;
 }
 
 .chat-composer-shell,

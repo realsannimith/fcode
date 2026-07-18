@@ -8,10 +8,7 @@ import { ImageAddon } from "@xterm/addon-image";
 import { SearchAddon } from "@xterm/addon-search";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { WebglAddon } from "@xterm/addon-webgl";
-import {
-  defaultTerminalTitleForCliKind,
-  consumeTerminalIdentityInput,
-} from "@t3tools/shared/terminalThreads";
+import { consumeTerminalIdentityInput } from "@t3tools/shared/terminalThreads";
 import { describeErrorMessage } from "@t3tools/shared/errorMessages";
 import {
   TERMINAL_MAX_COLS,
@@ -45,10 +42,11 @@ import {
   writeSystemMessage,
 } from "./terminalRuntimeAppearance";
 import { terminalEventDispatcher } from "./terminalEventDispatcher";
-import type {
-  TerminalRuntimeConfig,
-  TerminalRuntimeEntry,
-  TerminalRuntimeViewState,
+import {
+  resolveTerminalRuntimeActivityMetadata,
+  type TerminalRuntimeConfig,
+  type TerminalRuntimeEntry,
+  type TerminalRuntimeViewState,
 } from "./terminalRuntimeTypes";
 import { waitForTerminalFontReady } from "./terminalFontSettle";
 import { observeTerminalWriteParsed } from "./terminalPerformance";
@@ -726,6 +724,8 @@ export function syncRuntimeConfig(
   entry.threadId = config.threadId;
   entry.terminalId = config.terminalId;
   entry.terminalLabel = config.terminalLabel;
+  entry.terminalAgentKind =
+    config.terminalAgentKind ?? config.terminalCliKind ?? entry.terminalAgentKind ?? null;
   entry.terminalCliKind = config.terminalCliKind ?? entry.terminalCliKind ?? null;
   entry.cwd = config.cwd;
   if (config.runtimeEnv === undefined) {
@@ -798,6 +798,7 @@ export function createRuntimeEntry(config: TerminalRuntimeConfig): TerminalRunti
     threadId: config.threadId,
     terminalId: config.terminalId,
     terminalLabel: config.terminalLabel,
+    terminalAgentKind: config.terminalAgentKind ?? config.terminalCliKind ?? null,
     terminalCliKind: config.terminalCliKind ?? null,
     cwd: config.cwd,
     callbacks: config.callbacks,
@@ -974,9 +975,11 @@ export function createRuntimeEntry(config: TerminalRuntimeConfig): TerminalRunti
       const nextIdentityState = consumeTerminalIdentityInput(entry.titleInputBuffer, data);
       entry.titleInputBuffer = nextIdentityState.buffer;
       const submittedIdentity = nextIdentityState.identity;
-      if (submittedIdentity && (submittedIdentity.cliKind || entry.terminalCliKind !== null)) {
+      if (submittedIdentity?.agentKind && entry.terminalAgentKind === null) {
+        entry.terminalAgentKind = submittedIdentity.agentKind;
         entry.terminalCliKind = submittedIdentity.cliKind;
         entry.callbacks.onTerminalMetadataChange(entry.terminalId, {
+          agentKind: submittedIdentity.agentKind,
           cliKind: submittedIdentity.cliKind,
           label: submittedIdentity.title,
         });
@@ -1036,12 +1039,22 @@ export function createRuntimeEntry(config: TerminalRuntimeConfig): TerminalRunti
       }
 
       if (event.type === "activity") {
-        if (entry.terminalCliKind !== event.cliKind) {
-          entry.terminalCliKind = event.cliKind;
-          entry.callbacks.onTerminalMetadataChange(entry.terminalId, {
+        const activityMetadata = resolveTerminalRuntimeActivityMetadata({
+          current: {
+            agentKind: entry.terminalAgentKind,
+            cliKind: entry.terminalCliKind,
+          },
+          event: {
+            // Normalize undefined to null: the resolver treats both as "no detected agent"
+            // (see its `?? cliKind` fallback), and the param type disallows explicit undefined.
+            agentKind: event.agentKind ?? null,
             cliKind: event.cliKind,
-            label: event.cliKind ? defaultTerminalTitleForCliKind(event.cliKind) : "Terminal",
-          });
+          },
+        });
+        if (activityMetadata) {
+          entry.terminalAgentKind = activityMetadata.agentKind;
+          entry.terminalCliKind = activityMetadata.cliKind;
+          entry.callbacks.onTerminalMetadataChange(entry.terminalId, activityMetadata);
         }
         // Suppress transient subprocess activity while the terminal is still
         // connecting/replaying on open. Shell init and snapshot replay can

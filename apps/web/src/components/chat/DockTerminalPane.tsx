@@ -99,6 +99,7 @@ export function DockTerminalPane(props: {
       terminalIds={terminalState.terminalIds}
       terminalLabelsById={terminalState.terminalLabelsById}
       terminalTitleOverridesById={terminalState.terminalTitleOverridesById}
+      terminalAgentKindsById={terminalState.terminalAgentKindsById}
       terminalCliKindsById={terminalState.terminalCliKindsById}
       terminalAttentionStatesById={terminalState.terminalAttentionStatesById ?? {}}
       runningTerminalIds={terminalState.runningTerminalIds}
@@ -111,7 +112,6 @@ export function DockTerminalPane(props: {
       onNewTerminal={createTerminal}
       onNewTerminalTab={terminal.createTerminalTab}
       onLaunchAgentCommand={projectCwd ? launchAgent : undefined}
-      onMoveTerminalToGroup={terminal.moveTerminalToNewGroup}
       onActiveTerminalChange={terminal.activateTerminal}
       onCloseTerminal={terminal.closeTerminal}
       onCloseTerminalGroup={terminal.closeTerminalGroup}

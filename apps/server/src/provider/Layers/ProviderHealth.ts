@@ -1886,9 +1886,7 @@ export const checkCursorProviderStatus = makeCheckCursorProviderStatus();
 
 // ── Snapshot helpers ────────────────────────────────────────────────
 
-export function stripProviderVersionAdvisory(
-  status: ServerProviderStatus,
-): ServerProviderStatus {
+export function stripProviderVersionAdvisory(status: ServerProviderStatus): ServerProviderStatus {
   const { versionAdvisory: _versionAdvisory, ...statusWithoutVersionAdvisory } = status;
   return statusWithoutVersionAdvisory;
 }
@@ -2081,10 +2079,12 @@ export const ProviderHealthLive = Layer.effect(
     ).pipe(
       Effect.map((statuses) =>
         orderProviderStatuses(
-          statuses.filter(
-            (status): status is ServerProviderStatus =>
-              status !== undefined && !isDisabledProviderStatusOverlay(status),
-          ).map(stripProviderVersionAdvisory),
+          statuses
+            .filter(
+              (status): status is ServerProviderStatus =>
+                status !== undefined && !isDisabledProviderStatusOverlay(status),
+            )
+            .map(stripProviderVersionAdvisory),
         ),
       ),
     );

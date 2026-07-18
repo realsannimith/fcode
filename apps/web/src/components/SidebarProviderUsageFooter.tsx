@@ -1,10 +1,9 @@
 // FILE: SidebarProviderUsageFooter.tsx
 // Purpose: Always-visible "provider usage" display rendered inline in the sidebar
-// footer. Shows one compact chip per usage-capable provider (icon + the two key
-// window percentages, Session over Weekly) so users can see each provider's usage
-// at a glance — the OpenUsage menu-bar strip style. Hovering a chip shows a labeled
-// tooltip; clicking opens the OpenUsage-style detail card (every window's meter plus
-// the local spend lines).
+// footer. Shows one compact row per usage-capable provider with the two key windows
+// stacked as progress bars so users can scan remaining quota at a glance. Hovering
+// a row shows a labeled tooltip; clicking opens the OpenUsage-style detail card
+// (every window's meter plus the local spend lines).
 // Reuses the same data + presentation layer as Settings → Usage and the chat-header
 // usage chip (useProviderUsageSummary + providerUsageDisplay helpers).
 
@@ -19,9 +18,9 @@ import { RefreshCwIcon } from "~/lib/icons";
 import { openUsageQueryKeys } from "~/lib/openUsageReactQuery";
 import {
   deriveProviderUsageDisplayRows,
+  providerUsageProgressTrackProps,
   selectPrimaryProviderUsageDisplayRow,
   type ProviderUsageDisplayRow,
-  type ProviderUsageTone,
 } from "~/lib/providerUsageDisplay";
 import { deriveAccountRateLimits, type ProviderRateLimit } from "~/lib/rateLimits";
 import { serverAllProviderUsageQueryOptions, serverQueryKeys } from "~/lib/serverReactQuery";
@@ -33,15 +32,8 @@ import { ProviderIcon } from "./ProviderIcon";
 import { ProviderUsageMenuPopup, type ProviderUsageMenuModel } from "./ProviderUsageMenuControl";
 import { MenuTrigger } from "./ui/menu";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
+import { UsageProgressTrack } from "./UsageProgressTrack";
 import { SIDEBAR_SECTION_LABEL_CLASS_NAME } from "../sidebarRowStyles";
-
-// Chip percentages read in the provider's tone: healthy stays neutral (like the
-// OpenUsage strip), warning/danger tint so a nearly-exhausted quota stands out.
-const CHIP_TONE_TEXT: Record<ProviderUsageTone, string> = {
-  healthy: "text-foreground",
-  warning: "text-amber-500",
-  danger: "text-red-500",
-};
 
 // The 5h window is branded "Session" in OpenUsage; everything else keeps its label.
 function displayWindowLabel(label: string): string {
@@ -53,7 +45,7 @@ function statusLabel(snapshot: ServerProviderUsageSnapshot | undefined): string 
     case "needs-auth":
       return "Sign in";
     case "unsupported":
-      return "—";
+      return "-";
     case "error":
       return "Unavailable";
     default:
@@ -92,29 +84,45 @@ function SidebarProviderUsageChip({
   const displayName = providerUsageDisplayName(provider);
 
   const chipInner = (
-    <div className="flex items-center gap-2">
-      <span className="flex size-6 shrink-0 items-center justify-center rounded-md border border-[color:var(--color-border)] bg-background/50">
-        <ProviderIcon provider={provider} className="size-3.5" />
-      </span>
+    <div className="min-w-0 space-y-1.5">
+      <div className="flex min-w-0 items-center gap-1.5">
+        <span className="flex size-5 shrink-0 items-center justify-center rounded border border-[color:var(--color-border)] bg-background/50">
+          <ProviderIcon provider={provider} className="size-3" />
+        </span>
+        <span className="min-w-0 truncate text-[length:var(--app-font-size-ui-meta,11px)] font-medium text-foreground">
+          {displayName}
+        </span>
+        {chipRows.length === 0 ? (
+          <span className="ml-auto min-w-0 truncate text-[length:var(--app-font-size-ui-meta,11px)] text-muted-foreground/60">
+            {statusLabel(snapshot)}
+          </span>
+        ) : null}
+      </div>
       {chipRows.length > 0 ? (
-        <span className="flex min-w-0 flex-col leading-tight">
-          {chipRows.map((row) => (
-            <span
-              key={row.id}
-              className={cn(
-                "text-[length:var(--app-font-size-ui,12px)] font-semibold tabular-nums",
-                CHIP_TONE_TEXT[row.remainingTone],
-              )}
-            >
-              {row.remainingLabel}
-            </span>
-          ))}
-        </span>
-      ) : (
-        <span className="min-w-0 truncate text-[length:var(--app-font-size-ui-meta,11px)] text-muted-foreground/60">
-          {statusLabel(snapshot)}
-        </span>
-      )}
+        <div className="flex flex-col gap-1.5">
+          {chipRows.map((row) => {
+            const trackProps = providerUsageProgressTrackProps(row);
+
+            return (
+              <div key={row.id} className="space-y-0.5">
+                <div className="flex items-baseline justify-between gap-2 text-[10px] leading-none">
+                  <span className="truncate text-muted-foreground">
+                    {displayWindowLabel(row.label)}
+                  </span>
+                  <span className="shrink-0 font-medium tabular-nums text-foreground">
+                    {row.leftText}
+                  </span>
+                </div>
+                <UsageProgressTrack
+                  {...trackProps}
+                  className="h-1 bg-muted/75"
+                  markerGapClassName="bg-[var(--color-background-elevated-secondary)]"
+                />
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
     </div>
   );
 
@@ -216,7 +224,7 @@ export function SidebarProviderUsageFooter() {
   const spinning = isRefreshing || usageQuery.isFetching;
 
   return (
-    <div className="rounded-lg border border-[color:var(--color-border)] bg-[var(--color-background-elevated-secondary)]/40 px-1 py-1.5">
+    <div className="rounded-lg border border-[color:var(--color-border)] bg-[var(--color-background-elevated-secondary)]/40 px-1 py-1">
       <div className="flex items-center justify-between pb-0.5 pr-1 pl-2">
         <span className={SIDEBAR_SECTION_LABEL_CLASS_NAME}>Usage</span>
         <button
@@ -235,7 +243,7 @@ export function SidebarProviderUsageFooter() {
           No providers selected. Choose which to show in Settings → Usage.
         </p>
       ) : (
-        <div className="grid grid-cols-2 gap-0.5">
+        <div className="flex flex-col gap-0.5">
           {visibleProviders.map((provider) => (
             <SidebarProviderUsageChip
               key={provider}

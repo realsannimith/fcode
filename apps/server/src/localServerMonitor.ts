@@ -138,14 +138,7 @@ const SCRIPT_RUNTIME_LABELS = new Map<string, string>([
   ["ruby", "Ruby"],
 ]);
 
-const NON_PROJECT_CWD_PREFIXES = [
-  "/Applications",
-  "/Library",
-  "/System",
-  "/bin",
-  "/sbin",
-  "/usr",
-];
+const NON_PROJECT_CWD_PREFIXES = ["/Applications", "/Library", "/System", "/bin", "/sbin", "/usr"];
 
 const pageTitleCache = new Map<string, CachedPageTitle>();
 const pageTitleInFlight = new Map<string, Promise<string | null>>();

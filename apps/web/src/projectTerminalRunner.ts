@@ -6,12 +6,14 @@
 import type { NativeApi, TerminalSessionSnapshot, ThreadId } from "@t3tools/contracts";
 import {
   deriveTerminalCommandIdentity,
+  type TerminalCodingAgentKind,
   type TerminalCliKind,
 } from "@t3tools/shared/terminalThreads";
 
 import { projectScriptRuntimeEnv } from "./projectScripts";
 
 export interface ProjectCommandTerminalMetadata {
+  agentKind: TerminalCodingAgentKind | null;
   cliKind: TerminalCliKind | null;
   label: string;
 }
@@ -58,6 +60,7 @@ export async function runProjectCommandInTerminal(input: {
     snapshot,
     metadata: terminalCommandIdentity
       ? {
+          agentKind: terminalCommandIdentity.agentKind,
           cliKind: terminalCommandIdentity.cliKind,
           label: terminalCommandIdentity.title,
         }

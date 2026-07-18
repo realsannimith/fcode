@@ -52,6 +52,61 @@ function makeThreadCreateCommand(threadId = "thread-promote") {
   } satisfies Extract<ClientOrchestrationCommand, { type: "thread.create" }>;
 }
 
+function makeShellSnapshot(threadId: ThreadId) {
+  const projectId = ProjectId.makeUnsafe("project-promote");
+  return {
+    snapshotSequence: 1,
+    projects: [
+      {
+        id: projectId,
+        kind: "project" as const,
+        title: "Project",
+        workspaceRoot: "/tmp/project",
+        defaultModelSelection: null,
+        scripts: [],
+        createdAt: "2026-05-06T20:00:00.000Z",
+        updatedAt: "2026-05-06T20:00:00.000Z",
+      },
+    ],
+    threads: [
+      {
+        id: threadId,
+        projectId,
+        title: "Promoted thread",
+        modelSelection: {
+          provider: "codex" as const,
+          model: "gpt-5",
+        },
+        runtimeMode: "full-access" as const,
+        interactionMode: "default" as const,
+        envMode: "local" as const,
+        entryPoint: "terminal" as const,
+        branch: null,
+        worktreePath: null,
+        associatedWorktreePath: null,
+        associatedWorktreeBranch: null,
+        associatedWorktreeRef: null,
+        createBranchFlowCompleted: false,
+        isPinned: false,
+        parentThreadId: null,
+        subagentAgentId: null,
+        subagentNickname: null,
+        subagentRole: null,
+        forkSourceThreadId: null,
+        sidechatSourceThreadId: null,
+        lastKnownPr: null,
+        latestTurn: null,
+        createdAt: "2026-05-06T20:00:00.000Z",
+        updatedAt: "2026-05-06T20:00:00.000Z",
+        archivedAt: null,
+        handoff: null,
+        session: null,
+      },
+    ],
+    updatedAt: "2026-05-06T20:00:00.000Z",
+  };
+}
+
 describe("threadCreatePromotion", () => {
   it("recognizes duplicate thread.create invariant errors", () => {
     expect(
@@ -86,6 +141,23 @@ describe("threadCreatePromotion", () => {
     await expect(first).resolves.toBe("created");
     await expect(second).resolves.toBe("exists");
     expect(dispatchCommand).toHaveBeenCalledTimes(1);
+  });
+
+  it("reconciles a successful promotion into the sidebar shell state immediately", async () => {
+    const threadId = ThreadId.makeUnsafe("thread-successful-reconcile");
+    const getShellSnapshot = vi.fn(() => Promise.resolve(makeShellSnapshot(threadId)));
+    const api = makeApi({
+      dispatchCommand: vi.fn(() => Promise.resolve({ sequence: 1 })),
+      getShellSnapshot,
+    });
+
+    await expect(promoteThreadCreate(makeThreadCreateCommand(threadId), api)).resolves.toBe(
+      "created",
+    );
+
+    expect(getShellSnapshot).toHaveBeenCalledTimes(1);
+    expect(getThreadFromState(useStore.getState(), threadId)?.id).toBe(threadId);
+    expect(useStore.getState().sidebarThreadSummaryById[threadId]?.id).toBe(threadId);
   });
 
   it("marks the draft as promoted when the thread already exists locally", async () => {

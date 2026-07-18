@@ -90,7 +90,7 @@ function LocalServerRow({
           : undefined
       }
       className={cn(
-        "grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2.5 rounded-[0.5rem] py-1 pl-2 pr-3",
+        "grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2.5 rounded-[0.35rem] py-1 pl-2 pr-3",
         onOpen &&
           "cursor-pointer transition-colors hover:bg-[var(--color-background-button-secondary-hover)]",
       )}

@@ -18,6 +18,7 @@ describe("inspectSubprocessActivity", () => {
   it("reports no activity for an idle shell with no children", () => {
     const map = buildChildrenMap([]);
     expect(inspectSubprocessActivity(100, map)).toEqual({
+      agentKind: null,
       cliKind: null,
       hasNonProviderSubprocess: false,
       hasProviderDescendant: false,
@@ -31,6 +32,7 @@ describe("inspectSubprocessActivity", () => {
       { ppid: 200, pid: 300, command: "bash" },
     ]);
     expect(inspectSubprocessActivity(100, map)).toEqual({
+      agentKind: null,
       cliKind: null,
       hasNonProviderSubprocess: false,
       hasProviderDescendant: false,
@@ -41,6 +43,7 @@ describe("inspectSubprocessActivity", () => {
   it("flags a non-provider subprocess as running", () => {
     const map = buildChildrenMap([{ ppid: 100, pid: 200, command: "node build.js" }]);
     expect(inspectSubprocessActivity(100, map)).toEqual({
+      agentKind: null,
       cliKind: null,
       hasNonProviderSubprocess: true,
       hasProviderDescendant: false,
@@ -54,6 +57,7 @@ describe("inspectSubprocessActivity", () => {
       { ppid: 200, pid: 300, command: "codex" },
     ]);
     expect(inspectSubprocessActivity(100, map)).toEqual({
+      agentKind: "codex",
       cliKind: "codex",
       hasNonProviderSubprocess: false,
       hasProviderDescendant: true,
@@ -61,14 +65,23 @@ describe("inspectSubprocessActivity", () => {
     });
   });
 
-  it.each(["opencode", "pi", "kiro-cli", "agv", "aider", "gemini", "cursor-agent"])(
+  it.each([
+    ["opencode", "opencode"],
+    ["pi", "pi"],
+    ["kiro-cli", "kiro"],
+    ["agv", "agentenv"],
+    ["aider", "aider"],
+    ["gemini", "gemini"],
+    ["cursor-agent", "cursor"],
+  ] as const)(
     "detects the %s coding agent without misclassifying it as a generic subprocess",
-    (command) => {
+    (command, agentKind) => {
       const map = buildChildrenMap([
         { ppid: 100, pid: 200, command: "zsh" },
         { ppid: 200, pid: 300, command },
       ]);
       expect(inspectSubprocessActivity(100, map)).toEqual({
+        agentKind,
         cliKind: null,
         hasNonProviderSubprocess: false,
         hasProviderDescendant: true,
@@ -88,6 +101,7 @@ describe("inspectSubprocessActivity", () => {
     expect(inspectSubprocessActivity(100, map).hasProviderDescendant).toBe(true);
     expect(inspectSubprocessActivity(100, map).cliKind).toBe("codex");
     expect(inspectSubprocessActivity(400, map)).toEqual({
+      agentKind: null,
       cliKind: null,
       hasNonProviderSubprocess: false,
       hasProviderDescendant: false,

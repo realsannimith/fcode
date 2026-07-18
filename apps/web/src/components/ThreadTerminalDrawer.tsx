@@ -13,7 +13,11 @@ import {
   TriangleAlertIcon,
 } from "~/lib/icons";
 import { type ThreadId } from "@t3tools/contracts";
-import { type TerminalActivityState, type TerminalCliKind } from "@t3tools/shared/terminalThreads";
+import {
+  type TerminalActivityState,
+  type TerminalCodingAgentKind,
+  type TerminalCliKind,
+} from "@t3tools/shared/terminalThreads";
 import { Terminal } from "@xterm/xterm";
 import {
   type DragEvent as ReactDragEvent,
@@ -128,13 +132,18 @@ interface TerminalViewportProps {
   threadId: ThreadId;
   terminalId: string;
   terminalLabel: string;
+  terminalAgentKind?: TerminalCodingAgentKind | null;
   terminalCliKind?: TerminalCliKind | null;
   cwd: string;
   runtimeEnv?: Record<string, string>;
   onSessionExited: () => void;
   onTerminalMetadataChange: (
     terminalId: string,
-    metadata: { cliKind: TerminalCliKind | null; label: string },
+    metadata: {
+      agentKind?: TerminalCodingAgentKind | null;
+      cliKind: TerminalCliKind | null;
+      label: string;
+    },
   ) => void;
   onTerminalActivityChange: (
     terminalId: string,
@@ -150,6 +159,7 @@ function TerminalViewport({
   threadId,
   terminalId,
   terminalLabel,
+  terminalAgentKind = null,
   terminalCliKind = null,
   cwd,
   runtimeEnv,
@@ -193,6 +203,7 @@ function TerminalViewport({
       threadId,
       terminalId,
       terminalLabel,
+      terminalAgentKind,
       terminalCliKind,
       cwd,
       ...(runtimeEnvPayload ? { runtimeEnv: runtimeEnvPayload } : {}),
@@ -214,6 +225,7 @@ function TerminalViewport({
       onTerminalMetadataChange,
       runtimeEnvPayload,
       runtimeKey,
+      terminalAgentKind,
       terminalCliKind,
       terminalId,
       terminalLabel,
@@ -543,6 +555,7 @@ interface ThreadTerminalDrawerProps {
   terminalIds: string[];
   terminalLabelsById: Record<string, string>;
   terminalTitleOverridesById: Record<string, string>;
+  terminalAgentKindsById?: Record<string, TerminalCodingAgentKind> | undefined;
   terminalCliKindsById: Record<string, TerminalCliKind>;
   terminalAttentionStatesById: Record<string, TerminalActivityState>;
   runningTerminalIds: string[];
@@ -555,7 +568,6 @@ interface ThreadTerminalDrawerProps {
   onNewTerminal: () => void;
   onNewTerminalTab: (terminalId: string) => void;
   onLaunchAgentCommand?: ((launch: TerminalAgentLaunch) => void) | undefined;
-  onMoveTerminalToGroup: (terminalId: string) => void;
   splitShortcutLabel?: string | undefined;
   splitDownShortcutLabel?: string | undefined;
   newShortcutLabel?: string | undefined;
@@ -575,7 +587,11 @@ interface ThreadTerminalDrawerProps {
   onResizeTerminalSplit: (groupId: string, splitId: string, weights: number[]) => void;
   onTerminalMetadataChange: (
     terminalId: string,
-    metadata: { cliKind: TerminalCliKind | null; label: string },
+    metadata: {
+      agentKind?: TerminalCodingAgentKind | null;
+      cliKind: TerminalCliKind | null;
+      label: string;
+    },
   ) => void;
   onTerminalActivityChange: (
     terminalId: string,
@@ -597,6 +613,7 @@ export default function ThreadTerminalDrawer({
   terminalIds,
   terminalLabelsById,
   terminalTitleOverridesById,
+  terminalAgentKindsById,
   terminalCliKindsById,
   terminalAttentionStatesById,
   runningTerminalIds,
@@ -609,7 +626,6 @@ export default function ThreadTerminalDrawer({
   onNewTerminal,
   onNewTerminalTab,
   onLaunchAgentCommand,
-  onMoveTerminalToGroup,
   splitShortcutLabel,
   splitDownShortcutLabel,
   newShortcutLabel,
@@ -656,6 +672,7 @@ export default function ThreadTerminalDrawer({
         activeTerminalId,
         runningTerminalIds,
         terminalAttentionStatesById,
+        terminalAgentKindsById,
         terminalCliKindsById,
         terminalGroups,
         terminalIds,
@@ -667,6 +684,7 @@ export default function ThreadTerminalDrawer({
       activeTerminalId,
       runningTerminalIds,
       terminalAttentionStatesById,
+      terminalAgentKindsById,
       terminalCliKindsById,
       terminalGroups,
       terminalIds,
@@ -834,7 +852,6 @@ export default function ThreadTerminalDrawer({
                     }
               }
               onLaunchAgentCommand={onLaunchAgentCommand}
-              onMoveTerminalToGroup={isWorkspaceMode ? onMoveTerminalToGroup : undefined}
               onCloseTerminal={onCloseTerminal}
               draggingTerminalId={draggingTerminalId}
               presentationMode={presentationMode}
@@ -848,6 +865,7 @@ export default function ThreadTerminalDrawer({
                   threadId={threadId}
                   terminalId={terminalId}
                   terminalLabel={terminalVisualIdentityById.get(terminalId)?.title ?? "Terminal"}
+                  terminalAgentKind={terminalVisualIdentityById.get(terminalId)?.agentKind ?? null}
                   terminalCliKind={terminalVisualIdentityById.get(terminalId)?.cliKind ?? null}
                   cwd={cwd}
                   {...(runtimeEnv ? { runtimeEnv } : {})}

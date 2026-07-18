@@ -270,7 +270,7 @@ describe("decider project scripts", () => {
     expect((event.payload as { scripts?: unknown[] }).scripts).toEqual(scripts);
   });
 
-  it("rejects pinning more than three active projects", async () => {
+  it("allows pinning any number of active projects", async () => {
     const now = new Date().toISOString();
     let readModel = createEmptyReadModel(now);
 
@@ -301,19 +301,19 @@ describe("decider project scripts", () => {
       );
     }
 
-    await expect(
-      Effect.runPromise(
-        decideOrchestrationCommand({
-          command: {
-            type: "project.meta.update",
-            commandId: CommandId.makeUnsafe("cmd-project-pin-fourth"),
-            projectId: asProjectId("project-pin-4"),
-            isPinned: true,
-          },
-          readModel,
-        }),
-      ),
-    ).rejects.toThrow("Only 3 projects can be pinned at once.");
+    const fourthResult = await Effect.runPromise(
+      decideOrchestrationCommand({
+        command: {
+          type: "project.meta.update",
+          commandId: CommandId.makeUnsafe("cmd-project-pin-fourth"),
+          projectId: asProjectId("project-pin-4"),
+          isPinned: true,
+        },
+        readModel,
+      }),
+    );
+    const fourthEvent = Array.isArray(fourthResult) ? fourthResult[0] : fourthResult;
+    expect(fourthEvent.type).toBe("project.meta-updated");
 
     const result = await Effect.runPromise(
       decideOrchestrationCommand({

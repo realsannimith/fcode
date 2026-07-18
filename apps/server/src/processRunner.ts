@@ -6,6 +6,10 @@ export interface ProcessRunOptions {
   timeoutMs?: number | undefined;
   env?: NodeJS.ProcessEnv | undefined;
   stdin?: string | undefined;
+  // Aborting kills the child (SIGTERM, then SIGKILL) and rejects with an AbortError so a
+  // cancelled/timed-out caller (e.g. an Effect whose fiber was interrupted) does not leak the
+  // subprocess. Independent of timeoutMs; the first terminal cause wins.
+  signal?: AbortSignal | undefined;
   allowNonZeroExit?: boolean | undefined;
   maxBufferBytes?: number | undefined;
   outputMode?: "error" | "truncate" | undefined;
@@ -19,6 +23,12 @@ export interface ProcessRunResult {
   timedOut: boolean;
   stdoutTruncated?: boolean | undefined;
   stderrTruncated?: boolean | undefined;
+}
+
+function processAbortError(): Error {
+  const error = new Error("Process aborted.");
+  error.name = "AbortError";
+  return error;
 }
 
 function commandLabel(command: string, args: readonly string[]): string {
@@ -133,6 +143,11 @@ export async function runProcess(
   const outputMode = options.outputMode ?? "error";
 
   return new Promise<ProcessRunResult>((resolve, reject) => {
+    if (options.signal?.aborted) {
+      reject(processAbortError());
+      return;
+    }
+
     const prepared = prepareWindowsSafeProcess(command, args, {
       cwd: options.cwd,
       env: options.env,
@@ -152,16 +167,32 @@ export async function runProcess(
     let stdoutTruncated = false;
     let stderrTruncated = false;
     let timedOut = false;
+    let aborted = false;
     let settled = false;
     let forceKillTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const scheduleForceKill = (): void => {
+      if (forceKillTimer) clearTimeout(forceKillTimer);
+      forceKillTimer = setTimeout(() => {
+        killChild(child, "SIGKILL");
+      }, 1_000);
+    };
 
     const timeoutTimer = setTimeout(() => {
       timedOut = true;
       killChild(child, "SIGTERM");
-      forceKillTimer = setTimeout(() => {
-        killChild(child, "SIGKILL");
-      }, 1_000);
+      scheduleForceKill();
     }, timeoutMs);
+
+    const onAbort = (): void => {
+      // The first terminal cause wins: a signal that arrives after the timeout fired must not
+      // relabel the already-timed-out process as an explicit cancellation.
+      if (settled || aborted || timedOut) return;
+      aborted = true;
+      killChild(child, "SIGTERM");
+      scheduleForceKill();
+    };
+    options.signal?.addEventListener("abort", onAbort);
 
     const finalize = (callback: () => void): void => {
       if (settled) return;
@@ -170,6 +201,7 @@ export async function runProcess(
       if (forceKillTimer) {
         clearTimeout(forceKillTimer);
       }
+      options.signal?.removeEventListener("abort", onAbort);
       callback();
     };
 
@@ -230,7 +262,7 @@ export async function runProcess(
 
     child.once("error", (error) => {
       finalize(() => {
-        reject(normalizeSpawnError(command, args, error));
+        reject(aborted ? processAbortError() : normalizeSpawnError(command, args, error));
       });
     });
 
@@ -246,6 +278,10 @@ export async function runProcess(
       };
 
       finalize(() => {
+        if (aborted) {
+          reject(processAbortError());
+          return;
+        }
         if (!options.allowNonZeroExit && (timedOut || (code !== null && code !== 0))) {
           reject(normalizeExitError(command, args, result));
           return;

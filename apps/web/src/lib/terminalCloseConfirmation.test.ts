@@ -47,7 +47,6 @@ describe("buildTerminalCloseConfirmationMessage", () => {
       ].join("\n"),
     );
   });
-
 });
 
 describe("confirmTerminalTabClose", () => {

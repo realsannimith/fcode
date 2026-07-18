@@ -5,6 +5,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  deriveTerminalCommandIdentity,
   deriveTerminalCodingAgentKind,
   parseTerminalSessionOsc,
   resolveTerminalVisualIdentity,
@@ -17,6 +18,8 @@ describe("deriveTerminalCodingAgentKind", () => {
     ["codex", "codex"],
     ["claude", "claude"],
     ["opencode", "opencode"],
+    ["grok", "grok"],
+    ["grok-cli", "grok"],
     ["pi", "pi"],
     ["kiro-cli", "kiro"],
     ["/Users/test/.local/bin/kiro-cli-chat chat", "kiro"],
@@ -41,6 +44,7 @@ describe("deriveTerminalCodingAgentKind", () => {
   it.each([
     ["npx @google/gemini-cli", "gemini"],
     ["bunx opencode-ai", "opencode"],
+    ["/Users/test/.grok/bin/grok-0.2.103", "grok"],
     ["pnpm dlx @earendil-works/pi-coding-agent", "pi"],
     ["npm exec @ampcode/cli", "amp"],
     ["python -m aider", "aider"],
@@ -55,6 +59,19 @@ describe("deriveTerminalCodingAgentKind", () => {
     expect(deriveTerminalCodingAgentKind('echo "run opencode next"')).toBeNull();
     expect(deriveTerminalCodingAgentKind("node build.js --message 'try claude'")).toBeNull();
     expect(deriveTerminalCodingAgentKind("git status")).toBeNull();
+  });
+});
+
+describe("deriveTerminalCommandIdentity", () => {
+  it.each([
+    ["codex", "codex", "openai"],
+    ["claude", "claude", "claude"],
+    ["opencode", "opencode", "opencode"],
+    ["grok", "grok", "grok"],
+    ["kiro-cli", "kiro", "kiro"],
+    ["cursor-agent", "cursor", "cursor"],
+  ] as const)("resolves the %s agent identity", (command, agentKind, iconKey) => {
+    expect(deriveTerminalCommandIdentity(command)).toMatchObject({ agentKind, iconKey });
   });
 });
 

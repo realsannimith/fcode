@@ -46,6 +46,8 @@ import {
   GitPreparePullRequestThreadResult,
   GitPullInput,
   GitPullRequestRefInput,
+  GitPullRequestSnapshotInput,
+  GitPullRequestSnapshotResult,
   GitPullResult,
   GitReadWorkingTreeDiffInput,
   GitReadWorkingTreeDiffResult,
@@ -66,6 +68,21 @@ import {
   GitUnstageFilesInput,
   GitUnstageFilesResult,
 } from "./git";
+import {
+  PullRequestActionInput,
+  PullRequestActionResult,
+  PullRequestCommentInput,
+  PullRequestDetail,
+  PullRequestDetailInput,
+  PullRequestDiffResult,
+  PullRequestReviewRequestCountInput,
+  PullRequestReviewRequestCountResult,
+  PullRequestSetPinnedInput,
+  PullRequestSetPinnedResult,
+  PullRequestsListInput,
+  PullRequestsListResult,
+  PullRequestsUnavailableError,
+} from "./pullRequests";
 import { KeybindingRule } from "./keybindings";
 import {
   ClientOrchestrationCommand,
@@ -410,6 +427,61 @@ export const WsGitPreparePullRequestThreadRpc = Rpc.make(WS_METHODS.gitPreparePu
 export const WsGitCheckPullRequestConflictsRpc = Rpc.make(WS_METHODS.gitCheckPullRequestConflicts, {
   payload: GitPullRequestRefInput,
   success: GitCheckPullRequestConflictsResult,
+  error: WsRpcError,
+});
+
+export const WsGitPullRequestSnapshotRpc = Rpc.make(WS_METHODS.gitPullRequestSnapshot, {
+  payload: GitPullRequestSnapshotInput,
+  success: GitPullRequestSnapshotResult,
+  error: WsRpcError,
+});
+
+const PullRequestsRpcError = Schema.Union([PullRequestsUnavailableError, WsRpcError]);
+
+export const WsPullRequestsListRpc = Rpc.make(WS_METHODS.pullRequestsList, {
+  payload: PullRequestsListInput,
+  success: PullRequestsListResult,
+  error: PullRequestsRpcError,
+});
+
+export const WsPullRequestsReviewRequestCountRpc = Rpc.make(
+  WS_METHODS.pullRequestsReviewRequestCount,
+  {
+    payload: PullRequestReviewRequestCountInput,
+    success: PullRequestReviewRequestCountResult,
+    error: PullRequestsRpcError,
+  },
+);
+
+export const WsPullRequestsDetailRpc = Rpc.make(WS_METHODS.pullRequestsDetail, {
+  payload: PullRequestDetailInput,
+  success: PullRequestDetail,
+  error: PullRequestsRpcError,
+});
+
+export const WsPullRequestsDiffRpc = Rpc.make(WS_METHODS.pullRequestsDiff, {
+  payload: PullRequestDetailInput,
+  success: PullRequestDiffResult,
+  error: PullRequestsRpcError,
+});
+
+export const WsPullRequestsActionRpc = Rpc.make(WS_METHODS.pullRequestsAction, {
+  payload: PullRequestActionInput,
+  success: PullRequestActionResult,
+  error: PullRequestsRpcError,
+});
+
+// Comments reuse the action acknowledgment shape: the mutation is confirmed independently of
+// the follow-up detail refetch that surfaces the new comment.
+export const WsPullRequestsCommentRpc = Rpc.make(WS_METHODS.pullRequestsComment, {
+  payload: PullRequestCommentInput,
+  success: PullRequestActionResult,
+  error: PullRequestsRpcError,
+});
+
+export const WsPullRequestsSetPinnedRpc = Rpc.make(WS_METHODS.pullRequestsSetPinned, {
+  payload: PullRequestSetPinnedInput,
+  success: PullRequestSetPinnedResult,
   error: WsRpcError,
 });
 
@@ -872,6 +944,14 @@ export const WsRpcGroup = RpcGroup.make(
   WsGitResolvePullRequestRpc,
   WsGitPreparePullRequestThreadRpc,
   WsGitCheckPullRequestConflictsRpc,
+  WsGitPullRequestSnapshotRpc,
+  WsPullRequestsListRpc,
+  WsPullRequestsReviewRequestCountRpc,
+  WsPullRequestsDetailRpc,
+  WsPullRequestsDiffRpc,
+  WsPullRequestsActionRpc,
+  WsPullRequestsCommentRpc,
+  WsPullRequestsSetPinnedRpc,
   WsGitListBranchesRpc,
   WsGitCheckMergeConflictsRpc,
   WsGitMergeBranchRpc,

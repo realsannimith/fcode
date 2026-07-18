@@ -24,12 +24,7 @@ export default function TerminalActivityIndicator({
   // Running uses the shared generating ring so terminal-backed agents and native
   // provider sessions communicate live work with exactly the same visual language.
   if (state === "running") {
-    return (
-      <AgentProgressIndicator
-        className={className}
-        label="Terminal agent is generating"
-      />
-    );
+    return <AgentProgressIndicator className={className} label="Terminal agent is generating" />;
   }
 
   return (

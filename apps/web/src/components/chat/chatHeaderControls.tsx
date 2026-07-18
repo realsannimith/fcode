@@ -173,7 +173,8 @@ export const DOCK_TAB_CLOSE_GLYPH_CLASS_NAME =
  * component makes that class of bug unrepresentable.
  *
  * `leading`/`trailing` flank the truncating label (e.g. an activity indicator or a
- * tab count badge); `labelClassName` lets a call site cap the label width.
+ * tab count badge); `labelClassName` lets a call site cap the label width. Passing
+ * `icon={null}` omits the icon/hover-close slot entirely for intentionally text-only tabs.
  */
 export function SurfaceTabChip({
   icon,
@@ -200,6 +201,7 @@ export function SurfaceTabChip({
   onSelect?: (() => void) | undefined;
   onClose?: (() => void) | undefined;
 }) {
+  const hasIcon = icon !== null && icon !== undefined && icon !== false;
   return (
     <div
       className={cn(
@@ -209,27 +211,32 @@ export function SurfaceTabChip({
         className,
       )}
     >
-      {onClose ? (
-        <button
-          type="button"
-          className={DOCK_TAB_ICON_SLOT_CLASS_NAME}
-          aria-label={closeLabel}
-          title={closeLabel}
-          onClick={(event) => {
-            event.stopPropagation();
-            onClose();
-          }}
-        >
-          <span
-            className={cn("flex items-center justify-center", DOCK_TAB_ICON_HOVER_HIDE_CLASS_NAME)}
+      {hasIcon ? (
+        onClose ? (
+          <button
+            type="button"
+            className={DOCK_TAB_ICON_SLOT_CLASS_NAME}
+            aria-label={closeLabel}
+            title={closeLabel}
+            onClick={(event) => {
+              event.stopPropagation();
+              onClose();
+            }}
           >
-            {icon}
-          </span>
-          <CentralIcon name="cross-small" className={DOCK_TAB_CLOSE_GLYPH_CLASS_NAME} />
-        </button>
-      ) : (
-        <span className="flex size-4 shrink-0 items-center justify-center">{icon}</span>
-      )}
+            <span
+              className={cn(
+                "flex items-center justify-center",
+                DOCK_TAB_ICON_HOVER_HIDE_CLASS_NAME,
+              )}
+            >
+              {icon}
+            </span>
+            <CentralIcon name="cross-small" className={DOCK_TAB_CLOSE_GLYPH_CLASS_NAME} />
+          </button>
+        ) : (
+          <span className="flex size-4 shrink-0 items-center justify-center">{icon}</span>
+        )
+      ) : null}
       <button
         type="button"
         className={cn("flex min-w-0 items-center gap-1.5 text-left", labelClassName)}

@@ -1556,7 +1556,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                     </button>
                   );
                   return (
-                    <div className="mt-1 mb-4 overflow-hidden rounded-[0.65rem] border border-[color:var(--color-border-light)] dark:border-[color:color-mix(in_srgb,var(--color-border-light)_55%,transparent)]">
+                    <div className="mt-1 mb-4 overflow-hidden rounded-[0.4rem] border border-[color:var(--color-border-light)] dark:border-[color:color-mix(in_srgb,var(--color-border-light)_55%,transparent)]">
                       <div
                         className={cn(
                           "flex items-center justify-between gap-3 bg-[var(--app-user-message-background)] px-3 py-1.5",
@@ -2718,7 +2718,7 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
           {visibleSubagents.length > 0 || hiddenSubagentCount > 0 ? (
             <div
               className={cn(
-                "space-y-[5px] rounded-[14px] border border-border/45 bg-background/50 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]",
+                "space-y-[5px] rounded-[8px] border border-border/45 bg-background/50 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]",
                 compact ? "px-2.5 py-2" : "px-3 py-[9px]",
               )}
             >

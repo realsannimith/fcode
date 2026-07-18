@@ -84,7 +84,11 @@ export function ProviderUsageMenuPopup({
       <ComposerPickerMenuPopup
         align={align}
         side={side}
-        className={variant === "card" ? "w-auto min-w-0 p-0" : "w-64 min-w-64"}
+        className={
+          variant === "card"
+            ? "w-auto min-w-0 rounded-[1rem] border-[color:color-mix(in_srgb,var(--foreground)_14%,transparent)] bg-popover/95 p-0"
+            : "w-64 min-w-64"
+        }
       >
         {variant === "card" ? (
           <ProviderUsageDetailCard

@@ -38,6 +38,7 @@ import {
 } from "@t3tools/contracts";
 
 import { showConfirmDialogFallback } from "./confirmDialogFallback";
+import { requireHttpExternalUrl } from "./lib/externalUrl";
 import { showContextMenuFallback } from "./contextMenuFallback";
 import { WsTransport } from "./wsTransport";
 import { emitWsTransportState } from "./wsTransportEvents";
@@ -509,8 +510,9 @@ export function createWsNativeApi(): NativeApi {
       openInEditor: (cwd, editor) =>
         transport.request(WS_METHODS.shellOpenInEditor, { cwd, editor }),
       openExternal: async (url) => {
+        const externalUrl = requireHttpExternalUrl(url);
         if (window.desktopBridge) {
-          const opened = await window.desktopBridge.openExternal(url);
+          const opened = await window.desktopBridge.openExternal(externalUrl);
           if (!opened) {
             throw new Error("Unable to open link.");
           }
@@ -519,7 +521,7 @@ export function createWsNativeApi(): NativeApi {
 
         // Some mobile browsers can return null here even when the tab opens.
         // Avoid false negatives and let the browser handle popup policy.
-        window.open(url, "_blank", "noopener,noreferrer");
+        window.open(externalUrl, "_blank", "noopener,noreferrer");
       },
       showInFolder: async (path) => {
         if (window.desktopBridge) {
@@ -565,6 +567,7 @@ export function createWsNativeApi(): NativeApi {
       resolvePullRequest: (input) => transport.request(WS_METHODS.gitResolvePullRequest, input),
       preparePullRequestThread: (input) =>
         transport.request(WS_METHODS.gitPreparePullRequestThread, input),
+      pullRequestSnapshot: (input) => transport.request(WS_METHODS.gitPullRequestSnapshot, input),
       checkPullRequestConflicts: (input) =>
         transport.request(WS_METHODS.gitCheckPullRequestConflicts, input, {
           timeoutMs: null,
@@ -575,6 +578,17 @@ export function createWsNativeApi(): NativeApi {
           gitActionProgressListeners.delete(callback);
         };
       },
+    },
+    pullRequests: {
+      list: (input) => transport.request(WS_METHODS.pullRequestsList, input),
+      reviewRequestCount: (input) =>
+        transport.request(WS_METHODS.pullRequestsReviewRequestCount, input),
+      detail: (input) => transport.request(WS_METHODS.pullRequestsDetail, input),
+      diff: (input) => transport.request(WS_METHODS.pullRequestsDiff, input),
+      action: (input) =>
+        transport.request(WS_METHODS.pullRequestsAction, input, { timeoutMs: null }),
+      comment: (input) => transport.request(WS_METHODS.pullRequestsComment, input),
+      setPinned: (input) => transport.request(WS_METHODS.pullRequestsSetPinned, input),
     },
     contextMenu: {
       show: async <T extends string>(
@@ -664,7 +678,10 @@ export function createWsNativeApi(): NativeApi {
     provider: {
       getComposerCapabilities: (input) =>
         transport.request(WS_METHODS.providerGetComposerCapabilities, input),
-      compactThread: (input) => transport.request(WS_METHODS.providerCompactThread, input),
+      // Compaction can legitimately run for minutes and is bounded server-side per
+      // provider, so it opts out of the client transport's default request timeout.
+      compactThread: (input) =>
+        transport.request(WS_METHODS.providerCompactThread, input, { timeoutMs: null }),
       listCommands: (input) => transport.request(WS_METHODS.providerListCommands, input),
       listSkills: (input) => transport.request(WS_METHODS.providerListSkills, input),
       listSkillsCatalog: (input) => transport.request(WS_METHODS.providerListSkillsCatalog, input),

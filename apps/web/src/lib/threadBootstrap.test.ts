@@ -116,6 +116,33 @@ describe("threadBootstrap", () => {
     ).toBe(false);
   });
 
+  it("does not reuse a draft that was already promoted by a terminal", () => {
+    expect(
+      shouldReuseActiveDraftThread({
+        draftThread: makeDraftThread({
+          promotedTo: ThreadId.makeUnsafe("promoted-thread"),
+        }),
+        entryPoint: "terminal",
+        projectId: PROJECT_ID,
+        routeThreadId: THREAD_ID,
+      }),
+    ).toBe(false);
+
+    // The bootstrap plan must fall through to a fresh thread rather than routing
+    // back to the terminal-backed thread.
+    expect(
+      resolveThreadBootstrapPlan({
+        storedDraftThread: null,
+        latestActiveDraftThread: makeDraftThread({
+          promotedTo: ThreadId.makeUnsafe("promoted-thread"),
+        }),
+        entryPoint: "terminal",
+        projectId: PROJECT_ID,
+        routeThreadId: THREAD_ID,
+      }),
+    ).toEqual({ kind: "fresh" });
+  });
+
   it("resolves bootstrap precedence as route draft, then stored draft, then fresh", () => {
     expect(
       resolveThreadBootstrapPlan({

@@ -6,7 +6,7 @@ import {
   type OrchestrationThread,
   type ServerConfig,
 } from "@t3tools/contracts";
-import { defaultTerminalTitleForCliKind } from "@t3tools/shared/terminalThreads";
+import { defaultTerminalTitleForCodingAgentKind } from "@t3tools/shared/terminalThreads";
 import {
   Outlet,
   createRootRouteWithContext,
@@ -921,13 +921,18 @@ function EventRouter() {
       const terminalThreadId = ThreadId.makeUnsafe(event.threadId);
       if (event.type === "activity") {
         const terminalStore = useTerminalStateStore.getState();
-        const currentCliKind =
-          selectThreadTerminalState(terminalStore.terminalStateByThreadId, terminalThreadId)
-            .terminalCliKindsById[event.terminalId] ?? null;
-        if (event.cliKind || currentCliKind !== null) {
+        const eventAgentKind = event.agentKind ?? event.cliKind;
+        // Agent branding (icon + title) must be sticky. The server nulls agentKind/cliKind
+        // on the agent's Stop hook and whenever the subprocess goes idle — that is a
+        // busy-state signal, not "this terminal is no longer a Claude/Codex/etc. terminal".
+        // Only (re)apply branding when a kind is actively detected; never clear it on a null
+        // activity event, otherwise the icon reverts to the generic terminal glyph the moment
+        // the agent stops working. Running/attention state is updated separately below.
+        if (eventAgentKind) {
           terminalStore.setTerminalMetadata(terminalThreadId, event.terminalId, {
+            agentKind: eventAgentKind,
             cliKind: event.cliKind,
-            label: event.cliKind ? defaultTerminalTitleForCliKind(event.cliKind) : "Terminal",
+            label: defaultTerminalTitleForCodingAgentKind(eventAgentKind),
           });
         }
       }

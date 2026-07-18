@@ -5,7 +5,13 @@
  * API constrained to store actions/selectors.
  */
 
-import { type TerminalActivityState, type TerminalCliKind } from "@t3tools/shared/terminalThreads";
+import {
+  defaultTerminalTitleForCodingAgentKind,
+  terminalCodingAgentKindFromValue,
+  type TerminalActivityState,
+  type TerminalCodingAgentKind,
+  type TerminalCliKind,
+} from "@t3tools/shared/terminalThreads";
 import type { ThreadId } from "@t3tools/contracts";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
@@ -47,6 +53,7 @@ export interface ThreadTerminalState {
   terminalIds: string[];
   terminalLabelsById: Record<string, string>;
   terminalTitleOverridesById: Record<string, string>;
+  terminalAgentKindsById?: Record<string, TerminalCodingAgentKind>;
   terminalCliKindsById: Record<string, TerminalCliKind>;
   terminalAttentionStatesById: Record<string, TerminalActivityState>;
   runningTerminalIds: string[];
@@ -117,6 +124,25 @@ function normalizeTerminalCliKinds(
   return Object.fromEntries(normalizedEntries);
 }
 
+function normalizeTerminalAgentKinds(
+  terminalAgentKindsById: Record<string, TerminalCodingAgentKind> | null | undefined,
+  terminalIds: string[],
+): Record<string, TerminalCodingAgentKind> {
+  const validTerminalIdSet = new Set(terminalIds);
+  return Object.fromEntries(
+    Object.entries(terminalAgentKindsById ?? {})
+      .map(
+        ([terminalId, agentKind]) =>
+          [terminalId.trim(), terminalCodingAgentKindFromValue(agentKind)] as const,
+      )
+      .filter(
+        (entry): entry is readonly [string, TerminalCodingAgentKind] =>
+          entry[0].length > 0 && entry[1] !== null && validTerminalIdSet.has(entry[0]),
+      )
+      .toSorted(([leftId], [rightId]) => leftId.localeCompare(rightId)),
+  );
+}
+
 function normalizeTerminalAttentionStates(
   terminalAttentionStatesById: Record<string, TerminalActivityState> | null | undefined,
   terminalIds: string[],
@@ -146,10 +172,12 @@ function clearTerminalReviewState(
   return nextAttentionStatesById;
 }
 
-function generatedTerminalTitleBase(cliKind: TerminalCliKind | null): string {
-  if (cliKind === "codex") return "Codex";
-  if (cliKind === "claude") return "Claude";
-  return "Terminal";
+function generatedTerminalTitleBase(agentKind: TerminalCodingAgentKind | null): string {
+  if (agentKind === "codex") return "Codex";
+  if (agentKind === "claude") return "Claude";
+  if (agentKind === "cursor") return "Cursor";
+  if (agentKind === "kiro") return "Kiro";
+  return agentKind ? defaultTerminalTitleForCodingAgentKind(agentKind) : "Terminal";
 }
 
 function resolveTerminalDisplayTitle(options: {
@@ -165,12 +193,12 @@ function resolveTerminalDisplayTitle(options: {
 }
 
 function createUniqueTerminalTitle(options: {
-  cliKind: TerminalCliKind | null;
+  agentKind: TerminalCodingAgentKind | null;
   excludeTerminalId?: string | undefined;
   terminalLabelsById: Record<string, string>;
   terminalTitleOverridesById?: Record<string, string> | undefined;
 }): string {
-  const baseTitle = generatedTerminalTitleBase(options.cliKind);
+  const baseTitle = generatedTerminalTitleBase(options.agentKind);
   const takenTitles = new Set(
     Object.keys(options.terminalLabelsById)
       .filter((terminalId) => terminalId !== options.excludeTerminalId)
@@ -194,6 +222,7 @@ function createUniqueTerminalTitle(options: {
 }
 
 function ensureTerminalLabels(options: {
+  terminalAgentKindsById?: Record<string, TerminalCodingAgentKind>;
   terminalCliKindsById: Record<string, TerminalCliKind>;
   terminalIds: string[];
   terminalLabelsById: Record<string, string>;
@@ -206,7 +235,10 @@ function ensureTerminalLabels(options: {
       continue;
     }
     nextLabelsById[terminalId] = createUniqueTerminalTitle({
-      cliKind: options.terminalCliKindsById[terminalId] ?? null,
+      agentKind:
+        options.terminalAgentKindsById?.[terminalId] ??
+        options.terminalCliKindsById[terminalId] ??
+        null,
       excludeTerminalId: terminalId,
       terminalLabelsById: nextLabelsById,
       terminalTitleOverridesById: options.terminalTitleOverridesById,
@@ -332,6 +364,8 @@ function threadTerminalStateEqual(left: ThreadTerminalState, right: ThreadTermin
     JSON.stringify(left.terminalLabelsById) === JSON.stringify(right.terminalLabelsById) &&
     JSON.stringify(left.terminalTitleOverridesById) ===
       JSON.stringify(right.terminalTitleOverridesById) &&
+    JSON.stringify(left.terminalAgentKindsById ?? {}) ===
+      JSON.stringify(right.terminalAgentKindsById ?? {}) &&
     JSON.stringify(left.terminalCliKindsById) === JSON.stringify(right.terminalCliKindsById) &&
     JSON.stringify(left.terminalAttentionStatesById) ===
       JSON.stringify(right.terminalAttentionStatesById) &&
@@ -350,6 +384,7 @@ const DEFAULT_THREAD_TERMINAL_STATE: ThreadTerminalState = Object.freeze({
   terminalIds: [DEFAULT_THREAD_TERMINAL_ID],
   terminalLabelsById: { [DEFAULT_THREAD_TERMINAL_ID]: "Terminal 1" },
   terminalTitleOverridesById: {},
+  terminalAgentKindsById: {},
   terminalCliKindsById: {},
   terminalAttentionStatesById: {},
   runningTerminalIds: [],
@@ -366,6 +401,7 @@ function createDefaultThreadTerminalState(): ThreadTerminalState {
     terminalIds: [...DEFAULT_THREAD_TERMINAL_STATE.terminalIds],
     terminalLabelsById: { ...DEFAULT_THREAD_TERMINAL_STATE.terminalLabelsById },
     terminalTitleOverridesById: { ...DEFAULT_THREAD_TERMINAL_STATE.terminalTitleOverridesById },
+    terminalAgentKindsById: { ...DEFAULT_THREAD_TERMINAL_STATE.terminalAgentKindsById },
     terminalCliKindsById: { ...DEFAULT_THREAD_TERMINAL_STATE.terminalCliKindsById },
     terminalAttentionStatesById: { ...DEFAULT_THREAD_TERMINAL_STATE.terminalAttentionStatesById },
     runningTerminalIds: [...DEFAULT_THREAD_TERMINAL_STATE.runningTerminalIds],
@@ -392,11 +428,16 @@ function normalizeThreadTerminalState(state: ThreadTerminalState): ThreadTermina
     (state as Partial<ThreadTerminalState>).terminalCliKindsById,
     nextTerminalIds,
   );
+  const terminalAgentKindsById = normalizeTerminalAgentKinds(
+    (state as Partial<ThreadTerminalState>).terminalAgentKindsById ?? terminalCliKindsById,
+    nextTerminalIds,
+  );
   const terminalAttentionStatesById = normalizeTerminalAttentionStates(
     (state as Partial<ThreadTerminalState>).terminalAttentionStatesById,
     nextTerminalIds,
   );
   const ensuredTerminalLabelsById = ensureTerminalLabels({
+    terminalAgentKindsById,
     terminalCliKindsById,
     terminalIds: nextTerminalIds,
     terminalLabelsById,
@@ -442,6 +483,7 @@ function normalizeThreadTerminalState(state: ThreadTerminalState): ThreadTermina
     terminalIds: nextTerminalIds,
     terminalLabelsById: ensuredTerminalLabelsById,
     terminalTitleOverridesById,
+    terminalAgentKindsById,
     terminalCliKindsById,
     terminalAttentionStatesById,
     runningTerminalIds,
@@ -742,6 +784,7 @@ function setThreadTerminalMetadata(
   state: ThreadTerminalState,
   terminalId: string,
   metadata: {
+    agentKind?: TerminalCodingAgentKind | null;
     cliKind: TerminalCliKind | null;
     label: string;
   },
@@ -752,14 +795,19 @@ function setThreadTerminalMetadata(
   }
   const currentLabel = normalized.terminalLabelsById[terminalId] ?? "";
   const currentTitleOverride = normalized.terminalTitleOverridesById[terminalId]?.trim() ?? "";
+  const currentAgentKind =
+    normalized.terminalAgentKindsById?.[terminalId] ??
+    normalized.terminalCliKindsById[terminalId] ??
+    null;
   const currentCliKind = normalized.terminalCliKindsById[terminalId] ?? null;
+  const nextAgentKind = metadata.agentKind === undefined ? metadata.cliKind : metadata.agentKind;
   const nextCliKind = metadata.cliKind;
   const nextLabel =
     currentTitleOverride.length > 0
       ? currentLabel
-      : nextCliKind !== null
+      : nextAgentKind !== null
         ? createUniqueTerminalTitle({
-            cliKind: nextCliKind,
+            agentKind: nextAgentKind,
             excludeTerminalId: terminalId,
             terminalLabelsById: normalized.terminalLabelsById,
             terminalTitleOverridesById: normalized.terminalTitleOverridesById,
@@ -767,7 +815,11 @@ function setThreadTerminalMetadata(
         : metadata.label.trim().length > 0
           ? metadata.label.trim()
           : currentLabel;
-  if (currentLabel === nextLabel && currentCliKind === nextCliKind) {
+  if (
+    currentLabel === nextLabel &&
+    currentAgentKind === nextAgentKind &&
+    currentCliKind === nextCliKind
+  ) {
     return normalized;
   }
   const nextCliKindsById = { ...normalized.terminalCliKindsById };
@@ -776,12 +828,19 @@ function setThreadTerminalMetadata(
   } else {
     nextCliKindsById[terminalId] = nextCliKind;
   }
+  const nextAgentKindsById = { ...(normalized.terminalAgentKindsById ?? {}) };
+  if (nextAgentKind === null) {
+    delete nextAgentKindsById[terminalId];
+  } else {
+    nextAgentKindsById[terminalId] = nextAgentKind;
+  }
   return {
     ...normalized,
     terminalLabelsById: {
       ...normalized.terminalLabelsById,
       [terminalId]: nextLabel,
     },
+    terminalAgentKindsById: nextAgentKindsById,
     terminalCliKindsById: nextCliKindsById,
   };
 }
@@ -801,10 +860,13 @@ function setThreadTerminalCliKind(
   }
 
   const nextCliKindsById = { ...normalized.terminalCliKindsById };
+  const nextAgentKindsById = { ...(normalized.terminalAgentKindsById ?? {}) };
   if (cliKind === null) {
     delete nextCliKindsById[terminalId];
+    delete nextAgentKindsById[terminalId];
   } else {
     nextCliKindsById[terminalId] = cliKind;
+    nextAgentKindsById[terminalId] = cliKind;
   }
 
   const currentLabel = normalized.terminalLabelsById[terminalId] ?? "";
@@ -814,7 +876,7 @@ function setThreadTerminalCliKind(
       ? {
           ...normalized.terminalLabelsById,
           [terminalId]: createUniqueTerminalTitle({
-            cliKind,
+            agentKind: cliKind,
             excludeTerminalId: terminalId,
             terminalLabelsById: normalized.terminalLabelsById,
             terminalTitleOverridesById: normalized.terminalTitleOverridesById,
@@ -825,6 +887,7 @@ function setThreadTerminalCliKind(
   return {
     ...normalized,
     terminalLabelsById,
+    terminalAgentKindsById: nextAgentKindsById,
     terminalCliKindsById: nextCliKindsById,
   };
 }
@@ -1020,6 +1083,9 @@ function closeThreadTerminal(state: ThreadTerminalState, terminalId: string): Th
     ),
     terminalTitleOverridesById: Object.fromEntries(
       Object.entries(normalized.terminalTitleOverridesById).filter(([id]) => id !== terminalId),
+    ),
+    terminalAgentKindsById: Object.fromEntries(
+      Object.entries(normalized.terminalAgentKindsById ?? {}).filter(([id]) => id !== terminalId),
     ),
     terminalCliKindsById: Object.fromEntries(
       Object.entries(normalized.terminalCliKindsById).filter(([id]) => id !== terminalId),
@@ -1312,6 +1378,10 @@ function applyThreadWorkspaceLayoutPreset(
     ? normalized.activeTerminalId
     : (nextTerminalIds[0] ?? DEFAULT_THREAD_TERMINAL_ID);
   const terminalLabelsById = ensureTerminalLabels({
+    terminalAgentKindsById: normalizeTerminalAgentKinds(
+      normalized.terminalAgentKindsById,
+      nextTerminalIds,
+    ),
     terminalCliKindsById: normalizeTerminalCliKinds(
       normalized.terminalCliKindsById,
       nextTerminalIds,
@@ -1331,6 +1401,10 @@ function applyThreadWorkspaceLayoutPreset(
     normalized.terminalCliKindsById,
     nextTerminalIds,
   );
+  const terminalAgentKindsById = normalizeTerminalAgentKinds(
+    normalized.terminalAgentKindsById,
+    nextTerminalIds,
+  );
   const terminalGroup = createWorkspaceTerminalGroupFromPreset({
     presetId,
     terminalIds: nextTerminalIds,
@@ -1346,6 +1420,7 @@ function applyThreadWorkspaceLayoutPreset(
     terminalIds: nextTerminalIds,
     terminalLabelsById,
     terminalTitleOverridesById,
+    terminalAgentKindsById,
     terminalCliKindsById,
     terminalAttentionStatesById: normalizeTerminalAttentionStates(
       normalized.terminalAttentionStatesById,
@@ -1409,7 +1484,11 @@ interface TerminalStateStoreState {
   setTerminalMetadata: (
     threadId: ThreadId,
     terminalId: string,
-    metadata: { cliKind: TerminalCliKind | null; label: string },
+    metadata: {
+      agentKind?: TerminalCodingAgentKind | null;
+      cliKind: TerminalCliKind | null;
+      label: string;
+    },
   ) => void;
   setTerminalCliKind: (
     threadId: ThreadId,

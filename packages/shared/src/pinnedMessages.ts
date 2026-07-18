@@ -51,7 +51,10 @@ export function reorderPinnedMessage(
   if (sourceIndex < 0 || existingPins.length < 2) {
     return keepExistingPins(existingPins);
   }
-  const boundedTargetIndex = Math.max(0, Math.min(Math.trunc(targetIndex), existingPins.length - 1));
+  const boundedTargetIndex = Math.max(
+    0,
+    Math.min(Math.trunc(targetIndex), existingPins.length - 1),
+  );
   if (sourceIndex === boundedTargetIndex) {
     return keepExistingPins(existingPins);
   }

@@ -40,6 +40,8 @@ import type {
   GitPreparePullRequestThreadInput,
   GitPreparePullRequestThreadResult,
   GitPullRequestRefInput,
+  GitPullRequestSnapshotInput,
+  GitPullRequestSnapshotResult,
   GitCreateWorktreeInput,
   GitCreateWorktreeResult,
   GitDiscoverRepositoriesInput,
@@ -74,6 +76,20 @@ import type {
   GitUnstageFilesInput,
   GitUnstageFilesResult,
 } from "./git";
+import {
+  PullRequestActionInput,
+  PullRequestActionResult,
+  PullRequestCommentInput,
+  PullRequestDetail,
+  PullRequestDetailInput,
+  PullRequestDiffResult,
+  PullRequestReviewRequestCountInput,
+  PullRequestReviewRequestCountResult,
+  PullRequestSetPinnedInput,
+  PullRequestSetPinnedResult,
+  PullRequestsListInput,
+  PullRequestsListResult,
+} from "./pullRequests";
 import type {
   ProjectDevServerEvent,
   ProjectDiscoverScriptsInput,
@@ -488,6 +504,9 @@ export interface NativeApi {
     unstageFiles: (input: GitUnstageFilesInput) => Promise<GitUnstageFilesResult>;
     handoffThread: (input: GitHandoffThreadInput) => Promise<GitHandoffThreadResult>;
     resolvePullRequest: (input: GitPullRequestRefInput) => Promise<GitResolvePullRequestResult>;
+    pullRequestSnapshot: (
+      input: GitPullRequestSnapshotInput,
+    ) => Promise<GitPullRequestSnapshotResult>;
     preparePullRequestThread: (
       input: GitPreparePullRequestThreadInput,
     ) => Promise<GitPreparePullRequestThreadResult>;
@@ -506,6 +525,17 @@ export interface NativeApi {
     summarizeDiff: (input: GitSummarizeDiffInput) => Promise<GitSummarizeDiffResult>;
     runStackedAction: (input: GitRunStackedActionInput) => Promise<GitRunStackedActionResult>;
     onActionProgress: (callback: (event: GitActionProgressEvent) => void) => () => void;
+  };
+  pullRequests: {
+    list: (input: PullRequestsListInput) => Promise<PullRequestsListResult>;
+    reviewRequestCount: (
+      input: PullRequestReviewRequestCountInput,
+    ) => Promise<PullRequestReviewRequestCountResult>;
+    detail: (input: PullRequestDetailInput) => Promise<PullRequestDetail>;
+    diff: (input: PullRequestDetailInput) => Promise<PullRequestDiffResult>;
+    action: (input: PullRequestActionInput) => Promise<PullRequestActionResult>;
+    comment: (input: PullRequestCommentInput) => Promise<PullRequestActionResult>;
+    setPinned: (input: PullRequestSetPinnedInput) => Promise<PullRequestSetPinnedResult>;
   };
   contextMenu: {
     show: <T extends string>(

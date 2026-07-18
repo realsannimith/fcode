@@ -20,13 +20,13 @@ import {
 
 function WorkspaceLayoutPresetPreview(props: { presetId: WorkspaceLayoutPresetId }) {
   const paneClassName =
-    "rounded-[6px] border border-border/70 bg-background/90 shadow-[inset_0_1px_0_rgba(255,255,255,0.28)]";
+    "rounded-[4px] border border-border/70 bg-background/90 shadow-[inset_0_1px_0_rgba(255,255,255,0.28)]";
 
   if (props.presetId === "single") {
     return (
       <div
         className={cn(
-          "h-full min-h-0 rounded-[10px] border border-border/80 bg-card/90 p-1.5",
+          "h-full min-h-0 rounded-[6px] border border-border/80 bg-card/90 p-1.5",
           paneClassName,
         )}
       />
@@ -35,7 +35,7 @@ function WorkspaceLayoutPresetPreview(props: { presetId: WorkspaceLayoutPresetId
 
   if (props.presetId === "two-columns") {
     return (
-      <div className="grid h-full min-h-0 grid-cols-2 gap-1.5 rounded-[10px] border border-border/80 bg-card/90 p-1.5">
+      <div className="grid h-full min-h-0 grid-cols-2 gap-1.5 rounded-[6px] border border-border/80 bg-card/90 p-1.5">
         <div className={paneClassName} />
         <div className={paneClassName} />
       </div>
@@ -44,7 +44,7 @@ function WorkspaceLayoutPresetPreview(props: { presetId: WorkspaceLayoutPresetId
 
   if (props.presetId === "two-rows") {
     return (
-      <div className="grid h-full min-h-0 grid-rows-2 gap-1.5 rounded-[10px] border border-border/80 bg-card/90 p-1.5">
+      <div className="grid h-full min-h-0 grid-rows-2 gap-1.5 rounded-[6px] border border-border/80 bg-card/90 p-1.5">
         <div className={paneClassName} />
         <div className={paneClassName} />
       </div>
@@ -53,7 +53,7 @@ function WorkspaceLayoutPresetPreview(props: { presetId: WorkspaceLayoutPresetId
 
   if (props.presetId === "top-main") {
     return (
-      <div className="grid h-full min-h-0 grid-rows-[1.3fr_1fr] gap-1.5 rounded-[10px] border border-border/80 bg-card/90 p-1.5">
+      <div className="grid h-full min-h-0 grid-rows-[1.3fr_1fr] gap-1.5 rounded-[6px] border border-border/80 bg-card/90 p-1.5">
         <div className={paneClassName} />
         <div className="grid min-h-0 grid-cols-2 gap-1.5">
           <div className={paneClassName} />
@@ -65,7 +65,7 @@ function WorkspaceLayoutPresetPreview(props: { presetId: WorkspaceLayoutPresetId
 
   if (props.presetId === "left-main") {
     return (
-      <div className="grid h-full min-h-0 grid-cols-[1.2fr_1fr] gap-1.5 rounded-[10px] border border-border/80 bg-card/90 p-1.5">
+      <div className="grid h-full min-h-0 grid-cols-[1.2fr_1fr] gap-1.5 rounded-[6px] border border-border/80 bg-card/90 p-1.5">
         <div className={paneClassName} />
         <div className="grid min-h-0 grid-rows-2 gap-1.5">
           <div className={paneClassName} />
@@ -76,7 +76,7 @@ function WorkspaceLayoutPresetPreview(props: { presetId: WorkspaceLayoutPresetId
   }
 
   return (
-    <div className="grid h-full min-h-0 grid-cols-2 grid-rows-2 gap-1.5 rounded-[10px] border border-border/80 bg-card/90 p-1.5">
+    <div className="grid h-full min-h-0 grid-cols-2 grid-rows-2 gap-1.5 rounded-[6px] border border-border/80 bg-card/90 p-1.5">
       <div className={paneClassName} />
       <div className={paneClassName} />
       <div className={paneClassName} />

@@ -9,7 +9,10 @@
 //       terminalSession helpers instead of this controller.
 
 import { type ThreadId } from "@t3tools/contracts";
-import { type TerminalCliKind } from "@t3tools/shared/terminalThreads";
+import {
+  type TerminalCodingAgentKind,
+  type TerminalCliKind,
+} from "@t3tools/shared/terminalThreads";
 import { useCallback, useRef, useState } from "react";
 
 import { useAppSettings } from "~/appSettings";
@@ -29,7 +32,11 @@ import {
   randomTerminalId,
 } from "~/components/terminal/terminalSession";
 
-type TerminalMetadata = { cliKind: TerminalCliKind | null; label: string };
+type TerminalMetadata = {
+  agentKind?: TerminalCodingAgentKind | null;
+  cliKind: TerminalCliKind | null;
+  label: string;
+};
 type TerminalActivity = {
   hasRunningSubprocess: boolean;
   agentState: "running" | "attention" | "review" | null;
@@ -84,14 +91,6 @@ export function useTerminalSurfaceController(threadId: ThreadId) {
     [bumpFocusRequest, newTerminalTab, threadId],
   );
 
-  const moveTerminalToNewGroup = useCallback(
-    (terminalId: string) => {
-      newTerminal(threadId, terminalId);
-      bumpFocusRequest();
-    },
-    [bumpFocusRequest, newTerminal, threadId],
-  );
-
   // Type a quick-launch AI CLI into an untouched terminal, then use a fresh tab once an agent
   // session is already present. The command is user-configured (Settings → Behavior → Agent
   // launchers); provider icon/title are derived by runProjectCommandInTerminal and persisted.
@@ -114,7 +113,7 @@ export function useTerminalSurfaceController(threadId: ThreadId) {
         hasRunningTerminal:
           terminalState.runningTerminalIds.length > 0 ||
           launchingAgentTerminalIdsRef.current.size > 0,
-        hasLaunchedAgent: Object.keys(terminalState.terminalCliKindsById).length > 0,
+        hasLaunchedAgent: Object.keys(terminalState.terminalAgentKindsById ?? {}).length > 0,
       });
       const terminalId = target.terminalId;
       launchingAgentTerminalIdsRef.current.add(terminalId);
@@ -152,6 +151,7 @@ export function useTerminalSurfaceController(threadId: ThreadId) {
         });
         if (metadata) {
           setTerminalMetadataStore(threadId, terminalId, {
+            agentKind: metadata.agentKind,
             cliKind: metadata.cliKind,
             label: metadata.label,
           });
@@ -172,6 +172,7 @@ export function useTerminalSurfaceController(threadId: ThreadId) {
       terminalState.activeTerminalGroupId,
       terminalState.activeTerminalId,
       terminalState.runningTerminalIds,
+      terminalState.terminalAgentKindsById,
       terminalState.terminalCliKindsById,
       terminalState.terminalGroups,
       terminalState.terminalIds,
@@ -280,7 +281,6 @@ export function useTerminalSurfaceController(threadId: ThreadId) {
     splitDown,
     createTerminalTab,
     launchAgentCommand,
-    moveTerminalToNewGroup,
     activateTerminal,
     closeTerminal,
     closeTerminalGroup,

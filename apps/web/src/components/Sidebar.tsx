@@ -4,6 +4,7 @@
 
 import {
   ArchiveIcon,
+  ArrowRightIcon,
   ChevronDownIcon,
   ChevronRightIcon,
   ClockIcon,
@@ -16,11 +17,13 @@ import {
   GitPullRequestIcon,
   GlobeIcon,
   type LucideIcon,
+  Loader2Icon,
   MessageCircleIcon,
   NewThreadIcon,
   PencilIcon,
   PinIcon,
   PlayIcon,
+  PlusIcon,
   SearchIcon,
   SettingsIcon,
   StopFilledIcon,
@@ -33,10 +36,10 @@ import {
 import { PinStatusIcon, pinActionLabel } from "~/lib/pin";
 import { ensureNativeApi } from "~/nativeApi";
 import { autoAnimate } from "@formkit/auto-animate";
-import { FiGitBranch, FiPlus } from "react-icons/fi";
+import { FiGitBranch } from "react-icons/fi";
 import { GoRepoForked } from "react-icons/go";
 import { HiOutlineArchiveBox, HiOutlineCheckCircle } from "react-icons/hi2";
-import { TbArrowsDiagonal, TbArrowsDiagonalMinimize2, TbCursorText } from "react-icons/tb";
+import { TbArrowsDiagonal, TbArrowsDiagonalMinimize2 } from "react-icons/tb";
 import { IoFilter } from "react-icons/io5";
 import {
   useCallback,
@@ -86,7 +89,7 @@ import {
   type ResolvedKeybindingsConfig,
   type ServerLocalServerProcess,
 } from "@t3tools/contracts";
-import type { TerminalActivityState } from "@t3tools/shared/terminalThreads";
+import type { TerminalActivityState, TerminalIconKey } from "@t3tools/shared/terminalThreads";
 import { isGenericChatThreadTitle } from "@t3tools/shared/chatThreads";
 import { getDefaultModel } from "@t3tools/shared/model";
 import { pluralize } from "@t3tools/shared/text";
@@ -180,6 +183,7 @@ import { SidebarGlyph, sidebarGlyphClass, SIDEBAR_TRAILING_ICON_CLASS } from "./
 import { ThreadPinToggleButton } from "./ThreadPinToggleButton";
 import { RenameDialog } from "./RenameDialog";
 import { RenameThreadDialog } from "./RenameThreadDialog";
+import { SidebarTerminalIconStack } from "./SidebarTerminalIconStack";
 import { terminalRuntimeRegistry } from "./terminal/terminalRuntimeRegistry";
 import {
   SidebarSearchPalette,
@@ -190,6 +194,11 @@ import { useHandleNewChat } from "../hooks/useHandleNewChat";
 import { useHandleNewThread } from "../hooks/useHandleNewThread";
 import { useThreadHandoff } from "../hooks/useThreadHandoff";
 import { selectThreadTerminalState, useTerminalStateStore } from "../terminalStateStore";
+import { selectThreadTerminalVisualIdentities } from "../terminalVisualIdentity";
+import {
+  shouldShowHandoffInSidebarAvatar,
+  shouldShowStandaloneTerminalBadge,
+} from "../sidebarTerminalIconStack";
 import { useProjectRunStore, type ProjectRunState } from "../projectRunStore";
 import {
   selectPrimaryProjectRunCommand,
@@ -406,6 +415,9 @@ const PROJECT_CONTEXT_MENU_ITEM_CLASS_NAME =
   "text-[var(--color-text-foreground)] data-highlighted:text-[var(--color-text-foreground)]";
 const PROJECT_CONTEXT_MENU_ICON_CLASS_NAME =
   "inline-flex size-3.5 shrink-0 items-center justify-center text-[var(--color-text-foreground-secondary)] [&>svg]:size-3.5 [&>[data-slot=central-icon]]:size-3.5";
+const ADD_PROJECT_MENU_PANEL_CLASS_NAME = "w-56 min-w-56 rounded-xl";
+const ADD_PROJECT_MENU_ITEM_CLASS_NAME =
+  "min-h-9 gap-2.5 px-2.5 text-[13px] text-[var(--color-text-foreground)] data-highlighted:text-[var(--color-text-foreground)]";
 
 // Gives Base UI a zero-size virtual anchor exactly where the right-click happened.
 function createClientPointMenuAnchor(position: { x: number; y: number }) {
@@ -524,9 +536,7 @@ function WorktreeBadgeGlyph({ className }: { className?: string }) {
 // the same progress ring as the chat composer; settled/actionable states stay quiet.
 function ThreadStatusTrailingGlyph({ threadStatus }: { threadStatus: ThreadStatusPill }) {
   if (threadStatus.label === "Working") {
-    return (
-      <AgentProgressIndicator label="Agent is generating" />
-    );
+    return <AgentProgressIndicator label="Agent is generating" />;
   }
   if (threadStatus.label === "Completed") {
     return (
@@ -680,26 +690,38 @@ function ProviderAvatarWithTerminal({
   provider,
   handoffSourceProvider,
   handoffTooltip,
+  terminalIconKeys,
   terminalStatus,
   terminalCount,
 }: {
   provider: ProviderKind;
   handoffSourceProvider?: ProviderKind | null;
   handoffTooltip?: string | null;
+  terminalIconKeys?: readonly TerminalIconKey[];
   terminalStatus: TerminalStatusIndicator | null;
   terminalCount: number;
 }) {
-  const showBadge = terminalCount > 1 || terminalStatus !== null;
+  const resolvedTerminalIconKeys = terminalIconKeys ?? [];
+  const hasTerminalIcons = resolvedTerminalIconKeys.length > 0;
+  const showBadge = shouldShowStandaloneTerminalBadge({
+    hasAgentIcons: hasTerminalIcons,
+    hasTerminalStatus: terminalStatus !== null,
+    terminalCount,
+  });
   const badgeTooltip =
     terminalCount > 1
       ? `${terminalCount} ${pluralize(terminalCount, "terminal")} open`
       : (terminalStatus?.label ?? "Terminal open");
   const badgeColorClass = terminalStatus?.colorClass ?? "text-muted-foreground/55";
 
-  const hasHandoff = Boolean(handoffSourceProvider);
+  const hasHandoff = shouldShowHandoffInSidebarAvatar({
+    hasHandoff: Boolean(handoffSourceProvider),
+    hasTerminalIcons,
+    isAvatarVisible: true,
+  });
   const containerClass = hasHandoff
     ? "relative inline-flex h-3 w-4.5 shrink-0 items-center"
-    : "relative inline-flex size-3 shrink-0 items-center justify-center";
+    : "relative inline-flex min-h-3 min-w-3 shrink-0 items-center justify-center";
 
   const avatarNode = hasHandoff ? (
     <span className={containerClass}>
@@ -712,7 +734,14 @@ function ProviderAvatarWithTerminal({
     </span>
   ) : (
     <span className={containerClass}>
-      <ProviderIcon provider={provider} className="size-3" />
+      {hasTerminalIcons ? (
+        <SidebarTerminalIconStack
+          iconKeys={resolvedTerminalIconKeys}
+          terminalCount={terminalCount}
+        />
+      ) : (
+        <ProviderIcon provider={provider} className="size-3" />
+      )}
     </span>
   );
 
@@ -868,6 +897,13 @@ function toThreadPr(
     baseBranch: pr.baseBranch,
     headBranch: pr.headBranch,
     state: pr.state,
+    // The persisted last-known PR snapshot predates these fields, so default conservatively
+    // (unknown mergeability, hidden diff stats) until a fresh resolve overwrites it.
+    isDraft: "isDraft" in pr ? pr.isDraft : false,
+    mergeability: "mergeability" in pr ? pr.mergeability : "unknown",
+    additions: "additions" in pr ? pr.additions : null,
+    deletions: "deletions" in pr ? pr.deletions : null,
+    changedFiles: "changedFiles" in pr ? pr.changedFiles : null,
   };
 }
 
@@ -1531,7 +1567,6 @@ export default function Sidebar() {
   );
   const [projectRunDialogCommandDraft, setProjectRunDialogCommandDraft] = useState("");
   const [isPickingFolder, setIsPickingFolder] = useState(false);
-  const [showManualPathInput, setShowManualPathInput] = useState(false);
   const [isAddingProject, setIsAddingProject] = useState(false);
   const [addProjectError, setAddProjectError] = useState<string | null>(null);
   const addProjectErrorMeaning = useMemo(
@@ -2619,9 +2654,24 @@ export default function Sidebar() {
 
   const handleStartAddProject = useCallback(() => {
     setAddProjectError(null);
-    setShowManualPathInput(false);
-    setAddingProject((prev) => !prev);
+    setNewCwd("");
+    setAddingProject(true);
   }, []);
+
+  const handleCancelAddProject = useCallback(() => {
+    setAddingProject(false);
+    setNewCwd("");
+    setAddProjectError(null);
+  }, []);
+
+  const handleUseExistingFolder = useCallback(() => {
+    setAddProjectError(null);
+    if (isElectron) {
+      void handlePickFolder();
+      return;
+    }
+    handleStartAddProject();
+  }, [handlePickFolder, handleStartAddProject]);
 
   const currentProjectShortcutTargetId = useMemo(
     () => resolveCurrentProjectTargetId(projects, focusedProjectId),
@@ -4093,6 +4143,14 @@ export default function Sidebar() {
     () => orderPinnedProjectsForSidebar(standardProjectsBase, pinnedProjectIds),
     [pinnedProjectIds, standardProjectsBase],
   );
+  const pinnedProjects = useMemo(
+    () => standardProjects.filter((project) => pinnedProjectIdSet.has(project.id)),
+    [pinnedProjectIdSet, standardProjects],
+  );
+  const unpinnedProjects = useMemo(
+    () => standardProjects.filter((project) => !pinnedProjectIdSet.has(project.id)),
+    [pinnedProjectIdSet, standardProjects],
+  );
   const projectScriptDiscoveryQueries = useQueries({
     queries: standardProjects.map((project) =>
       projectDiscoverScriptsQueryOptions({
@@ -4829,6 +4887,10 @@ export default function Sidebar() {
   function renderPinnedThreadRow(thread: SidebarThreadSummary) {
     const threadTerminalState = selectThreadTerminalState(terminalStateByThreadId, thread.id);
     const threadEntryPoint = threadTerminalState.entryPoint;
+    const terminalVisualIdentities = selectThreadTerminalVisualIdentities(threadTerminalState);
+    const terminalIconKeys = terminalVisualIdentities.map(({ identity }) => identity.iconKey);
+    const showThreadProviderAvatar =
+      terminalIconKeys.length > 0 || !isGenericChatThreadTitle(thread.title);
     const terminalStatus = terminalStatusFromThreadState({
       runningTerminalIds: threadTerminalState.runningTerminalIds,
       terminalAttentionStatesById: threadTerminalState.terminalAttentionStatesById,
@@ -4840,8 +4902,11 @@ export default function Sidebar() {
     const rightMetaChips = resolveThreadRowMetaChips({
       thread,
       includeHandoffBadge: true,
-      handoffShownInAvatar:
-        !isGenericChatThreadTitle(thread.title) && Boolean(thread.handoff?.sourceProvider),
+      handoffShownInAvatar: shouldShowHandoffInSidebarAvatar({
+        hasHandoff: Boolean(thread.handoff?.sourceProvider),
+        hasTerminalIcons: terminalIconKeys.length > 0,
+        isAvatarVisible: showThreadProviderAvatar,
+      }),
       threadAutomations: automationsByThreadId.get(thread.id),
     });
     const threadStatus = resolveThreadStatusForSidebar(thread);
@@ -4855,7 +4920,6 @@ export default function Sidebar() {
     const threadJumpLabel = visibleThreadJumpLabelByThreadId.get(thread.id) ?? null;
     const threadJumpLabelParts =
       visibleThreadJumpLabelPartsByThreadId.get(thread.id) ?? EMPTY_SHORTCUT_PARTS;
-    const showThreadProviderAvatar = !isGenericChatThreadTitle(thread.title);
     return (
       <div
         key={thread.id}
@@ -4916,6 +4980,7 @@ export default function Sidebar() {
               provider={thread.session?.provider ?? thread.modelSelection.provider}
               handoffSourceProvider={thread.handoff?.sourceProvider ?? null}
               handoffTooltip={handoffBadgeLabel}
+              terminalIconKeys={terminalIconKeys}
               terminalStatus={terminalStatus}
               terminalCount={terminalCount}
             />
@@ -4994,6 +5059,8 @@ export default function Sidebar() {
   ) {
     const threadTerminalState = selectThreadTerminalState(terminalStateByThreadId, thread.id);
     const threadEntryPoint = threadTerminalState.entryPoint;
+    const terminalVisualIdentities = selectThreadTerminalVisualIdentities(threadTerminalState);
+    const terminalIconKeys = terminalVisualIdentities.map(({ identity }) => identity.iconKey);
     const isPendingArchiveConfirmation = pendingArchiveConfirmationThreadId === thread.id;
     const isActive = visualActiveSidebarThreadId === thread.id;
     const isPinned = pinnedThreadIdSet.has(thread.id);
@@ -5009,14 +5076,19 @@ export default function Sidebar() {
     const isDisposableThread =
       temporaryThreadIds[thread.id] === true ||
       draftThreadsByThreadId[thread.id]?.isTemporary === true;
+    const showThreadProviderAvatar =
+      terminalIconKeys.length > 0 || !isGenericChatThreadTitle(thread.title);
     const secondaryMetaClass = isHighlighted
       ? "text-foreground/54 dark:text-foreground/64"
       : "text-muted-foreground/34";
     const rightMetaChips = resolveThreadRowMetaChips({
       thread,
       includeHandoffBadge: !isDisposableThread,
-      handoffShownInAvatar:
-        !isGenericChatThreadTitle(thread.title) && Boolean(thread.handoff?.sourceProvider),
+      handoffShownInAvatar: shouldShowHandoffInSidebarAvatar({
+        hasHandoff: Boolean(thread.handoff?.sourceProvider),
+        hasTerminalIcons: terminalIconKeys.length > 0,
+        isAvatarVisible: showThreadProviderAvatar,
+      }),
       threadAutomations: automationsByThreadId.get(thread.id),
     });
     const isSubagentThread = Boolean(thread.parentThreadId);
@@ -5043,8 +5115,8 @@ export default function Sidebar() {
     const threadJumpLabel = visibleThreadJumpLabelByThreadId.get(thread.id) ?? null;
     const threadJumpLabelParts =
       visibleThreadJumpLabelPartsByThreadId.get(thread.id) ?? EMPTY_SHORTCUT_PARTS;
-    // Untouched draft chat threads are intentionally text-only until they get a real title.
-    const showThreadProviderAvatar = !isGenericChatThreadTitle(thread.title);
+    // Untouched draft chat threads stay text-only unless their terminal has established a
+    // concrete terminal/agent identity that should represent the row.
     const childCountLabel = `${childCount} ${pluralize(childCount, "subagent")}`;
     const toggleButtonClassName = isHighlighted
       ? "border-[color:var(--color-border)] bg-[var(--color-background-button-secondary)] text-[var(--color-text-foreground-secondary)] hover:bg-[var(--color-background-button-secondary-hover)] hover:text-[var(--color-text-foreground)]"
@@ -5150,6 +5222,7 @@ export default function Sidebar() {
               provider={thread.session?.provider ?? thread.modelSelection.provider}
               handoffSourceProvider={thread.handoff?.sourceProvider ?? null}
               handoffTooltip={handoffBadgeLabel}
+              terminalIconKeys={terminalIconKeys}
               terminalStatus={terminalStatus}
               terminalCount={terminalCount}
             />
@@ -5275,9 +5348,7 @@ export default function Sidebar() {
       hasHiddenThreads,
       isThreadListExpanded,
     } = projectSidebarData;
-    const projectFolderIconClassName = isProjectPinned
-      ? "opacity-0"
-      : sidebarHoverRevealHideClassName("project-header");
+    const projectFolderIconClassName = sidebarHoverRevealHideClassName("project-header");
     const projectRun = projectRunsByProjectId[project.id] ?? null;
     const projectRunServer = projectRunServerByProjectId.get(project.id) ?? null;
     // A project reads as "running" when FCode tracks a run for it or when a
@@ -5382,9 +5453,7 @@ export default function Sidebar() {
             className={cn(
               "sidebar-icon-button absolute left-2 top-1/2 z-20 inline-flex size-4 -translate-y-1/2 cursor-pointer items-center justify-center rounded-sm transition-opacity hover:text-foreground focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring",
               SIDEBAR_ROW_LABEL_TEXT_CLASS_NAME,
-              isProjectPinned
-                ? "pointer-events-auto opacity-100"
-                : "pointer-events-none opacity-0 md:group-hover/project-header:pointer-events-auto md:group-hover/project-header:opacity-100 md:group-has-[:focus-visible]/project-header:pointer-events-auto md:group-has-[:focus-visible]/project-header:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100",
+              "pointer-events-none opacity-0 md:group-hover/project-header:pointer-events-auto md:group-hover/project-header:opacity-100 md:group-has-[:focus-visible]/project-header:pointer-events-auto md:group-has-[:focus-visible]/project-header:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100",
             )}
             onMouseDown={(event) => {
               event.preventDefault();
@@ -6423,14 +6492,49 @@ export default function Sidebar() {
               </SidebarGroup>
             ) : (
               <SidebarGroup className="px-1.5 py-1.5">
-                {pinnedThreads.length > 0 ? (
+                {pinnedProjects.length > 0 || pinnedThreads.length > 0 ? (
                   <div className="mb-3">
                     <div className="my-1 flex items-center justify-between px-2 py-1">
                       <span className={SIDEBAR_SECTION_LABEL_CLASS_NAME}>Pinned</span>
                     </div>
-                    <div className="flex flex-col gap-0.5">
-                      {pinnedThreads.map((thread) => renderPinnedThreadRow(thread))}
-                    </div>
+                    {pinnedProjects.length > 1 ? (
+                      <DndContext
+                        sensors={projectDnDSensors}
+                        collisionDetection={projectCollisionDetection}
+                        modifiers={[restrictToVerticalAxis, restrictToFirstScrollableAncestor]}
+                        onDragStart={handleProjectDragStart}
+                        onDragEnd={handleProjectDragEnd}
+                        onDragCancel={handleProjectDragCancel}
+                      >
+                        <SidebarMenu className="gap-1">
+                          <SortableContext
+                            items={pinnedProjects.map((project) => project.id)}
+                            strategy={verticalListSortingStrategy}
+                          >
+                            {pinnedProjects.map((project) => (
+                              <SortableProjectItem key={project.id} projectId={project.id}>
+                                {(dragHandleProps) => renderProjectItem(project, dragHandleProps)}
+                              </SortableProjectItem>
+                            ))}
+                          </SortableContext>
+                        </SidebarMenu>
+                      </DndContext>
+                    ) : pinnedProjects.length === 1 ? (
+                      <SidebarMenu ref={attachProjectListAutoAnimateRef} className="gap-1">
+                        {pinnedProjects.map((project) => (
+                          <SidebarMenuItem key={project.id} className="rounded-md">
+                            {renderProjectItem(project, null)}
+                          </SidebarMenuItem>
+                        ))}
+                      </SidebarMenu>
+                    ) : null}
+                    {pinnedThreads.length > 0 ? (
+                      <div
+                        className={cn("flex flex-col gap-0.5", pinnedProjects.length > 0 && "mt-1")}
+                      >
+                        {pinnedThreads.map((thread) => renderPinnedThreadRow(thread))}
+                      </div>
+                    ) : null}
                   </div>
                 ) : null}
                 <div className="group/project-header relative my-1">
@@ -6475,96 +6579,135 @@ export default function Sidebar() {
                         updateSettings({ sidebarThreadSortOrder: sortOrder });
                       }}
                     />
-                    <SidebarIconButton
-                      icon={FiPlus}
-                      label={shouldShowProjectPathEntry ? "Cancel add project" : "Add project"}
-                      aria-pressed={shouldShowProjectPathEntry}
-                      onClick={handleStartAddProject}
-                      tooltip={shouldShowProjectPathEntry ? "Cancel add project" : "Add project"}
-                      tooltipSide="right"
-                    />
+                    {shouldShowProjectPathEntry ? (
+                      <SidebarIconButton
+                        icon={XIcon}
+                        label="Cancel add project"
+                        onClick={handleCancelAddProject}
+                        tooltip="Cancel add project"
+                        tooltipSide="right"
+                      />
+                    ) : (
+                      <Menu>
+                        <SidebarIconButton
+                          render={<MenuTrigger />}
+                          icon={PlusIcon}
+                          label="Open project"
+                          tooltip="Open project"
+                          tooltipSide="right"
+                        />
+                        <ComposerPickerMenuPopup
+                          align="center"
+                          side="bottom"
+                          sideOffset={6}
+                          className={ADD_PROJECT_MENU_PANEL_CLASS_NAME}
+                        >
+                          <MenuGroup>
+                            <MenuItem
+                              className={ADD_PROJECT_MENU_ITEM_CLASS_NAME}
+                              onClick={handleStartAddProject}
+                            >
+                              <PlusIcon className="size-4 text-muted-foreground" aria-hidden />
+                              <span>Start from scratch</span>
+                            </MenuItem>
+                            <MenuItem
+                              className={ADD_PROJECT_MENU_ITEM_CLASS_NAME}
+                              disabled={isPickingFolder || isAddingProject}
+                              onClick={handleUseExistingFolder}
+                            >
+                              <FolderIcon className="size-4 text-muted-foreground" aria-hidden />
+                              <span>
+                                {isPickingFolder ? "Opening..." : "Use an existing folder"}
+                              </span>
+                            </MenuItem>
+                          </MenuGroup>
+                        </ComposerPickerMenuPopup>
+                      </Menu>
+                    )}
                   </SidebarSectionToolbar>
                 </div>
 
                 {shouldShowProjectPathEntry && (
                   <div className="mb-2.5 px-1">
-                    {!showManualPathInput ? (
-                      <div className="flex gap-1.5">
-                        {isElectron && (
-                          <button
-                            type="button"
-                            className="flex h-8 flex-1 items-center justify-center gap-2 rounded-lg bg-[var(--color-background-elevated-secondary)] px-2 text-[length:var(--app-font-size-ui,12px)] font-normal text-[var(--color-text-foreground-secondary)] transition-colors hover:bg-[var(--color-background-button-secondary-hover)] hover:text-[var(--color-text-foreground)] disabled:opacity-50"
-                            onClick={() => void handlePickFolder()}
-                            disabled={isPickingFolder || isAddingProject}
-                          >
-                            <SidebarGlyph icon={FolderIcon} variant="chrome" />
-                            {isPickingFolder
-                              ? "Opening..."
-                              : isAddingProject
-                                ? "Adding..."
-                                : "Browse"}
-                          </button>
-                        )}
-                        <button
-                          type="button"
-                          className="flex h-8 flex-1 items-center justify-center gap-2 rounded-lg bg-[var(--color-background-elevated-secondary)] px-2 text-[length:var(--app-font-size-ui,12px)] font-normal text-[var(--color-text-foreground-secondary)] transition-colors hover:bg-[var(--color-background-button-secondary-hover)] hover:text-[var(--color-text-foreground)]"
-                          onClick={() => setShowManualPathInput(true)}
-                        >
-                          <SidebarGlyph icon={TbCursorText} variant="chrome" />
-                          Type path
-                        </button>
-                      </div>
-                    ) : (
+                    <form
+                      onSubmit={(event) => {
+                        event.preventDefault();
+                        handleAddProject();
+                      }}
+                    >
                       <div
-                        className={`flex items-center rounded-lg border bg-[var(--color-background-control-opaque)] transition-colors ${
+                        className={`group/project-path flex h-9 items-center gap-2 rounded-lg border bg-[var(--color-background-control-opaque)] px-2 shadow-[inset_0_1px_0_color-mix(in_srgb,var(--color-text-foreground)_4%,transparent)] transition-[border-color,box-shadow,background-color] ${
                           addProjectError
-                            ? "border-red-500/70 focus-within:border-red-500"
-                            : "border-[color:var(--color-border)] focus-within:border-[color:var(--color-border-focus)]"
+                            ? "border-red-500/70 focus-within:border-red-500 focus-within:ring-2 focus-within:ring-red-500/12"
+                            : "border-[color:var(--color-border)] focus-within:border-[color:var(--color-border-focus)] focus-within:bg-[var(--color-background-elevated-primary-opaque)] focus-within:ring-2 focus-within:ring-[color:var(--color-border-focus)]/12"
                         }`}
                       >
+                        <FolderIcon
+                          className="size-3.5 shrink-0 text-muted-foreground/55 transition-colors group-focus-within/project-path:text-muted-foreground"
+                          aria-hidden
+                        />
+                        <label className="sr-only" htmlFor="sidebar-new-project-path">
+                          New project path
+                        </label>
                         <input
+                          id="sidebar-new-project-path"
                           ref={addProjectInputRef}
-                          className="min-w-0 flex-1 bg-transparent pl-2.5 py-1.5 text-sm text-foreground placeholder:text-muted-foreground/40 focus:outline-none"
-                          placeholder="/path/to/project"
+                          className="h-full min-w-0 flex-1 bg-transparent font-mono text-[12px] tracking-[-0.01em] text-foreground placeholder:font-sans placeholder:text-muted-foreground/45 focus:outline-none"
+                          placeholder="Path to new project"
                           value={newCwd}
+                          aria-invalid={Boolean(addProjectError)}
+                          aria-describedby={
+                            addProjectError
+                              ? "sidebar-add-project-error"
+                              : "sidebar-add-project-hint"
+                          }
                           onChange={(event) => {
                             setNewCwd(event.target.value);
                             setAddProjectError(null);
                           }}
                           onKeyDown={(event) => {
-                            if (event.key === "Enter") handleAddProject();
-                            if (event.key === "Escape") {
-                              setShowManualPathInput(false);
-                              setAddProjectError(null);
-                            }
+                            if (event.key === "Escape") handleCancelAddProject();
                           }}
+                          autoComplete="off"
+                          spellCheck={false}
                           autoFocus
                         />
                         <button
-                          type="button"
-                          className="shrink-0 px-2.5 py-1.5 text-xs font-medium text-muted-foreground/50 transition-colors hover:text-foreground disabled:opacity-40"
-                          onClick={handleAddProject}
+                          type="submit"
+                          className="inline-flex size-6 shrink-0 items-center justify-center rounded-md border border-[color:var(--color-border-light)] bg-[var(--color-background-button-secondary)] text-muted-foreground transition-[background-color,color,border-color,transform] enabled:hover:border-[color:var(--color-border)] enabled:hover:bg-[var(--color-background-button-secondary-hover)] enabled:hover:text-foreground enabled:active:translate-y-px disabled:cursor-default disabled:opacity-35"
                           disabled={!canAddProject}
-                          aria-label="Add project"
+                          aria-label={isAddingProject ? "Creating project" : "Create project"}
+                          title={isAddingProject ? "Creating project" : "Create project"}
                         >
-                          {isAddingProject ? "..." : "↵"}
+                          {isAddingProject ? (
+                            <Loader2Icon className="size-3.5 animate-spin" aria-hidden />
+                          ) : (
+                            <ArrowRightIcon className="size-3.5" aria-hidden />
+                          )}
                         </button>
                       </div>
-                    )}
-                    {addProjectError && (
-                      <div className="mt-1 space-y-1 px-0.5">
-                        <p className="text-xs leading-tight text-red-400">{addProjectError}</p>
-                        {addProjectErrorMeaning && (
-                          <p className="text-xs leading-tight text-muted-foreground/70">
-                            {addProjectErrorMeaning}
-                          </p>
-                        )}
-                      </div>
-                    )}
+                      {addProjectError ? (
+                        <div id="sidebar-add-project-error" className="mt-1 space-y-1 px-1">
+                          <p className="text-xs leading-tight text-red-400">{addProjectError}</p>
+                          {addProjectErrorMeaning && (
+                            <p className="text-xs leading-tight text-muted-foreground/70">
+                              {addProjectErrorMeaning}
+                            </p>
+                          )}
+                        </div>
+                      ) : (
+                        <p
+                          id="sidebar-add-project-hint"
+                          className="mt-1 px-1 text-[10px] leading-tight text-muted-foreground/55"
+                        >
+                          Missing folders will be created.
+                        </p>
+                      )}
+                    </form>
                   </div>
                 )}
 
-                {isManualProjectSorting || pinnedProjectIds.length > 1 ? (
+                {isManualProjectSorting ? (
                   <DndContext
                     sensors={projectDnDSensors}
                     collisionDetection={projectCollisionDetection}
@@ -6575,30 +6718,20 @@ export default function Sidebar() {
                   >
                     <SidebarMenu className="gap-3">
                       <SortableContext
-                        items={standardProjects.map((project) => project.id)}
+                        items={unpinnedProjects.map((project) => project.id)}
                         strategy={verticalListSortingStrategy}
                       >
-                        {standardProjects.map((project) => {
-                          const dragDisabled =
-                            !isManualProjectSorting && !pinnedProjectIdSet.has(project.id);
-                          return (
-                            <SortableProjectItem
-                              key={project.id}
-                              projectId={project.id}
-                              disabled={dragDisabled}
-                            >
-                              {(dragHandleProps) =>
-                                renderProjectItem(project, dragDisabled ? null : dragHandleProps)
-                              }
-                            </SortableProjectItem>
-                          );
-                        })}
+                        {unpinnedProjects.map((project) => (
+                          <SortableProjectItem key={project.id} projectId={project.id}>
+                            {(dragHandleProps) => renderProjectItem(project, dragHandleProps)}
+                          </SortableProjectItem>
+                        ))}
                       </SortableContext>
                     </SidebarMenu>
                   </DndContext>
                 ) : (
                   <SidebarMenu ref={attachProjectListAutoAnimateRef} className="gap-3">
-                    {standardProjects.map((project) => (
+                    {unpinnedProjects.map((project) => (
                       <SidebarMenuItem key={project.id} className="rounded-md">
                         {renderProjectItem(project, null)}
                       </SidebarMenuItem>

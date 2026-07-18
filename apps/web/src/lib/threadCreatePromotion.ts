@@ -57,6 +57,17 @@ async function dispatchPromoteThreadCreate(
   try {
     await api.orchestration.dispatchCommand(command);
     markPromotedDraftThreads(new Set([command.threadId]));
+    // Do not make a newly durable draft wait for a later thread event (usually the
+    // first GUI message) before it appears in shell-only consumers such as the
+    // sidebar. The shell stream is intentionally lossy under reconnect/backpressure,
+    // so reconcile the accepted create from the authoritative shell snapshot.
+    // Promotion itself has already succeeded; a transient snapshot failure should
+    // not turn that success into a user-visible create error.
+    try {
+      await recoverPromotedThreadFromShellSnapshot(api, command.threadId);
+    } catch {
+      // The live shell stream remains the fallback reconciliation path.
+    }
     return "created";
   } catch (error) {
     if (!isDuplicateThreadCreateError(error, command.threadId)) {

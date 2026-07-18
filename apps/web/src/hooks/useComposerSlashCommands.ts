@@ -294,10 +294,7 @@ export function useComposerSlashCommands(input: {
   );
 
   const createSidechatFromSlashCommand = useCallback(
-    async (inputOptions?: {
-      initialPrompt?: string;
-      presentation?: "dock" | "tab";
-    }) => {
+    async (inputOptions?: { initialPrompt?: string; presentation?: "dock" | "tab" }) => {
       const api = readNativeApi();
       if (!api || !activeProject || !activeThread || !isServerThread) {
         toastManager.add({
@@ -367,13 +364,7 @@ export function useComposerSlashCommands(input: {
       }
       return nextThreadId;
     },
-    [
-      activeProject,
-      activeThread,
-      isServerThread,
-      selectedModelSelection,
-      syncServerShellSnapshot,
-    ],
+    [activeProject, activeThread, isServerThread, selectedModelSelection, syncServerShellSnapshot],
   );
 
   // Publish for every server-backed chat, including an active child tab. New child

@@ -4,7 +4,12 @@
 
 import { FitAddon } from "@xterm/addon-fit";
 import { SearchAddon } from "@xterm/addon-search";
-import { type TerminalActivityState, type TerminalCliKind } from "@t3tools/shared/terminalThreads";
+import {
+  defaultTerminalTitleForCodingAgentKind,
+  type TerminalActivityState,
+  type TerminalCodingAgentKind,
+  type TerminalCliKind,
+} from "@t3tools/shared/terminalThreads";
 import { Terminal, type IDisposable } from "@xterm/xterm";
 import type { TerminalLinkMatch } from "../../terminal-links";
 
@@ -12,7 +17,11 @@ export interface TerminalRuntimeCallbacks {
   onSessionExited: () => void;
   onTerminalMetadataChange: (
     terminalId: string,
-    metadata: { cliKind: TerminalCliKind | null; label: string },
+    metadata: {
+      agentKind?: TerminalCodingAgentKind | null;
+      cliKind: TerminalCliKind | null;
+      label: string;
+    },
   ) => void;
   onTerminalActivityChange: (
     terminalId: string,
@@ -25,11 +34,43 @@ export function buildTerminalRuntimeKey(threadId: string, terminalId: string): s
   return `${threadId}::${terminalId}`;
 }
 
+export interface TerminalRuntimeActivityIdentity {
+  agentKind: TerminalCodingAgentKind | null;
+  cliKind: TerminalCliKind | null;
+}
+
+export interface TerminalRuntimeMetadataIdentity extends TerminalRuntimeActivityIdentity {
+  label: string;
+}
+
+export function resolveTerminalRuntimeActivityMetadata(input: {
+  current: TerminalRuntimeActivityIdentity;
+  event: {
+    agentKind?: TerminalCodingAgentKind | null;
+    cliKind: TerminalCliKind | null;
+  };
+}): TerminalRuntimeMetadataIdentity | null {
+  const eventAgentKind = input.event.agentKind ?? input.event.cliKind;
+  // Activity events deliberately use null identity when an agent is idle or emits a Stop hook.
+  // Branding is terminal history, not live activity, so only a concrete detected agent may
+  // replace it. This also keeps older tabs represented when newer agent tabs become active.
+  if (eventAgentKind === null) return null;
+  if (input.current.agentKind === eventAgentKind && input.current.cliKind === input.event.cliKind) {
+    return null;
+  }
+  return {
+    agentKind: eventAgentKind,
+    cliKind: input.event.cliKind,
+    label: defaultTerminalTitleForCodingAgentKind(eventAgentKind),
+  };
+}
+
 export interface TerminalRuntimeConfig {
   runtimeKey: string;
   threadId: string;
   terminalId: string;
   terminalLabel: string;
+  terminalAgentKind?: TerminalCodingAgentKind | null;
   terminalCliKind?: TerminalCliKind | null;
   cwd: string;
   runtimeEnv?: Record<string, string>;
@@ -54,6 +95,7 @@ export interface TerminalRuntimeEntry {
   threadId: string;
   terminalId: string;
   terminalLabel: string;
+  terminalAgentKind: TerminalCodingAgentKind | null;
   terminalCliKind: TerminalCliKind | null;
   cwd: string;
   runtimeEnv?: Record<string, string>;

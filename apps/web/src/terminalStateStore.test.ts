@@ -503,6 +503,7 @@ describe("terminalStateStore actions", () => {
       "terminal-2": "Codex 1",
     });
     expect(terminalState.terminalCliKindsById).toEqual({ "terminal-2": "codex" });
+    expect(terminalState.terminalAgentKindsById).toEqual({ "terminal-2": "codex" });
 
     store.closeTerminal(THREAD_ID, "terminal-2");
 
@@ -512,6 +513,25 @@ describe("terminalStateStore actions", () => {
     );
     expect(terminalState.terminalLabelsById).toEqual({ default: "Terminal 1" });
     expect(terminalState.terminalCliKindsById).toEqual({});
+    expect(terminalState.terminalAgentKindsById).toEqual({});
+  });
+
+  it("stores non-resumable coding-agent identities independently from CLI sessions", () => {
+    const store = useTerminalStateStore.getState();
+    store.newTerminal(THREAD_ID, "terminal-kiro");
+    store.setTerminalMetadata(THREAD_ID, "terminal-kiro", {
+      agentKind: "kiro",
+      cliKind: null,
+      label: "Kiro",
+    });
+
+    const terminalState = selectThreadTerminalState(
+      useTerminalStateStore.getState().terminalStateByThreadId,
+      THREAD_ID,
+    );
+    expect(terminalState.terminalAgentKindsById).toEqual({ "terminal-kiro": "kiro" });
+    expect(terminalState.terminalCliKindsById).toEqual({});
+    expect(terminalState.terminalLabelsById["terminal-kiro"]).toBe("Kiro 1");
   });
 
   it("clears terminal provider identity when metadata cliKind is null", () => {

@@ -160,6 +160,7 @@ describe("recent view MRU logic", () => {
         [
           terminalThreadId,
           {
+            agentKind: null,
             cliKind: null,
             iconKey: "terminal",
             state: "running",

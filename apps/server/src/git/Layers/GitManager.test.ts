@@ -623,6 +623,31 @@ function createGitHubCliWithFakeGh(scenario: FakeGhScenario = {}): {
           cwd: input.cwd,
           args: ["pr", "checkout", input.reference, ...(input.force ? ["--force"] : [])],
         }).pipe(Effect.asVoid),
+      // The global Pull Requests views drive these GitHubCli methods; the GitManager unit
+      // tests never exercise them, so they fail loudly if a test path reaches them.
+      getViewerLogin: () => Effect.die("getViewerLogin not implemented in GitManager.test fake"),
+      listRepositoryPullRequests: () =>
+        Effect.die("listRepositoryPullRequests not implemented in GitManager.test fake"),
+      getPullRequestListItem: () =>
+        Effect.die("getPullRequestListItem not implemented in GitManager.test fake"),
+      listReviewRequestedPullRequestNumbers: () =>
+        Effect.die("listReviewRequestedPullRequestNumbers not implemented in GitManager.test fake"),
+      getPullRequestDetail: () =>
+        Effect.die("getPullRequestDetail not implemented in GitManager.test fake"),
+      getRepositoryMergeCapabilities: () =>
+        Effect.die("getRepositoryMergeCapabilities not implemented in GitManager.test fake"),
+      getPullRequestDiff: () =>
+        Effect.die("getPullRequestDiff not implemented in GitManager.test fake"),
+      runPullRequestAction: () =>
+        Effect.die("runPullRequestAction not implemented in GitManager.test fake"),
+      commentOnPullRequest: () =>
+        Effect.die("commentOnPullRequest not implemented in GitManager.test fake"),
+      listPullRequests: () =>
+        Effect.die("listPullRequests not implemented in GitManager.test fake"),
+      getPullRequestWithChecks: () =>
+        Effect.die("getPullRequestWithChecks not implemented in GitManager.test fake"),
+      getPullRequestReviewComments: () =>
+        Effect.die("getPullRequestReviewComments not implemented in GitManager.test fake"),
     },
     ghCalls,
   };

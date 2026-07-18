@@ -24,6 +24,9 @@ export const GIT_WORKING_TREE_DIFF_LIVE_REFETCH_INTERVAL_MS = 4_000;
 export const gitQueryKeys = {
   all: ["git"] as const,
   githubRepository: (cwd: string | null) => ["git", "github-repository", cwd] as const,
+  // Prefix shared with the pull-request snapshot query so a single invalidation covers both the
+  // per-thread snapshot and any other cwd-scoped pull-request queries.
+  pullRequest: (cwd: string | null) => ["git", "pull-request", cwd] as const,
   status: (cwd: string | null) => ["git", "status", cwd] as const,
   discoverRepositories: (cwd: string | null) => ["git", "discover-repositories", cwd] as const,
   branches: (cwd: string | null) => ["git", "branches", cwd] as const,
@@ -173,6 +176,40 @@ export function gitResolvePullRequestQueryOptions(input: {
     staleTime: 30_000,
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
+  });
+}
+
+// Refresh cadence for the Environment panel PR section: cheap enough to poll while the
+// panel is open, and event-based git invalidation covers pushes from this client.
+const GIT_PR_SNAPSHOT_STALE_TIME_MS = 30_000;
+const GIT_PR_SNAPSHOT_REFETCH_INTERVAL_MS = 60_000;
+
+export function gitPullRequestSnapshotQueryOptions(input: {
+  cwd: string | null;
+  reference: string | null;
+  enabled?: boolean;
+}) {
+  return queryOptions({
+    // Shares the ["git", "pull-request", cwd] prefix so existing invalidations cover it.
+    queryKey: ["git", "pull-request", input.cwd, "snapshot", input.reference] as const,
+    queryFn: async () => {
+      const api = ensureNativeApi();
+      if (!input.cwd || !input.reference) {
+        throw new Error("Pull request snapshot is unavailable.");
+      }
+      return api.git.pullRequestSnapshot({ cwd: input.cwd, reference: input.reference });
+    },
+    enabled: (input.enabled ?? true) && input.cwd !== null && input.reference !== null,
+    staleTime: GIT_PR_SNAPSHOT_STALE_TIME_MS,
+    // Once the snapshot itself reports the PR merged/closed, stop polling it — the cached
+    // git status can lag behind and would otherwise keep the interval alive.
+    refetchInterval: (query) =>
+      query.state.data && query.state.data.pullRequest.state !== "open"
+        ? false
+        : GIT_PR_SNAPSHOT_REFETCH_INTERVAL_MS,
+    refetchOnWindowFocus: (query) =>
+      !query.state.data || query.state.data.pullRequest.state === "open",
+    refetchOnReconnect: true,
   });
 }
 

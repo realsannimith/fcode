@@ -11,13 +11,14 @@ describe("usePinnedProjectsStore", () => {
     usePinnedProjectsStore.setState({ pinnedProjectIds: [] });
   });
 
-  it("pins newest project ids first and rejects a fourth pin", () => {
+  it("pins newest project ids first without capping the count", () => {
     expect(usePinnedProjectsStore.getState().pinProject("project-1" as ProjectId)).toBe(true);
     expect(usePinnedProjectsStore.getState().pinProject("project-2" as ProjectId)).toBe(true);
     expect(usePinnedProjectsStore.getState().pinProject("project-3" as ProjectId)).toBe(true);
-    expect(usePinnedProjectsStore.getState().pinProject("project-4" as ProjectId)).toBe(false);
+    expect(usePinnedProjectsStore.getState().pinProject("project-4" as ProjectId)).toBe(true);
 
     expect(usePinnedProjectsStore.getState().pinnedProjectIds).toEqual([
+      "project-4",
       "project-3",
       "project-2",
       "project-1",
