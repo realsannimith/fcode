@@ -654,6 +654,41 @@ function clearAttachDisposables(entry: TerminalRuntimeEntry): void {
   entry.resizeObserver = null;
 }
 
+const SYSTEM_MESSAGE_DEDUPE_WINDOW_MS = 2_000;
+const LOST_SESSION_RECOVERY_THROTTLE_MS = 5_000;
+
+// Collapse identical repeated failures (every keystroke against a lost session)
+// into one line instead of flooding the scrollback with the same error.
+function writeDedupedSystemMessage(entry: TerminalRuntimeEntry, message: string): void {
+  const now = performance.now();
+  if (
+    entry.lastSystemMessage === message &&
+    now - entry.lastSystemMessageAt < SYSTEM_MESSAGE_DEDUPE_WINDOW_MS
+  ) {
+    entry.lastSystemMessageAt = now;
+    return;
+  }
+  entry.lastSystemMessage = message;
+  entry.lastSystemMessageAt = now;
+  writeSystemMessage(entry.terminal, message);
+}
+
+// The server rejects writes with this message when it holds no session for the
+// thread/terminal (server restarted, or the session was closed underneath a
+// still-attached UI). Re-open to recreate the PTY and replay history instead of
+// leaving a dead pane that errors on every keystroke.
+function recoverFromLostSession(entry: TerminalRuntimeEntry, error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  if (!message.includes("Unknown terminal thread")) return false;
+  const now = performance.now();
+  if (now - entry.lastLostSessionRecoveryAt < LOST_SESSION_RECOVERY_THROTTLE_MS) return true;
+  entry.lastLostSessionRecoveryAt = now;
+  if (entry.disposed || entry.hasHandledExit) return true;
+  entry.opened = false;
+  openTerminal(entry);
+  return true;
+}
+
 async function sendTerminalInput(
   entry: TerminalRuntimeEntry,
   data: string,
@@ -664,7 +699,8 @@ async function sendTerminalInput(
   try {
     await api.terminal.write({ threadId: entry.threadId, terminalId: entry.terminalId, data });
   } catch (error) {
-    writeSystemMessage(entry.terminal, describeErrorMessage(error, fallbackError));
+    if (recoverFromLostSession(entry, error)) return;
+    writeDedupedSystemMessage(entry, describeErrorMessage(error, fallbackError));
   }
 }
 
@@ -777,22 +813,6 @@ export function createRuntimeEntry(config: TerminalRuntimeConfig): TerminalRunti
   // alignment. Ligatures are cosmetic; correct grid rendering is not.
   terminal.open(wrapper);
 
-  // GPU renderer. The default DOM renderer rebuilds row elements on every reflow,
-  // which flashes ("refresh") whenever a pane resizes or a split is dragged. WebGL
-  // repaints atomically on the GPU, so resizes stay smooth. Browsers cap the number
-  // of live WebGL contexts (~16), so a heavily-split workspace can exhaust them —
-  // on context loss we dispose the addon and xterm transparently reverts that pane
-  // to the DOM renderer. ponytail: degrade gracefully, never blank the terminal.
-  try {
-    const webglAddon = new WebglAddon();
-    webglAddon.onContextLoss(() => {
-      webglAddon.dispose();
-    });
-    terminal.loadAddon(webglAddon);
-  } catch {
-    // WebGL unavailable (headless / blocklisted GPU) — keep the DOM renderer.
-  }
-
   const entry: TerminalRuntimeEntry = {
     runtimeKey: config.runtimeKey,
     threadId: config.threadId,
@@ -812,6 +832,11 @@ export function createRuntimeEntry(config: TerminalRuntimeConfig): TerminalRunti
     runtimeStatus: "connecting",
     opened: false,
     openRetryTimer: null,
+    lastSystemMessage: null,
+    lastSystemMessageAt: 0,
+    lastLostSessionRecoveryAt: 0,
+    webglAddon: null,
+    webglRetryTimer: null,
     disposed: false,
     resizeObserver: null,
     resizeDispatchTimer: null,
@@ -988,9 +1013,10 @@ export function createRuntimeEntry(config: TerminalRuntimeConfig): TerminalRunti
       if (!api) return;
       void api.terminal
         .write({ threadId: entry.threadId, terminalId: entry.terminalId, data })
-        .catch((error) =>
-          writeSystemMessage(terminal, describeErrorMessage(error, "Terminal write failed")),
-        );
+        .catch((error) => {
+          if (recoverFromLostSession(entry, error)) return;
+          writeDedupedSystemMessage(entry, describeErrorMessage(error, "Terminal write failed"));
+        });
     }),
   );
 
@@ -1175,6 +1201,56 @@ function openTerminal(entry: TerminalRuntimeEntry): void {
     });
 }
 
+const WEBGL_CONTEXT_LOSS_RETRY_DELAY_MS = 3_000;
+
+// GPU renderer management, VS Code-style: only VISIBLE panes hold a WebGL context.
+// The default DOM renderer rebuilds row elements on every reflow, which makes
+// scrolling under heavy TUI redraw (coding agents) visibly laggy; WebGL repaints
+// atomically on the GPU. But browsers cap live WebGL contexts (~16), so grabbing
+// one per terminal for its whole lifetime exhausts the cap in split/tabbed
+// workspaces and silently downgrades evicted panes to the DOM renderer forever.
+// Scoping contexts to visible panes keeps the count tiny, and a lost context is
+// retried instead of permanently degrading the pane.
+function ensureWebglRenderer(entry: TerminalRuntimeEntry): void {
+  if (entry.disposed || entry.webglAddon !== null || !entry.viewState.isVisible) {
+    return;
+  }
+  try {
+    const webglAddon = new WebglAddon();
+    webglAddon.onContextLoss(() => {
+      releaseWebglRenderer(entry);
+      // Losses are usually transient eviction pressure; retry while still visible
+      // so the pane returns to the GPU path instead of staying on the DOM renderer.
+      if (entry.webglRetryTimer === null && !entry.disposed) {
+        entry.webglRetryTimer = window.setTimeout(() => {
+          entry.webglRetryTimer = null;
+          ensureWebglRenderer(entry);
+        }, WEBGL_CONTEXT_LOSS_RETRY_DELAY_MS);
+      }
+    });
+    entry.terminal.loadAddon(webglAddon);
+    entry.webglAddon = webglAddon;
+  } catch {
+    // WebGL unavailable (headless / blocklisted GPU) — keep the DOM renderer.
+  }
+}
+
+function releaseWebglRenderer(entry: TerminalRuntimeEntry): void {
+  if (entry.webglRetryTimer !== null) {
+    window.clearTimeout(entry.webglRetryTimer);
+    entry.webglRetryTimer = null;
+  }
+  const webglAddon = entry.webglAddon;
+  entry.webglAddon = null;
+  if (webglAddon) {
+    try {
+      webglAddon.dispose();
+    } catch {
+      // Already torn down by the context-loss path; xterm falls back to DOM rendering.
+    }
+  }
+}
+
 export function attachRuntimeToContainer(
   entry: TerminalRuntimeEntry,
   viewState: TerminalRuntimeViewState,
@@ -1187,6 +1263,10 @@ export function attachRuntimeToContainer(
   }
 
   updateRuntimeViewState(entry, viewState);
+  // Reattach can happen with an unchanged visible view state (pane drag/move), so
+  // the visibility-transition branch above may not run; reacquire the GPU renderer
+  // released at detach time. No-op when already loaded or hidden.
+  ensureWebglRenderer(entry);
   ensureResizeObserver(entry);
   startVisibilityRecovery(entry);
   openTerminal(entry);
@@ -1201,10 +1281,14 @@ export function updateRuntimeViewState(
 
   if (entry.container) {
     if (nextViewState.isVisible && !wasVisible) {
+      ensureWebglRenderer(entry);
       applyInitialVisualResize(entry);
       ensureResizeObserver(entry);
       startVisibilityRecovery(entry);
     } else if (!nextViewState.isVisible && wasVisible) {
+      // Hidden panes render nothing; release the GPU context so visible panes
+      // never compete for the browser's WebGL context budget.
+      releaseWebglRenderer(entry);
       cancelScheduledVisualResize(entry);
       stopVisibilityRecovery(entry);
       clearAttachDisposables(entry);
@@ -1219,6 +1303,9 @@ export function updateRuntimeViewState(
 }
 
 export function detachRuntimeFromContainer(entry: TerminalRuntimeEntry): void {
+  // A parked (detached) pane paints nothing; free its GPU context immediately.
+  // Reattaching reloads WebGL through the visible-view-state path.
+  releaseWebglRenderer(entry);
   cancelScheduledVisualResize(entry);
   stopVisibilityRecovery(entry);
   clearAttachDisposables(entry);

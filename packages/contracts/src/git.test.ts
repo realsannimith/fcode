@@ -53,6 +53,11 @@ describe("GitResolvePullRequestResult", () => {
         baseBranch: "main",
         headBranch: "feature/pr-threads",
         state: "open",
+        isDraft: false,
+        mergeability: "mergeable",
+        additions: 120,
+        deletions: 12,
+        changedFiles: 5,
       },
     });
 

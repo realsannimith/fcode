@@ -127,6 +127,17 @@ export interface ShellCandidate {
   args?: string[];
 }
 
+/**
+ * TerminalThreadActivity - Terminal usage summary for one thread, consumed by
+ * maintenance jobs that must not treat live terminal workspaces as inactive.
+ */
+export interface TerminalThreadActivity {
+  /** True while any terminal session for the thread is held in memory (UI attached). */
+  hasLiveSession: boolean;
+  /** Latest activity across live sessions and persisted history files, or null when unused. */
+  lastActivityMs: number | null;
+}
+
 export interface TerminalStartInput extends TerminalOpenInput {
   cols: number;
   rows: number;
@@ -181,6 +192,16 @@ export interface TerminalManagerShape {
    * When `terminalId` is omitted, closes all sessions for the thread.
    */
   readonly close: (input: TerminalCloseInput) => Effect.Effect<void, TerminalError>;
+
+  /**
+   * Report live-session presence and last terminal activity for a thread.
+   *
+   * Used by maintenance jobs (thread retention) so terminal-only threads that
+   * are still in use are never treated as inactive.
+   */
+  readonly getThreadActivity: (
+    threadId: string,
+  ) => Effect.Effect<TerminalThreadActivity, TerminalError>;
 
   /**
    * Subscribe to terminal runtime events.

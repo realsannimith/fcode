@@ -111,6 +111,20 @@ export interface TerminalRuntimeEntry {
   opened: boolean;
   // Pending retry of openTerminal when the native API wasn't ready at attach time.
   openRetryTimer: number | null;
+  // Last system message written into the terminal plus its timestamp, used to
+  // collapse repeated identical failures (e.g. every keystroke against a lost
+  // session) into a single line instead of flooding the scrollback.
+  lastSystemMessage: string | null;
+  lastSystemMessageAt: number;
+  // Wall-clock of the last automatic re-open triggered by a lost-session write
+  // failure, so self-healing stays throttled.
+  lastLostSessionRecoveryAt: number;
+  // GPU renderer, held only while the pane is visible. Browsers cap live WebGL
+  // contexts (~16), so hidden panes must not hold one — an evicted context would
+  // silently downgrade that pane to the slow DOM renderer.
+  webglAddon: IDisposable | null;
+  // Pending retry after a WebGL context loss (usually transient eviction).
+  webglRetryTimer: number | null;
   disposed: boolean;
   resizeObserver: ResizeObserver | null;
   resizeDispatchTimer: number | null;

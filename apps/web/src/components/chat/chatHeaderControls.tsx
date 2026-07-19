@@ -174,7 +174,9 @@ export const DOCK_TAB_CLOSE_GLYPH_CLASS_NAME =
  *
  * `leading`/`trailing` flank the truncating label (e.g. an activity indicator or a
  * tab count badge); `labelClassName` lets a call site cap the label width. Passing
- * `icon={null}` omits the icon/hover-close slot entirely for intentionally text-only tabs.
+ * `icon={null}` renders a text-only tab at rest, but a closable tab (one with
+ * `onClose`) always keeps the leading slot so the hover/focus close-X stays
+ * reachable — dropping the slot with the icon would make the tab uncloseable.
  */
 export function SurfaceTabChip({
   icon,
@@ -211,18 +213,18 @@ export function SurfaceTabChip({
         className,
       )}
     >
-      {hasIcon ? (
-        onClose ? (
-          <button
-            type="button"
-            className={DOCK_TAB_ICON_SLOT_CLASS_NAME}
-            aria-label={closeLabel}
-            title={closeLabel}
-            onClick={(event) => {
-              event.stopPropagation();
-              onClose();
-            }}
-          >
+      {onClose ? (
+        <button
+          type="button"
+          className={DOCK_TAB_ICON_SLOT_CLASS_NAME}
+          aria-label={closeLabel}
+          title={closeLabel}
+          onClick={(event) => {
+            event.stopPropagation();
+            onClose();
+          }}
+        >
+          {hasIcon ? (
             <span
               className={cn(
                 "flex items-center justify-center",
@@ -231,11 +233,11 @@ export function SurfaceTabChip({
             >
               {icon}
             </span>
-            <CentralIcon name="cross-small" className={DOCK_TAB_CLOSE_GLYPH_CLASS_NAME} />
-          </button>
-        ) : (
-          <span className="flex size-4 shrink-0 items-center justify-center">{icon}</span>
-        )
+          ) : null}
+          <CentralIcon name="cross-small" className={DOCK_TAB_CLOSE_GLYPH_CLASS_NAME} />
+        </button>
+      ) : hasIcon ? (
+        <span className="flex size-4 shrink-0 items-center justify-center">{icon}</span>
       ) : null}
       <button
         type="button"

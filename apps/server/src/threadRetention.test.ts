@@ -6,7 +6,11 @@
 import { ProjectId, ThreadId, type OrchestrationReadModel } from "@t3tools/contracts";
 import { describe, expect, it } from "vitest";
 
-import { getInactiveThreadIdsForRetention, THREAD_RETENTION_UNUSED_MS } from "./threadRetention";
+import {
+  getInactiveThreadIdsForRetention,
+  shouldRetainThreadForTerminalActivity,
+  THREAD_RETENTION_UNUSED_MS,
+} from "./threadRetention";
 
 function makeReadModelThread(
   overrides: Partial<OrchestrationReadModel["threads"][number]> = {},
@@ -105,5 +109,38 @@ describe("thread retention", () => {
     expect(
       getInactiveThreadIdsForRetention(makeReadModel([pinnedThread, unpinnedThread]), nowMs),
     ).toEqual([unpinnedThread.id]);
+  });
+
+  // Terminal-only threads have no user messages and no orchestration updates, so
+  // without this check retention would hide a workspace that is actively in use,
+  // closing its PTYs underneath the attached UI (regression: v0.0.9).
+  it("retains threads with a live terminal session regardless of last activity", () => {
+    const nowMs = Date.parse("2026-04-20T00:00:00.000Z");
+    expect(
+      shouldRetainThreadForTerminalActivity({ hasLiveSession: true, lastActivityMs: null }, nowMs),
+    ).toBe(true);
+  });
+
+  it("retains threads whose terminals were used inside the retention window", () => {
+    const nowMs = Date.parse("2026-04-20T00:00:00.000Z");
+    expect(
+      shouldRetainThreadForTerminalActivity(
+        { hasLiveSession: false, lastActivityMs: nowMs - THREAD_RETENTION_UNUSED_MS + 1 },
+        nowMs,
+      ),
+    ).toBe(true);
+  });
+
+  it("does not retain threads with stale or absent terminal activity", () => {
+    const nowMs = Date.parse("2026-04-20T00:00:00.000Z");
+    expect(
+      shouldRetainThreadForTerminalActivity(
+        { hasLiveSession: false, lastActivityMs: nowMs - THREAD_RETENTION_UNUSED_MS - 1 },
+        nowMs,
+      ),
+    ).toBe(false);
+    expect(
+      shouldRetainThreadForTerminalActivity({ hasLiveSession: false, lastActivityMs: null }, nowMs),
+    ).toBe(false);
   });
 });

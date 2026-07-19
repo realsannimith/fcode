@@ -87,5 +87,9 @@ describe("TerminalViewportPane split actions", () => {
     expect(markup).not.toContain(
       renderToStaticMarkup(<TerminalIdentityIcon iconKey="terminal" className="size-3.5" />),
     );
+    // Hiding the generic terminal glyph must not take the close affordance with it:
+    // a plain shell tab (no agent identity yet) still needs its hover close button.
+    expect(markup).toContain('aria-label="Close Terminal 1"');
+    expect(markup).toContain('aria-label="Close Claude 1"');
   });
 });

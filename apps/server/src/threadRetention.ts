@@ -15,6 +15,7 @@ import { randomUUID } from "node:crypto";
 import type { OrchestrationEngineShape } from "./orchestration/Services/OrchestrationEngine";
 import type { ProjectionSnapshotQueryShape } from "./orchestration/Services/ProjectionSnapshotQuery";
 import { ServerLifecycleEvents } from "./serverLifecycleEvents";
+import type { TerminalManagerShape, TerminalThreadActivity } from "./terminal/Services/Manager";
 
 export const THREAD_RETENTION_UNUSED_MS = 7 * 24 * 60 * 60 * 1000;
 export const THREAD_RETENTION_INITIAL_SWEEP_DELAY_MS = 5 * 60 * 1000;
@@ -106,6 +107,20 @@ const publishRetentionMaintenance = Effect.fn("publishRetentionMaintenance")(fun
     );
 });
 
+// Terminal usage never touches orchestration state (no turns, no messages, no
+// updatedAt bumps), so a terminal-first thread looks permanently idle to the
+// selection above. Threads with a live terminal session, or whose terminals were
+// used inside the retention window, must never be hidden — hiding one closes its
+// PTYs underneath an attached UI and kills whatever agent is running in them.
+export function shouldRetainThreadForTerminalActivity(
+  activity: TerminalThreadActivity,
+  nowMs = Date.now(),
+): boolean {
+  if (activity.hasLiveSession) return true;
+  const cutoffMs = nowMs - THREAD_RETENTION_UNUSED_MS;
+  return activity.lastActivityMs !== null && activity.lastActivityMs > cutoffMs;
+}
+
 // Picks inactive threads to soft-delete from the app while keeping their DB rows for stats.
 export function getInactiveThreadIdsForRetention(
   readModel: Pick<OrchestrationReadModel, "threads"> | Pick<OrchestrationShellSnapshot, "threads">,
@@ -129,9 +144,36 @@ export function getInactiveThreadIdsForRetention(
 export const runThreadRetentionSweep = Effect.fn("runThreadRetentionSweep")(function* (
   orchestrationEngine: OrchestrationEngineShape,
   projectionSnapshotQuery: ProjectionSnapshotQueryShape,
+  terminalManager: TerminalManagerShape,
 ) {
   const shellSnapshot = yield* projectionSnapshotQuery.getShellSnapshot();
-  const inactiveThreadIds = getInactiveThreadIdsForRetention(shellSnapshot);
+  const nowMs = Date.now();
+  const candidateThreadIds = getInactiveThreadIdsForRetention(shellSnapshot, nowMs);
+
+  // Drop candidates that are still in use through their terminals. On lookup
+  // failure, retain the thread: hiding an active workspace is destructive, while
+  // keeping an idle one another day is harmless.
+  const inactiveThreadIds: ThreadId[] = [];
+  for (const threadId of candidateThreadIds) {
+    const retainForTerminals = yield* terminalManager.getThreadActivity(threadId).pipe(
+      Effect.map((activity) => shouldRetainThreadForTerminalActivity(activity, nowMs)),
+      Effect.catch((error) =>
+        Effect.logWarning("failed to read terminal activity during retention sweep").pipe(
+          Effect.annotateLogs({ threadId, error: String(error) }),
+          Effect.as(true),
+        ),
+      ),
+    );
+    if (!retainForTerminals) {
+      inactiveThreadIds.push(threadId);
+    }
+  }
+  if (inactiveThreadIds.length < candidateThreadIds.length) {
+    yield* Effect.logInfo("retention kept threads with recent terminal activity").pipe(
+      Effect.annotateLogs({ count: candidateThreadIds.length - inactiveThreadIds.length }),
+    );
+  }
+
   const totalCandidateCount = inactiveThreadIds.length;
   let deletedCount = 0;
 
@@ -196,15 +238,18 @@ export const runThreadRetentionSweep = Effect.fn("runThreadRetentionSweep")(func
 export const startThreadRetentionJob = Effect.fn("startThreadRetentionJob")(function* (
   orchestrationEngine: OrchestrationEngineShape,
   projectionSnapshotQuery: ProjectionSnapshotQueryShape,
+  terminalManager: TerminalManagerShape,
 ) {
   // Give startup/projection bootstrap a short settling window, then run one
   // hide pass promptly so desktop installs do not need to stay open for 24 hours.
   yield* Effect.gen(function* () {
     yield* Effect.sleep(THREAD_RETENTION_INITIAL_SWEEP_DELAY_MS);
-    yield* runThreadRetentionSweep(orchestrationEngine, projectionSnapshotQuery);
+    yield* runThreadRetentionSweep(orchestrationEngine, projectionSnapshotQuery, terminalManager);
     yield* Effect.forever(
       Effect.sleep(THREAD_RETENTION_SWEEP_INTERVAL_MS).pipe(
-        Effect.flatMap(() => runThreadRetentionSweep(orchestrationEngine, projectionSnapshotQuery)),
+        Effect.flatMap(() =>
+          runThreadRetentionSweep(orchestrationEngine, projectionSnapshotQuery, terminalManager),
+        ),
       ),
       { disableYield: true },
     );

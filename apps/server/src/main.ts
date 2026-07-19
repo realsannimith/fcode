@@ -36,6 +36,7 @@ import { formatHostForUrl, isWildcardHost } from "./startupAccess";
 import { AnalyticsServiceLayerLive } from "./telemetry/Layers/AnalyticsService";
 import { AnalyticsService } from "./telemetry/Services/AnalyticsService";
 import { OrchestrationEngineService } from "./orchestration/Services/OrchestrationEngine";
+import { TerminalManager } from "./terminal/Services/Manager";
 import { startThreadRetentionJob } from "./threadRetention";
 
 // Desktop mode pipes this process's stdio into the Electron shell for log capture. When the
@@ -321,9 +322,10 @@ const makeServerProgram = (input: CliInput) =>
     yield* start;
     const orchestrationEngine = yield* OrchestrationEngineService;
     const projectionSnapshotQuery = yield* ProjectionSnapshotQuery;
+    const terminalManager = yield* TerminalManager;
     // Start the retention loop after the server is live so startup can serve
     // existing history first, then hide inactive threads from the app in the background.
-    yield* startThreadRetentionJob(orchestrationEngine, projectionSnapshotQuery);
+    yield* startThreadRetentionJob(orchestrationEngine, projectionSnapshotQuery, terminalManager);
     yield* Effect.forkChild(recordStartupHeartbeat);
 
     // Under the desktop app, publish the cross-provider in-app browser skill so

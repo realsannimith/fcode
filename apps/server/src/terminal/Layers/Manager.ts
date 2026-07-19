@@ -2598,6 +2598,56 @@ export class TerminalManagerRuntime extends EventEmitter<TerminalManagerEvents> 
     return [...this.sessions.values()].filter((session) => session.threadId === threadId);
   }
 
+  /**
+   * Report terminal usage for one thread so maintenance jobs (thread retention)
+   * never treat a live or recently-used terminal workspace as inactive. Terminal
+   * activity is invisible to orchestration state (no turns/messages), so this is
+   * the only signal that a terminal-first thread is still in use.
+   */
+  async getThreadActivity(
+    threadId: string,
+  ): Promise<{ hasLiveSession: boolean; lastActivityMs: number | null }> {
+    let lastActivityMs: number | null = null;
+    const trackActivity = (ms: number | null) => {
+      if (ms !== null && Number.isFinite(ms) && (lastActivityMs === null || ms > lastActivityMs)) {
+        lastActivityMs = ms;
+      }
+    };
+
+    const liveSessions = this.sessionsForThread(threadId);
+    for (const session of liveSessions) {
+      trackActivity(Date.parse(session.updatedAt));
+    }
+
+    // Sessions do not survive server restarts, so also consult the persisted
+    // history sidecars' mtimes (same per-thread file matching as
+    // deleteAllHistoryForThread) to see when this thread's terminals last wrote.
+    const threadPart = toSafeThreadId(threadId);
+    try {
+      const entries = await fs.promises.readdir(this.logsDir, { withFileTypes: true });
+      const names = entries
+        .filter((entry) => entry.isFile())
+        .map((entry) => entry.name)
+        .filter(
+          (name) =>
+            name.startsWith(`${threadPart}.`) ||
+            name.startsWith(`${threadPart}_`) ||
+            name === `${legacySafeThreadId(threadId)}.log`,
+        );
+      const stats = await Promise.all(
+        names.map((name) => fs.promises.stat(path.join(this.logsDir, name)).catch(() => null)),
+      );
+      for (const stat of stats) {
+        trackActivity(stat?.mtimeMs ?? null);
+      }
+    } catch {
+      // Best-effort: an unreadable logs dir must not block maintenance; callers
+      // treat a null lastActivityMs as "no terminal usage recorded".
+    }
+
+    return { hasLiveSession: liveSessions.length > 0, lastActivityMs };
+  }
+
   private async deleteAllHistoryForThread(threadId: string): Promise<void> {
     const threadPart = toSafeThreadId(threadId);
     for (const key of [...this.persistedHistoryByKey.keys()]) {
@@ -2830,6 +2880,12 @@ export const TerminalManagerLive = Layer.effect(
         Effect.tryPromise({
           try: () => runtime.close(input),
           catch: (cause) => terminalErrorFromCause("Failed to close terminal", cause),
+        }),
+      getThreadActivity: (threadId) =>
+        Effect.tryPromise({
+          try: () => runtime.getThreadActivity(threadId),
+          catch: (cause) =>
+            terminalErrorFromCause("Failed to read terminal thread activity", cause),
         }),
       subscribe: (listener) =>
         Effect.sync(() => {
