@@ -119,12 +119,15 @@ export interface TerminalRuntimeEntry {
   // Wall-clock of the last automatic re-open triggered by a lost-session write
   // failure, so self-healing stays throttled.
   lastLostSessionRecoveryAt: number;
-  // GPU renderer, held only while the pane is visible. Browsers cap live WebGL
-  // contexts (~16), so hidden panes must not hold one — an evicted context would
-  // silently downgrade that pane to the slow DOM renderer.
+  // GPU renderer, kept warm across visibility changes up to a global context
+  // budget so tab switches reuse the initialized renderer. Browsers cap live
+  // WebGL contexts (~16); least-recently-visible hidden panes are reclaimed
+  // under budget pressure rather than silently downgrading to the DOM renderer.
   webglAddon: IDisposable | null;
   // Pending retry after a WebGL context loss (usually transient eviction).
   webglRetryTimer: number | null;
+  // Recency stamp for the context-budget LRU (updated on show and hide).
+  lastVisibleAt: number;
   disposed: boolean;
   resizeObserver: ResizeObserver | null;
   resizeDispatchTimer: number | null;

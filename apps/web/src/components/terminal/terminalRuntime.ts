@@ -837,6 +837,7 @@ export function createRuntimeEntry(config: TerminalRuntimeConfig): TerminalRunti
     lastLostSessionRecoveryAt: 0,
     webglAddon: null,
     webglRetryTimer: null,
+    lastVisibleAt: 0,
     disposed: false,
     resizeObserver: null,
     resizeDispatchTimer: null,
@@ -1202,17 +1203,44 @@ function openTerminal(entry: TerminalRuntimeEntry): void {
 }
 
 const WEBGL_CONTEXT_LOSS_RETRY_DELAY_MS = 3_000;
+// Stay comfortably under the browser's ~16 live-WebGL-context cap so terminals
+// never trigger browser-side eviction, while keeping enough contexts warm that
+// tab switches and new-terminal opens reuse an already-initialized renderer
+// (context creation + glyph-atlas warmup is a visible hitch when done per show).
+const WEBGL_CONTEXT_BUDGET = 8;
 
-// GPU renderer management, VS Code-style: only VISIBLE panes hold a WebGL context.
-// The default DOM renderer rebuilds row elements on every reflow, which makes
-// scrolling under heavy TUI redraw (coding agents) visibly laggy; WebGL repaints
-// atomically on the GPU. But browsers cap live WebGL contexts (~16), so grabbing
-// one per terminal for its whole lifetime exhausts the cap in split/tabbed
-// workspaces and silently downgrades evicted panes to the DOM renderer forever.
-// Scoping contexts to visible panes keeps the count tiny, and a lost context is
-// retried instead of permanently degrading the pane.
+// Every entry currently holding a live WebGL context, for budget accounting.
+const webglEntries = new Set<TerminalRuntimeEntry>();
+
+// GPU renderer management, VS Code-style. The default DOM renderer rebuilds row
+// elements on every reflow, which makes scrolling under heavy TUI redraw (coding
+// agents) visibly laggy; WebGL repaints atomically on the GPU. But browsers cap
+// live WebGL contexts (~16), so grabbing one per terminal forever exhausts the
+// cap in split/tabbed workspaces and silently downgrades evicted panes to the
+// DOM renderer. Instead, contexts are kept warm up to WEBGL_CONTEXT_BUDGET and
+// reclaimed only from the least-recently-visible hidden panes under pressure —
+// quick tab switches keep their renderer, and a lost context is retried instead
+// of permanently degrading the pane.
+function evictWebglOverBudget(): void {
+  if (webglEntries.size <= WEBGL_CONTEXT_BUDGET) return;
+  const reclaimable = [...webglEntries]
+    .filter((entry) => !entry.viewState.isVisible || entry.container === null)
+    .toSorted((left, right) => left.lastVisibleAt - right.lastVisibleAt);
+  for (const entry of reclaimable) {
+    if (webglEntries.size <= WEBGL_CONTEXT_BUDGET) return;
+    releaseWebglRenderer(entry);
+  }
+  // Every over-budget context belongs to a visible pane: keep them all. The
+  // budget sits far enough under the browser cap that this stays safe, and the
+  // context-loss retry recovers any pane the browser does evict.
+}
+
 function ensureWebglRenderer(entry: TerminalRuntimeEntry): void {
-  if (entry.disposed || entry.webglAddon !== null || !entry.viewState.isVisible) {
+  if (entry.disposed || !entry.viewState.isVisible) {
+    return;
+  }
+  entry.lastVisibleAt = performance.now();
+  if (entry.webglAddon !== null) {
     return;
   }
   try {
@@ -1230,12 +1258,15 @@ function ensureWebglRenderer(entry: TerminalRuntimeEntry): void {
     });
     entry.terminal.loadAddon(webglAddon);
     entry.webglAddon = webglAddon;
+    webglEntries.add(entry);
+    evictWebglOverBudget();
   } catch {
     // WebGL unavailable (headless / blocklisted GPU) — keep the DOM renderer.
   }
 }
 
 function releaseWebglRenderer(entry: TerminalRuntimeEntry): void {
+  webglEntries.delete(entry);
   if (entry.webglRetryTimer !== null) {
     window.clearTimeout(entry.webglRetryTimer);
     entry.webglRetryTimer = null;
@@ -1286,9 +1317,12 @@ export function updateRuntimeViewState(
       ensureResizeObserver(entry);
       startVisibilityRecovery(entry);
     } else if (!nextViewState.isVisible && wasVisible) {
-      // Hidden panes render nothing; release the GPU context so visible panes
-      // never compete for the browser's WebGL context budget.
-      releaseWebglRenderer(entry);
+      // Keep the GPU context warm: quick tab switches must not pay a context
+      // teardown + glyph-atlas rebuild, and a hidden pane on the DOM renderer
+      // would churn row elements while an agent keeps redrawing. The budget
+      // eviction in ensureWebglRenderer reclaims least-recently-visible hidden
+      // contexts only under pressure.
+      entry.lastVisibleAt = performance.now();
       cancelScheduledVisualResize(entry);
       stopVisibilityRecovery(entry);
       clearAttachDisposables(entry);
@@ -1303,9 +1337,8 @@ export function updateRuntimeViewState(
 }
 
 export function detachRuntimeFromContainer(entry: TerminalRuntimeEntry): void {
-  // A parked (detached) pane paints nothing; free its GPU context immediately.
-  // Reattaching reloads WebGL through the visible-view-state path.
-  releaseWebglRenderer(entry);
+  // Parked panes keep their GPU context warm so pane drags/moves reattach
+  // without a renderer rebuild; budget eviction reclaims parked contexts first.
   cancelScheduledVisualResize(entry);
   stopVisibilityRecovery(entry);
   clearAttachDisposables(entry);
@@ -1319,6 +1352,7 @@ export function detachRuntimeFromContainer(entry: TerminalRuntimeEntry): void {
 
 export function disposeRuntimeEntry(entry: TerminalRuntimeEntry): void {
   detachRuntimeFromContainer(entry);
+  releaseWebglRenderer(entry);
   entry.disposed = true;
   if (entry.openRetryTimer !== null) {
     window.clearTimeout(entry.openRetryTimer);
